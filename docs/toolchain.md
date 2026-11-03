@@ -6,7 +6,7 @@ warn when `version -short` differs from the version below.
 | Tool | Version | Where / how to get it on PATH |
 |---|---|---|
 | Vivado ML Standard | 2025.2 | `~/Xilinx/2025.2`; run `vivado-env` (in `~/.bashrc`) first |
-| Verilator | 5.053 devel (rev v5.052-319-g704ec556e) | `~/.local/bin/verilator` (first on PATH). Debian's 5.032 in `/usr/bin` is **not** used |
+| Verilator | local devel build: wrapper `--version` says 5.053 (rev v5.052-319-g704ec556e), run banner says 5.050 | `~/.local/bin/verilator` (first on PATH). Debian's 5.032 in `/usr/bin` is **not** used (cocotb 2.1 needs ≥ 5.036) |
 | Yosys | 0.69+208 | oss-cad-suite, `~/.local/opt/oss-cad-suite/bin` |
 | SymbiYosys | 0.69 | oss-cad-suite |
 | Python | 3.14.4 | system; project venv in `.venv` |

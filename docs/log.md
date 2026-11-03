@@ -48,3 +48,31 @@
   both), and replacements keep their side.
 
 **Numbers:** `data/results/2019-10-18_AAPL.md`.
+
+## 2026-11-03 — Phase B start: toolchain pinned, async FIFO proven
+
+**Toolchain**
+- Versions pinned in `docs/toolchain.md`. cocotb 2.1.0 and cocotb-coverage 2.0 were added to
+  `requirements.txt`.
+- The local Verilator build reports two versions (5.053 from the wrapper, 5.050 in the run
+  banner). Both are recorded.
+
+**`fpga-eth-core` repo created locally (`~/fpga-eth-core`), first block `async_fifo`**
+- Cummings-style Gray-pointer FIFO. AXI-Stream on both sides, FWFT read through a
+  BRAM-friendly synchronous read, write-side and read-side occupancy outputs (for the
+  high-water mark the `eth-core-v0.1` gate requires).
+- Formal: k-induction PASS (depth 24, depth-4 instance, two free-running clocks). Proven:
+  - no overflow or underflow
+  - Gray encoding
+  - synchronizer-chain monotonicity (needed as induction invariants)
+  - data integrity of an arbitrary tagged word
+- Three planted bugs each fail the proof: write allowed when full, binary read pointer,
+  read from the next address.
+- cocotb + Verilator: 25→125 MHz bursty, fast writer that fills it, and slow writer that
+  drains it, at depth 16 and 2048, 3,000 words each. All pass; full is reached at exactly
+  DEPTH.
+
+**Bug (testbench): random clock phase rejected by cocotb**
+- Symptom: every test died at t=0 with `Unable to accurately represent 4.84…ns`.
+- Root cause: a float phase offset finer than the 1 ps simulator precision.
+- Fix: draw the phase in whole picoseconds.
