@@ -15,6 +15,8 @@ class Bbo:
     bid_size: int
     ask_price: int
     ask_size: int
+    # Set by the bounded book when the true best lies outside its price window (ADR 0002).
+    out_of_window: bool = False
 
     @property
     def locked(self) -> bool:
@@ -47,7 +49,7 @@ class OrderBook:
     # Lazily cleaned heaps: an entry is live only while its price is still in the level dict.
     _bid_heap: list[int] = field(default_factory=list)  # negated prices
     _ask_heap: list[int] = field(default_factory=list)
-    _last: tuple[int, int, int, int] = (0, 0, 0, 0)
+    _last: tuple[int, ...] = (0, 0, 0, 0)
     peak_live_orders: int = 0
     counters: Counters = field(default_factory=Counters)
 
@@ -117,7 +119,8 @@ class OrderBook:
         if levels[order.price] == 0:
             del levels[order.price]
 
-    def _bbo_if_changed(self, ts: int) -> Bbo | None:
+    def _state(self) -> tuple[int, ...]:
+        """Best bid price/size, best ask price/size: what a Bbo reports."""
         heap = self._bid_heap
         while heap and -heap[0] not in self.bids:
             heapq.heappop(heap)
@@ -126,8 +129,11 @@ class OrderBook:
         while heap and heap[0] not in self.asks:
             heapq.heappop(heap)
         ask = heap[0] if heap else 0
-        state = (bid, self.bids.get(bid, 0), ask, self.asks.get(ask, 0))
+        return (bid, self.bids.get(bid, 0), ask, self.asks.get(ask, 0))
+
+    def _bbo_if_changed(self, ts: int) -> Bbo | None:
+        state = self._state()
         if state == self._last:
             return None
         self._last = state
-        return Bbo(ts, *state)
+        return Bbo(ts, *state)  # type: ignore[arg-type]

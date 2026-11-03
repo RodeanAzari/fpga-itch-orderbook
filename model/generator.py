@@ -9,6 +9,8 @@ import random
 import struct
 from dataclasses import dataclass
 
+from model.bounded import colliding_refs
+
 TICK = 100
 
 
@@ -17,8 +19,8 @@ class Config:
     locate: int = 1
     stock: str = "TEST"
     base_price: int = 1_000_000  # $100.00. Resting bids sit below it, resting asks above it.
-    sets: int = 512  # bucket collisions are aimed at this table geometry
-    p_collide: float = 0.05  # new ref lands in one crowded bucket
+    sets_per_bank: int = 512  # collisions are aimed at this d-left geometry
+    p_collide: float = 0.05  # new ref targets the same bucket pair in both banks
     p_far_price: float = 0.05  # price far outside any window
     p_episode: float = 0.01  # brief locked or crossed book around base_price
     p_noise: float = 0.03  # non-subset message that must be skipped by length
@@ -40,6 +42,7 @@ def generate(seed: int, count: int, cfg: Config = DEFAULT) -> list[bytes]:
     out = [_header(b"R", cfg.locate, ts) + stock + bytes(20)]
     live: dict[int, tuple[int, bytes]] = {}  # ref -> remaining shares, side
     next_ref = 1
+    collide = iter(colliding_refs(cfg.sets_per_bank.bit_length() - 1, 64))
 
     def plain_ref() -> int:
         nonlocal next_ref
@@ -47,14 +50,16 @@ def generate(seed: int, count: int, cfg: Config = DEFAULT) -> list[bytes]:
         return next_ref
 
     def new_ref() -> int:
-        ref = plain_ref()
-        # Low bits all zero: every such ref lands in one bucket.
-        return ref * cfg.sets if rng.random() < cfg.p_collide else ref
+        if rng.random() < cfg.p_collide:
+            return next(collide, None) or plain_ref()
+        return plain_ref()
 
     def price(side: bytes) -> int:
         sign = 1 if side == b"S" else -1
         if rng.random() < cfg.p_far_price:
-            return cfg.base_price + sign * 500_000
+            # Either edge: past the far edge is a stub quote; past the near edge it beats
+            # every in-window price, so the bounded BBO must be flagged.
+            return cfg.base_price + rng.choice((-1, 1)) * 500_000
         return cfg.base_price + sign * rng.randrange(1, 40) * TICK
 
     def add(ref: int, side: bytes, shares: int, at: int) -> None:

@@ -1,7 +1,7 @@
 # 0001: Order-table structure and sizing
 
-**Status: Proposed.** Deviates from CLAUDE.md §6.3 (low-bits hash, one table). Awaiting
-approval before RTL.
+**Status: Accepted 2026-11-03.** Supersedes the original CLAUDE.md §6.3 design (low-bits
+hash, one table), which is now updated to match.
 
 ## Context
 
@@ -33,7 +33,7 @@ Each table was replayed against the day's real refs (`analysis/sizing.py`).
   groups with independent addresses) and inserts into the emptier one, ties going to bank 0.
   Worst-case load drops from about log n / log log n to about log log n.
 
-## Decision (proposed)
+## Decision
 
 2-bank d-left, 8,192 sets per bank, 4 ways: 65,536 entries, 2.36× the measured peak.
 
@@ -42,6 +42,8 @@ Each table was replayed against the day's real refs (`analysis/sizing.py`).
   bijection, so the remaining 19 product bits are a complete tag and refs never alias.
   Cost: one DSP48 multiply per bank, pipelined.
 - **Entry (54 bits):** tag 19, price index 12, out-of-window 1, shares 20, side 1, valid 1.
+  - For an out-of-window order the price index is unused, so its top bit records which edge
+    it fell past. That is enough for ADR 0002's flag at no extra width.
   - Four ways make 216 bits per set, exactly three 72-bit BRAM36 lanes (512 × 72 SDP).
   - Each bank is 16 deep × 3 wide = 48 BRAM36, so 96 for both.
 - **New counted limits:**
@@ -63,4 +65,6 @@ Each table was replayed against the day's real refs (`analysis/sizing.py`).
 
 - `data/results/2019-10-18_AAPL_table_fill.csv`: worst bucket per hash and set count.
 - `data/results/2019-10-18_AAPL_table_dleft.csv`: overflow and stash peak per geometry.
+- `data/results/2019-10-18_AAPL_bounded.csv`: the golden model at this exact geometry has
+  zero `table_overflow`, `ref_overflow`, `shares_overflow` and `unknown_ref` over the day.
 - **Limitation:** one trading day. A second, busier day should be checked before RTL is tagged.

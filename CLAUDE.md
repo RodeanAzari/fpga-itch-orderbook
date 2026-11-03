@@ -11,7 +11,7 @@ host replays a NASDAQ ITCH 5.0 day ──UDP multicast (MoldUDP64)──▶ Arty
 host ◀──────────────── UDP: BBO updates + T0/T1/T2 timestamps ◀────────────────────┘
 ```
 
-**This is a portfolio project.** Working RTL is half the deliverable. The other half is evidence: measured numbers, plots, screenshots, video, and a README a hiring engineer can absorb in 60 seconds. §11 is mandatory, not optional polish. **A phase without its numbers and media is not done.**
+**This is a portfolio project.** Working RTL is half the deliverable. The other half is evidence: measured numbers, plots, screenshots, video, and a proper in depth and full README. §11 is mandatory, not optional polish. **A phase without its numbers and media is not done.**
 
 **Languages:** SystemVerilog (RTL), Python (golden model, cocotb, analysis), C++20 (host replayer and capture).
 
@@ -308,7 +308,7 @@ make clean
                                               │
                                      stock-locate filter
                                               ▼
-                       ORDER TABLE (BRAM, 4-way set-assoc: ref → side/price idx/shares)
+                       ORDER TABLE (BRAM, 2-bank d-left 4-way: ref → side/price idx/shares)
                                               │ level delta (side, idx, ±shares)
                                               ▼
                        PRICE-LEVEL ARRAYS (bid, ask) + two-level occupancy bitmaps
@@ -331,25 +331,28 @@ The FCS arrives at the **end** of the frame.
 
 ### 6.3 Order table
 
-- **Structure:** a hash table in BRAM keyed on the 64-bit order reference, with **4-way set-associative buckets read in one cycle** through a wide BRAM word.
-- **Hash:** the low bits of the reference. Refs increase through the day, and the low bits are well distributed even after symbol filtering.
-- **Entry:** keep it narrow, because width multiplies BRAM cost.
+Decided by ADR 0001 from Phase A data. The original single-table, low-bits-hash design was measured and rejected: the low bits of real refs cluster, and no single-hash 4-way table that fits the device reaches zero overflow.
 
-  | Field | Notes |
-  |---|---|
-  | tag | Ref bits above the index. May be truncated, if Phase A shows the day's maximum ref can't alias within the tag + index range. ADR. |
-  | price index | Relative to the window base, e.g. 12 bits. |
-  | out-of-window flag | |
-  | shares | 32 |
-  | side | |
-  | symbol index | |
-  | valid | |
+- **Structure:** a **2-bank d-left** hash table in BRAM: 2 banks × 8,192 sets × 4 ways = 65,536 entries. One bucket is read from each bank in the same cycle through a wide BRAM word, and an insert goes to the emptier bucket, with ties going to bank 0.
+- **Hash:** bank *b* index = top 13 bits of `(ref[31:0] × M_b) mod 2^32`, with odd multipliers `M_0 = 0x9E3779B1` and `M_1 = 0x85EBCA6B` (one DSP48 per bank). Odd multipliers make the hash a bijection, so the remaining 19 product bits are a complete tag and refs never alias.
+- **Entry (54 bits):** four of them make 216 bits per set, which is three 72-bit BRAM36 lanes.
+
+  | Field | Bits | Notes |
+  |---|---|---|
+  | tag | 19 | Low product bits |
+  | price index | 12 | Relative to the window base. For an out-of-window order, its top bit records which edge the order fell past (§6.4). |
+  | out-of-window flag | 1 | |
+  | shares | 20 | Phase A max is 82,045 |
+  | side | 1 | |
+  | valid | 1 | |
+
+- **Single symbol.** There is no symbol index; more symbols need re-measuring and an ADR.
+- **Width limits are counted, never truncated:** `ref_overflow` (ref ≥ 2^32) and `shares_overflow` (> 2^20 − 1 shares). The order goes untracked and the book is marked stale.
 
 - **Size from data, not guesses:**
-  - Phase A reports the chosen symbol's peak concurrent live orders. Size the table at ≥ 2× that.
-  - Write the BRAM arithmetic into `design.md`. Illustrative example only, to be recomputed: an ~90-bit entry × 4 ways = 360 bits/set, which takes 5 BRAM36 at 512 × 72; that block gives 512 sets = 2,048 entries.
-  - Check the total against the 135 BRAM36 available, leaving room for the levels, FIFOs and histogram.
-- **Full bucket on insert** increments `table_overflow`. The order goes untracked, and its later cancel or execute counts as `unknown_ref`.
+  - Phase A measured 27,814 peak concurrent live orders, so 65,536 entries is 2.36×. The table costs 96 of 135 BRAM36; the arithmetic is in `design.md`.
+  - The golden model at this geometry has zero overflow over the day (`data/results/2019-10-18_AAPL_bounded.csv`).
+- **Both candidate buckets full on insert** increments `table_overflow`. The order goes untracked, and its later cancel or execute counts as `unknown_ref`.
 - **Both counters must read zero on the real-data run.**
 
 ### 6.4 Price levels and BBO — the key design decision
@@ -362,11 +365,14 @@ Implement the first option; document both.
 | Sorted register array (top-K) | Shift-insert sorted levels in registers | Single-cycle best, but levels below K are lost and the book goes wrong when the top depletes. Needs a backing store anyway. |
 
 - **Window:** 4,096 ticks (±$20 at 1¢), parameterized.
-- **Base selection (ADR):** host-configured from the prior close or the golden model's opening price. "First trade" doesn't work, because pre-market orders arrive hours before any trade.
+- **Base selection (ADR 0002):** host-configured as the golden model's opening mid, the first two-sided, uncrossed BBO at or after 09:30 ($234.55 for AAPL on 2019-10-18). "First trade" doesn't work, because pre-market orders arrive hours before any trade.
 - **Out-of-window orders:**
   - Still inserted into the order table, with the out-of-window flag set, so their later `E`/`X`/`D`/`U` resolve cleanly. They never touch the level arrays.
   - They are counted in `price_oow`. **Expect this to be non-zero on real data**, because of far-away stub quotes.
-  - The real invariant is `bbo_oow == 0`: the true best bid/ask (per the unbounded golden model) never lay outside the window.
+  - **Out-of-window BBO is flagged, never hidden (ADR 0002).** Phase A found the true BBO outside the window twice, both times in an almost empty book (04:00:11 and 20:00:00), so `bbo_oow == 0` is unreachable.
+    - Four live counters (per side: orders better / worse than the window) drive an `out_of_window` flag on the BBO output.
+    - The flag is set when a side has a live order better than the window, or has empty in-window levels and a live order worse than the window.
+    - **Contract:** the flag is set exactly when the published BBO differs from the unbounded model's. Each flagged update is counted in `bbo_oow`.
 - **BBO output only on a change** of best bid/ask price or size.
 - **Crossed or locked books** are flagged, never hidden.
 
@@ -408,13 +414,13 @@ Formats are defined in `docs/protocol.md`, the single source of truth for both t
 - ITCH timestamp
 - MoldUDP64 sequence number of the cause
 - T0, T1, T2
-- flags: stale, crossed, locked, cut-through
+- flags: stale, crossed, locked, out-of-window, cut-through
 
 **Stats packet, once per second.** Every counter:
 - frames, CRC errors, IPv4 checksum errors, filtered
 - gaps, duplicates
 - FIFO overflow
-- `table_overflow`, `unknown_ref`, `price_oow`, `bbo_oow` (when checked)
+- `table_overflow`, `ref_overflow`, `shares_overflow`, `unknown_ref`, `price_oow`, `bbo_oow`
 - unknown ITCH types, malformed messages
 
 ### 6.7 Internal pipeline-capacity test
@@ -541,7 +547,8 @@ Every phase's DoD includes **README updated, `docs/log.md` entry written, that p
 - [ ] Order table, price arrays, bitmaps, BBO tracker
 - [ ] 1M+ random events in sim with zero scoreboard mismatches
 - [ ] **Hardware full-day replay: zero mismatches**
-  - `table_overflow`, `unknown_ref` and `bbo_oow` all zero
+  - `table_overflow`, `ref_overflow`, `shares_overflow` and `unknown_ref` all zero
+  - `bbo_oow` equals the bounded model's count (4 on 2019-10-18), each update flagged
   - `price_oow` reported, with an explanation
 - [ ] `design.md` records the price-level decision with both options
 - [ ] Media: plot of the FPGA BBO overlaid on the golden BBO for the day; `bbo_view.py` screen recording; `compare.py` "0 mismatches" run
@@ -622,25 +629,57 @@ Claude generates plots and terminal recordings itself. For photos, phone video a
 - Record bugs as **symptom → root cause → fix**. These entries are interview material.
 - Claude appends an entry at the end of every session.
 
-### 11.4 README structure
+### 11.4 README standard
 
-1. One-sentence description
-2. **Hero GIF**
-3. Results table, with measured values only (`[TBD]` until measured):
-   - **pipeline latency T2−T1** p50/p99/p99.9/max
-   - T2−T0, labeled line-rate bound
-   - pipeline capacity (msg/s) vs. line-rate throughput
-   - cut-through saving
-   - Fmax/WNS
-   - utilization
-   - events verified
-   - coverage %
-   - hardware full-day mismatches (0)
-4. Architecture diagram (image, not ASCII)
-5. Media gallery and demo video link
-6. Design decisions (order table, price levels, cut-through, CDC, timestamping) linking to `docs/design.md`
-7. The 100 Mbps limitation, stated plainly (§1)
-8. Build and run instructions
+The README is a technical project report, not a summary. Use the RISC-V core's README
+(github.com/RodeanAzari/riscv-rv32i-tmr-core) as the template for structure, depth and tone.
+Every number comes from a committed report or CSV produced by a `make` target and links
+to it; anything unmeasured is a dash or `[TBD]`, never an estimate. Sections, in order:
+
+**At a glance table:** directly under the intro and hero image, the README has a two-column
+table (`| | |`) of 10–15 rows that summarizes the whole project for someone who reads nothing
+else. Each row is a short label and a short measured fact with its condition
+(e.g. "p99 latency | 312 ns, 1M events, 125 MHz core"). Every value comes from a committed
+report and matches the full Results section. Unmeasured rows show `[TBD]` until measured.
+Keep it current at the end of every phase.
+
+Rows: Board/PHY · Pipeline (MII → … → BBO) · Pipeline latency p50/p99/p99.9/max ·
+Pipeline capacity (msg/s) · Line-rate throughput · Hardware full-day replay (mismatches) ·
+Events verified in sim · Functional coverage · Formal proofs · Bugs caught · Fmax ·
+Utilization (LUT/FF/BRAM) · CI
+
+1. **Title that states the claim**, then an intro paragraph with the headline numbers,
+   a status line, a sourcing note ("every number comes from `docs/reports/`, produced by
+   `make …`"), and a hero image or GIF with a caption.
+2. **At a glance**: a two-column table of the key facts and metrics.
+3. **Status**: the phase table, linking to `docs/design.md` and `docs/log.md`.
+4. **Architecture**: a Mermaid diagram plus bullets on clocking, CDC, interfaces and data flow.
+5. **Verification, by layer**: formal (properties proven, depth), cocotb (tests passed,
+   events checked against the golden model, coverage bins hit), hardware (ILA captures
+   checked by script). Include a **numbered list of bugs found**, each with how it was found
+   and which layer caught it, and any bugs planted to prove the testbench catches them.
+6. **One deep section per major block**: what it does, the design alternatives in a
+   comparison table (resources, latency, Fmax), which one was chosen and why, and how it
+   was verified.
+7. **On the board**: photos, ILA captures with a sample-by-sample table explaining what
+   the waveform shows, real terminal output in code blocks.
+8. **Demos**: embedded video, the commands to reproduce them, and a table of each demo
+   with its on-board result.
+9. **In Vivado**: a captioned screenshot grid (device view, worst path, timing,
+   utilization, schematic, power) for each major build.
+10. **Results**: tables where every row links to its report file, with measurement
+    conditions stated (clock, data set, run length).
+11. **Limitations**: a candid bulleted list of what the design doesn't do, what's
+    optimistic about the numbers, and what's untested.
+12. **Build and reproduce**: prerequisites with versions, a table of every `make` target,
+    and what runs in CI vs. locally.
+13. **Repository layout** table, then **Roadmap**.
+
+Tone: precise, numbers always carry their conditions, no marketing language, failures and
+limits stated openly. Update the README at the end of every phase. A phase isn't done
+until its section is written to this standard.
+
+Deep sections: order table, price levels + bitmap, timestamping, cut-through vs. store-and-forward. Hero: live order-book GIF. Limitation #1: the 100 Mbps PHY.
 
 ---
 

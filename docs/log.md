@@ -25,6 +25,19 @@
   almost empty book: 04:00:11 (bid $175.12) and 20:00:00 (ask $260.00).
 - Proposed treatment in ADR 0002.
 
+**Decisions accepted (ADR 0001, 0002) and checked on the real day**
+- `BoundedBook` now uses d-left placement, counts `ref_overflow` / `shares_overflow`, and
+  flags out-of-window BBOs.
+- Full-day result: zero table, ref, shares and unknown-ref errors; `bbo_oow` = 4 flagged
+  updates; 0 flag-contract violations over 1,669,591 messages.
+- CLAUDE.md §6.3, §6.4 and Phase D updated to match.
+
+**Bug: generator's far prices never triggered the out-of-window flag**
+- Symptom: `bbo_oow > 0` failed in the generator coverage test.
+- Root cause: far prices were always placed past the side's worse edge (bids far below,
+  asks far above), and both sides always had in-window levels.
+- Fix: far prices fall past either edge, so a hidden better price occurs.
+
 **Bug: generator never produced a locked book**
 - Symptom: the coverage test `test_generator_actually_reaches_the_adversarial_cases` failed
   on `locked`.

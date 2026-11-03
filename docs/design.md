@@ -6,8 +6,8 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 
 | ADR | Topic | Status |
 |---|---|---|
-| [0001](decisions/0001-order-table.md) | Order table: 2-bank d-left, 2 × 8,192 × 4 | Proposed |
-| [0002](decisions/0002-price-window-base.md) | Window base: opening mid, ±2,048 ticks | Proposed |
+| [0001](decisions/0001-order-table.md) | Order table: 2-bank d-left, 2 × 8,192 × 4 | Accepted |
+| [0002](decisions/0002-price-window-base.md) | Window base: opening mid, ±2,048 ticks; out-of-window BBO flagged | Accepted |
 
 Still to write: price-level storage, cut-through vs. store-and-forward, core clock, timestamp
 design, `DATA_W` default, locate-filter population, gap/stale semantics.
