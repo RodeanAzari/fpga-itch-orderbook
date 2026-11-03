@@ -16,8 +16,14 @@ Phase A has no physical captures; its media is the generated BBO plot.
 ## Next steps
 
 1. On sign-off: mark Phase A done in CLAUDE.md and README; tag `v0.1-model`.
-2. Phase B prerequisites: settle the host machine; install Yosys, SymbiYosys, clang-tidy,
-   tcpreplay and Vivado; pin versions in `docs/toolchain.md`.
+2. Phase B prerequisites:
+   - Settle the host machine and whether the repo moves into WSL (`~/OrderBook`).
+   - Pin tool versions in `docs/toolchain.md`.
+   - The tools exist in WSL Ubuntu, but are not on PATH for non-interactive shells:
+     - Vivado 2025.2: run `vivado-env` first.
+     - Yosys and SymbiYosys: `~/.local/opt/oss-cad-suite/bin`.
+     - clang-tidy: only inside Xilinx and nix.
+     - tcpreplay: not installed.
 3. Phase B: create the `fpga-eth-core` repo; async FIFO first, formally proven (§12).
 4. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
 

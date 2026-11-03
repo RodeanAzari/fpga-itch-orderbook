@@ -17,6 +17,8 @@ host ◀──────────────── UDP: BBO updates + T0/T
 
 **Reuse contract:** `rtl/eth/` (MII MAC, CRC-32, async FIFO, IPv4/UDP RX/TX) lives in its own repo, **`fpga-eth-core`**, pulled in as a git submodule. The CCSDS receiver project reuses it for IQ replay. It must stay **payload-agnostic**: no ITCH knowledge below the UDP payload interface, and nothing hardcoded to this project's packet format.
 
+**MII boundary:** keep the MII boundary a clean, documented interface, so a different PCS (e.g. 100BASE-FX in RTL) can replace the PHY underneath without changes to the MAC. Document the signals, timing and nibble order at that boundary in `fpga-eth-core`. The MAC must not depend on anything PHY-specific beyond them.
+
 ---
 
 ## Current status
