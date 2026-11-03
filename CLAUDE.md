@@ -157,6 +157,7 @@ make clean
 │   ├── out/                  # BBO/stats packet builder, control regs
 │   └── top/                  # top level, clocking
 ├── tb/
+│   ├── common/               # project-agnostic verification code (§8.1); becomes repo tb-common
 │   ├── cocotb/               # drivers, monitors, scoreboard, tests
 │   └── formal/               # SBY configs + SVA property files
 ├── model/                    # Python golden model + seeded adversarial generator
@@ -497,6 +498,16 @@ ILA builds sit behind a flag: `make impl ILA=1`. Functional builds never depend 
 - Rapid top-of-book churn; best level emptying, which exercises the bitmap search at varying distances
 - Back-to-back minimum-gap frames; FIFO near-full
 - Messages straddling bus words at every alignment, for each tested `DATA_W`
+
+**Shared verification code (`tb/common/`):**
+- Project-agnostic pieces live in `tb/common/` and must not import anything from
+  `model/`, `feed/` or `book/`: AXI-Stream driver/monitor, in-order scoreboard that
+  dumps the last N transactions on first mismatch, seeded-random utilities that log
+  the seed, coverage helpers.
+- Ethernet-specific test code (MII driver, frame builder) lives with fpga-eth-core's
+  testbench, not here.
+- When Project 3 starts, `tb/common/` moves to its own repo `tb-common` unchanged.
+  If the move needs edits, the boundary was wrong.
 
 ### 8.2 Functional coverage (cocotb-coverage)
 
