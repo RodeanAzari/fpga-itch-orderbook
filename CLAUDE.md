@@ -1,3 +1,9 @@
+Project ID: P2
+@~/fpga-coord/PROTOCOL.md
+
+Current state of the work:
+progress.md
+
 # CLAUDE.md — Ethernet-to-Order-Book Pipeline
 
 ## What this is
