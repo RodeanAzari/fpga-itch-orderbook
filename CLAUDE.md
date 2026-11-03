@@ -26,7 +26,7 @@ host ◀──────────────── UDP: BBO updates + T0/T
 
 | Phase | Status | Key result |
 |---|---|---|
-| A — Python golden model + data | NOT STARTED | — |
+| A — Python golden model + data | COMPLETE, AWAITING SIGN-OFF | Peak 27,814 live orders; d-left table 0 overflows over the day |
 | B — MAC + IPv4/UDP on hardware | NOT STARTED | — |
 | C — MoldUDP64 + ITCH decoder | NOT STARTED | — |
 | D — Order book engine | NOT STARTED | — |
