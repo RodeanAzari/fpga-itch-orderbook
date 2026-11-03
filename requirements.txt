@@ -28,3 +28,4 @@ PyYAML==6.0.3
 ruff==0.17.3
 typing_extensions==4.16.0
 tzdata==2026.6
+tb-common @ git+https://github.com/RodeanAzari/tb-common.git@tb-common-v0.1

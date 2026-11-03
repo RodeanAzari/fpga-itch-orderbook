@@ -17,6 +17,8 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 1. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on `eth-core-v0.1`):
    - Done: toolchain pinned (`docs/toolchain.md`); `async_fifo` formally proven + cocotb.
    - `github.com/RodeanAzari/fpga-eth-core` (private) created and pushed.
+   - `tb-common-v0.1` released (private repo `RodeanAzari/tb-common`), pinned in
+     `requirements.txt`; fpga-eth-core tests use it.
    - Next RTL: MII RX (nibble→byte, SFD) → CRC-32 check → Eth/IPv4/UDP filter with
      runtime-configurable group/port; then add as submodule here.
    - Still missing: tcpreplay (needs sudo).
@@ -33,6 +35,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | Repo lives in WSL at `~/OrderBook`; day files stay in `D:\itch` (`/mnt/d/itch`), AAPL extract in `/mnt/d/itch/derived` | Tools live in WSL; `/mnt/c` was slow and CRLF-prone. Day files never enter the repo. |
 | Host is WSL2: the Arty reaches it over a cable through usbipd-win | Confirmed working by the user (2026-11-03). |
 | GitHub repo renamed `OrderBook` → `fpga-itch-orderbook` (private); local folder stays `~/OrderBook` | Name carries the FPGA/ITCH keywords; local path is what fpga-coord and tooling reference. |
+| `tb-common` built directly as its own repo, not in `tb/common/` first | P3 had already started and was waiting on it; CLAUDE.md §8.1 updated. |
 | Shared Ethernet core keeps the name `fpga-eth-core` | P3/P4 consume it too; a trading name would contradict its payload-agnostic contract. |
 | `BoundedBook` subclasses `OrderBook` through small hooks | Bounded and unbounded logic can't drift apart. |
 

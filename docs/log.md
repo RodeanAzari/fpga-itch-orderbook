@@ -76,3 +76,34 @@
 - Symptom: every test died at t=0 with `Unable to accurately represent 4.84…ns`.
 - Root cause: a float phase offset finer than the 1 ps simulator precision.
 - Fix: draw the phase in whole picoseconds.
+
+## 2026-11-03: Phase A signed off; repos; tb-common-v0.1 released
+
+- Phase A signed off by the user and tagged `v0.1-model`.
+- GitHub repo `OrderBook` renamed to `fpga-itch-orderbook` (private). The local folder
+  stays `~/OrderBook`, because fpga-coord references it.
+- `fpga-eth-core` and `tb-common` created as private GitHub repos.
+- clang-tidy and clang-format 21.1.6 installed as pip wheels in `.venv` (no sudo).
+  tcpreplay still needs `sudo apt install`.
+
+**tb-common-v0.1** (the gate for P3, P4 and P5 testbenches; all soft gates)
+- Contents:
+  - `AxisSource` / `AxisSink` / `AxisMonitor` with random tvalid gaps and tready stalls
+  - tkeep-aware byte packing
+  - `InOrderScoreboard`, which dumps the last N matched items, expected vs. observed and
+    the upcoming expectations on the first mismatch
+  - `get_rng`, which logs its seed
+- Self-tests:
+  - 25 pytest cases covering every scoreboard failure path
+  - cocotb against a skid buffer at DATA_W 8 and 64
+  - a build with one bit flipped at beat 37, which the scoreboard catches ("mismatch
+    after 13 matched item(s)")
+- The `fpga-eth-core` async FIFO tests now use it and still pass at depths 16 and 2048,
+  installed from the tag rather than the working tree.
+
+**Bug (tb-common): seeds were invisible under cocotb**
+- Symptom: no `SEED=` lines in cocotb output, although pytest's caplog saw them.
+- Root cause: cocotb only shows INFO from loggers under `cocotb.*`. The logger was named
+  `tb_common.rng`.
+- Fix: logger names `cocotb.tb_common.*`. This is a name only; the module still doesn't
+  import cocotb.
