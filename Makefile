@@ -2,7 +2,9 @@
 VENV := .venv
 PY := $(VENV)/bin/python
 
-.PHONY: setup model-test clean
+ITCH_DAY ?= /mnt/d/itch/S101819-v50.txt.gz
+
+.PHONY: setup model-test day-stats plots clean
 
 setup:
 	python3 -m venv $(VENV)
@@ -13,6 +15,13 @@ model-test:
 	$(PY) -m ruff format --check model analysis
 	$(PY) -m mypy
 	$(PY) -m pytest -q
+
+# Full-day replay of one symbol through the golden model (~minutes; needs the day file).
+day-stats:
+	$(PY) -m analysis.itch_stats $(ITCH_DAY) AAPL data/results/2019-10-18_AAPL
+
+plots:
+	$(PY) -m analysis.plots
 
 clean:
 	rm -rf build .mypy_cache .ruff_cache .pytest_cache

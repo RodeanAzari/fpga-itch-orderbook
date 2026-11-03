@@ -1,0 +1,16 @@
+hash,sets,worst_bucket_fill
+low_bits,2048,75
+low_bits,4096,48
+low_bits,8192,29
+low_bits,16384,18
+low_bits,32768,14
+xor_fold,2048,28
+xor_fold,4096,17
+xor_fold,8192,12
+xor_fold,16384,10
+xor_fold,32768,9
+multiplicative,2048,27
+multiplicative,4096,17
+multiplicative,8192,12
+multiplicative,16384,8
+multiplicative,32768,7

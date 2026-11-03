@@ -8,14 +8,15 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 
 - Done and tested: ITCH parser, unbounded book, capacity-limited book, seeded generator (`make model-test` passes).
 - `analysis/itch_stats.py` checked on a hand-built day only, not yet on a real one.
-- Waiting on: `S101819-v50.txt.gz` (3.95 GB) downloading to `D:\itch`.
+- Day file downloaded, `gzip -t` clean, recorded in `data/MANIFEST.md`.
+- Running: full-day AAPL replay (`make day-stats`).
 
 ## Next steps
 
-1. When the download finishes: `gzip -t` it, record its SHA-256 in `data/MANIFEST.md`.
-2. Full-day AAPL replay through `analysis/itch_stats.py`; save CSVs and sidecars in `data/results/`.
+1. Check the replay's numbers; write sidecars in `data/results/`.
+2. Plot via `make plots` (script written, untested on real data).
 3. Size the order table and price window from those numbers in `docs/design.md`; write their ADRs.
-4. Best bid/ask plot via `make plots`; first `docs/log.md` entry; close the Phase A checklist.
+4. First `docs/log.md` entry; README per the §11.4 standard; close the Phase A checklist.
 5. Before Phase B: settle the host machine (see open questions) and install Yosys, SymbiYosys, clang-tidy, tcpreplay and Vivado.
 
 ## Important decisions
@@ -32,4 +33,3 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 ## Open questions
 
 - **Which machine is the Phase B host?** WSL2's virtual networking may not reach the Arty directly over a cable, and `CLAUDE.md` assumes a Linux host.
-- **Token budgets:** the 4,000/30,000 limits in the global rules don't fit Phase A. Awaiting a call on whether to split work across sessions.
