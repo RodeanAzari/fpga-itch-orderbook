@@ -14,16 +14,12 @@ from collections import Counter
 from pathlib import Path
 
 from model.book import Bbo, OrderBook
+from model.bounded import TICK, in_window
 from model.itch import Add, Directory, MalformedMessage, Replace, decode, iter_raw
 
 OPEN_NS = int(9.5 * 3600e9)
 HALF_WINDOW = 2048  # ticks; CLAUDE.md §6.4 window of 4,096
-TICK = 100  # price units per cent (4 implied decimals)
 MINUTE_NS = int(60e9)
-
-
-def in_window(price: int, base: int) -> bool:
-    return abs(price // TICK - base) < HALF_WINDOW
 
 
 def main(path: str, symbol: str, prefix: str) -> None:
@@ -77,10 +73,11 @@ def main(path: str, symbol: str, prefix: str) -> None:
 
     two_sided = [b for b in bbos if b.bid_size and b.ask_size]
     contained = sum(
-        in_window(b.bid_price, base) and in_window(b.ask_price, base) for b in two_sided
+        in_window(b.bid_price, base, HALF_WINDOW) and in_window(b.ask_price, base, HALF_WINDOW)
+        for b in two_sided
     )
     total_adds = sum(add_prices.values())
-    oow_adds = sum(n for p, n in add_prices.items() if not in_window(p, base))
+    oow_adds = sum(n for p, n in add_prices.items() if not in_window(p, base, HALF_WINDOW))
     summary = {
         "symbol": symbol,
         "locate": int.from_bytes(locate_bytes),

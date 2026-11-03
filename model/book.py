@@ -71,12 +71,18 @@ class OrderBook:
             return None
         return self._bbo_if_changed(msg.ts)
 
+    def _has_level(self, price: int) -> bool:
+        """Whether this price is held in the level arrays. Always true when unbounded."""
+        return True
+
     def _insert(self, ref: int, side: str, price: int, shares: int) -> None:
         if ref in self.orders:
             self.counters.duplicate_ref += 1
             return
         self.orders[ref] = _Order(side, price, shares)
         self.peak_live_orders = max(self.peak_live_orders, len(self.orders))
+        if not self._has_level(price):
+            return
         levels = self.bids if side == "B" else self.asks
         if price not in levels:
             heap, key = (self._bid_heap, -price) if side == "B" else (self._ask_heap, price)
@@ -94,6 +100,8 @@ class OrderBook:
             self._remove(ref)
             return
         order.shares -= shares
+        if not self._has_level(order.price):
+            return
         levels = self.bids if order.side == "B" else self.asks
         levels[order.price] -= shares
 
@@ -101,6 +109,8 @@ class OrderBook:
         order = self.orders.pop(ref, None)
         if order is None:
             self.counters.unknown_ref += 1
+            return
+        if not self._has_level(order.price):
             return
         levels = self.bids if order.side == "B" else self.asks
         levels[order.price] -= order.shares
