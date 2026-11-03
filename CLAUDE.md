@@ -48,6 +48,7 @@ host ◀──────────────── UDP: BBO updates + T0/T
   3. Add them to `docs/portfolio-todo.md`.
   4. Wait for the user to confirm before marking the phase done.
 - **Lab notebook.** Append a `docs/log.md` entry at the end of every working session (§11.3).
+- **Progress file.** Read `progress.md` at the start of every session and update it whenever progress, next steps or an important decision changes. It holds only current progress, next steps, important decisions and open questions. Keep it short and tidy: replace or remove outdated items instead of appending. History goes in `docs/log.md`, full rationale in `docs/decisions/`.
 - **Update the status table and README** results at the end of every phase.
 - **Stay in scope.** If a task drifts into §10, say so first.
 - **Commit small and often** (§4.4).
@@ -129,6 +130,7 @@ make clean
 ```
 ├── CLAUDE.md
 ├── README.md                 # portfolio front page (§11.4)
+├── progress.md               # current state: progress, next steps, key decisions
 ├── rtl/                      # synthesizable SystemVerilog ONLY
 │   ├── eth/                  # submodule: fpga-eth-core (MII RX/TX, CRC32, async FIFO, IPv4/UDP RX/TX)
 │   ├── lib/                  # cdc_*, fifos, xilinx/ primitive wrappers
