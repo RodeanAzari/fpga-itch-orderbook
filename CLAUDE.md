@@ -19,6 +19,21 @@ host ◀──────────────── UDP: BBO updates + T0/T
 
 **MII boundary:** keep the MII boundary a clean, documented interface, so a different PCS (e.g. 100BASE-FX in RTL) can replace the PHY underneath without changes to the MAC. Document the signals, timing and nibble order at that boundary in `fpga-eth-core`. The MAC must not depend on anything PHY-specific beyond them.
 
+**fpga-eth-core reuse requirements (Projects 3 and 4 depend on these):**
+- **Sustained streaming:** Project 3 replays IQ at ~16 Mbit/s continuously for a full
+  satellite pass (~15 min) and cannot tolerate drops. Add a sustained-load test
+  (sim + hardware): ≥10 min continuous at the highest rate the link sustains, zero drops,
+  and report the RX FIFO high-water mark.
+- **Generic TX:** the TX path takes an arbitrary payload (AXI-Stream + length +
+  destination port), not just BBO/stats packets. Prove it with an echo test of random
+  payload lengths 1–1472 bytes.
+- **Runtime-configurable RX filter:** multicast group and UDP port set by registers,
+  not parameters baked into the bitstream.
+- **Consumer guide** in the fpga-eth-core README: interfaces, clocking, resets,
+  resource cost, and a minimal example top level that isn't the order book.
+- Done = a second, non-ITCH example design builds and passes using only the
+  documented interface.
+
 ---
 
 ## Current status
