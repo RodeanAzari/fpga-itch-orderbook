@@ -4,8 +4,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 
 ## Where we are
 
-**Phase A (Python golden model + data): every checklist item met, awaiting your sign-off.**
-Phase A has no physical captures; its media is the generated BBO plot.
+**Phase A done** (signed off 2026-11-03, tag `v0.1-model`). **Phase B in progress.**
 
 - Golden model: parser, unbounded book, bounded book (d-left table, out-of-window flag),
   seeded generator. 24 tests, `make model-test` clean.
@@ -15,14 +14,13 @@ Phase A has no physical captures; its media is the generated BBO plot.
 
 ## Next steps
 
-1. On sign-off: mark Phase A done in CLAUDE.md and README; tag `v0.1-model`.
-2. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on `eth-core-v0.1`):
+1. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on `eth-core-v0.1`):
    - Done: toolchain pinned (`docs/toolchain.md`); `async_fifo` formally proven + cocotb.
    - Waiting on you: create GitHub repo `RodeanAzari/fpga-eth-core` and push.
    - Next RTL: MII RX (nibble→byte, SFD) → CRC-32 check → Eth/IPv4/UDP filter with
      runtime-configurable group/port; then add as submodule here.
-   - Still missing: clang-tidy/clang-format system-wide, tcpreplay.
-3. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
+   - Still missing: tcpreplay (needs sudo).
+2. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
 
 ## Important decisions
 

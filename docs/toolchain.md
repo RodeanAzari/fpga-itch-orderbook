@@ -14,7 +14,7 @@ warn when `version -short` differs from the version below.
 | pytest / ruff / mypy | 9.2.0 / 0.17.3 / 2.4.1 | `requirements.txt` |
 | CMake | 4.2.3 | system |
 | g++ | 15.2.0 | system |
-| clang-tidy / clang-format | — | **not installed system-wide yet** (needed for `make host`, Phase B+) |
+| clang-tidy / clang-format | 21.1.6 | pip wheels in `.venv` (`requirements.txt`); no sudo needed |
 | tcpreplay | — | **not installed yet** (`sudo apt install tcpreplay`) |
 | GTKWave | system package | waveforms |
 

@@ -1,4 +1,6 @@
 ast_serialize==0.13.1
+clang-format==21.1.6
+clang-tidy==21.1.6
 cocotb==2.1.0
 cocotb-coverage==2.0
 contourpy==1.4.0
