@@ -49,7 +49,7 @@
 
 **Numbers:** `data/results/2019-10-18_AAPL.md`.
 
-## 2026-11-03 — Phase B start: toolchain pinned, async FIFO proven
+## 2026-11-03: Phase B start, toolchain pinned, async FIFO proven
 
 **Toolchain**
 - Versions pinned in `docs/toolchain.md`. cocotb 2.1.0 and cocotb-coverage 2.0 were added to
