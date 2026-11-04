@@ -19,8 +19,12 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    - `github.com/RodeanAzari/fpga-eth-core` (private) created and pushed.
    - `tb-common-v0.1` released (private repo `RodeanAzari/tb-common`), pinned in
      `requirements.txt`; fpga-eth-core tests use it.
-   - Next RTL: MII RX (nibble→byte, SFD) → CRC-32 check → Eth/IPv4/UDP filter with
-     runtime-configurable group/port; then add as submodule here.
+   - Done (fpga-eth-core `f51a3bd`, pushed): full RX path `eth_rx` + `udp_rx`; 20 cocotb
+     tests, planted bugs caught, `make ci` green. `examples/rx_stats` Arty harness:
+     bitstream built, timing met at 125 MHz (WNS +0.663 ns), reports committed.
+   - Next: hardware bring-up of rx_stats (board claim, program, link up, UART counters),
+     a host sequence-number UDP sender (C++), then the eth-core-v0.1 gate test
+     (>= 10 min, zero drops, FIFO high-water mark). Then submodule here.
    - Still missing: tcpreplay (needs sudo).
 2. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
 

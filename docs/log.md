@@ -107,3 +107,48 @@
   `tb_common.rng`.
 - Fix: logger names `cocotb.tb_common.*`. This is a name only; the module still doesn't
   import cocotb.
+
+## 2026-11-04: fpga-eth-core RX path, simulation to bitstream
+
+All work in `fpga-eth-core` (commits `0afa76b` → `f51a3bd`, pushed).
+
+**RTL**
+- `mii_rx` (nibble→byte, low nibble first, SFD hunt, `sfd_o` T0 pulse), `crc32_d8`,
+  `eth_fcs_check` (residue 0xDEBB20E3, FCS stripped).
+- `rx_ovf_guard`: when the async FIFO is full, the damaged frame is dropped and a 1-byte
+  abort beat carries the count of lost frames into the core domain, so overflow is
+  counted per frame, never silent.
+- `frame_buffer`: store-and-forward; bad frames rewound, oversize frames dropped without
+  deadlock.
+- `eth_rx` top: exactly one status per frame with an SFD (ok / crc / rx_err / runt /
+  oversize / ovf).
+- `udp_rx`: Eth/IPv4/UDP filter with runtime `cfg_mac`/`cfg_ip`/`cfg_port`, IHL options,
+  header checksum, fragments rejected, padding stripped by UDP length, sender
+  MAC/IP/port latched for TX learning.
+- `examples/rx_stats`: Arty top (MMCM 125 MHz + ODDR 25 MHz PHY ref, reset sequencing,
+  payload sequence check, 15 counters over UART at 1 Hz).
+
+**Verification**
+- 20 cocotb tests, `make ci` green (lint, formal, sim).
+- Every new test was shown to fail on a planted bug: reversed nibble order, wrong CRC
+  residue, buffer releasing bad frames, guard undercounting lost frames (60 sent,
+  accounting summed to 33), checksum ignored, padding leak, 24-bit multicast mapping,
+  swapped counter wiring.
+- The multicast-mapping bug is only visible with a group whose address bit 23 is set
+  (224.255.255.255); 239.1.1.1 would never expose it.
+
+**Vivado 2025.2** (`make example`, reports in `fpga-eth-core/docs/reports/rx_stats/`)
+- Timing met at 125 MHz: WNS +0.663 ns, WHS +0.035 ns. Worst path is `udp_rx`'s verdict
+  logic.
+- MII input setup +6.3 ns against DP83848 T2.5.2 (RX_CLK→data 10–30 ns, read from TI
+  SNLS250E, not from memory).
+- 892 LUT, 1,710 FF, 2 BRAM36 for the whole example.
+
+**Bug (async_fifo): Vivado-only warnings in a formally proven block**
+- Symptom: Synth 8-6901 "used before declaration" and Constraints 18-402 "not a valid
+  startpoint" on the FIFO pointer max-delay.
+- Root cause: `rd_gray_q` declared in the read-domain section after the write domain
+  used it (Verilator accepts this); the XDC name filter also matched LUT cells.
+- Fix: declaration moved up; filter limited to `IS_SEQUENTIAL`. Formal re-run: PASS.
+
+Not yet done: hardware link-up and the eth-core-v0.1 sustained-stream test.
