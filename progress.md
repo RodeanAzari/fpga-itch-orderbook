@@ -25,7 +25,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    - On hardware: rx_stats programs, UART counter lines print (uptime ticking). No link
      yet: **waiting on an Ethernet cable** (user ordering a Cat5e/Cat6 patch cable).
    - Done (fpga-eth-core `23e8d21`, pushed): `host/udp_seq_send` C++ sender + loopback test.
-   - Next, once the cable is in: link LEDs → host networking (see open question) →
+   - Next, once the cable is in: link LEDs → check the I225 is visible in WSL (mirrored) →
      eth-core-v0.1 gate test (>= 10 min, zero drops, FIFO high-water mark). Then submodule here.
    - Still missing: tcpreplay (needs sudo).
 2. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
@@ -40,6 +40,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | Window: opening mid ($234.55) ± 2,048 ticks; out-of-window BBOs flagged and counted (ADR 0002) | `bbo_oow == 0` is unreachable: 2 empty-book moments at the session edges. |
 | Repo lives in WSL at `~/OrderBook`; day files stay in `D:\itch` (`/mnt/d/itch`), AAPL extract in `/mnt/d/itch/derived` | Tools live in WSL; `/mnt/c` was slow and CRLF-prone. Day files never enter the repo. |
 | Host is WSL2: the Arty reaches it over a cable through usbipd-win | Confirmed working by the user (2026-11-03). |
+| WSL2 mirrored networking (`C:\Users\rodea\.wslconfig`), chosen 2026-11-04 | NAT mode can't reach the wired NIC; mirrored keeps the C++ sender and its pacing on Linux. A Windows-side sender was rejected (port + worse pacing). |
 | GitHub repo renamed `OrderBook` → `fpga-itch-orderbook` (private); local folder stays `~/OrderBook` | Name carries the FPGA/ITCH keywords; local path is what fpga-coord and tooling reference. |
 | `tb-common` built directly as its own repo, not in `tb/common/` first | P3 had already started and was waiting on it; CLAUDE.md §8.1 updated. |
 | Shared Ethernet core keeps the name `fpga-eth-core` | P3/P4 consume it too; a trading name would contradict its payload-agnostic contract. |
@@ -47,6 +48,4 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 
 ## Open questions
 
-- Host networking for the gate test: WSL2 is in NAT mode and can't reach the wired NIC
-  (Intel I225-LM). Options: WSL mirrored networking (`.wslconfig`, needs `wsl --shutdown`,
-  which stops every WSL session), or run the sender on Windows. Awaiting the user's choice.
+None.
