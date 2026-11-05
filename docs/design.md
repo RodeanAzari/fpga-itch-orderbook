@@ -8,6 +8,8 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 |---|---|---|
 | [0001](decisions/0001-order-table.md) | Order table: 2-bank d-left, 2 × 8,192 × 4 | Accepted |
 | [0002](decisions/0002-price-window-base.md) | Window base: opening mid, ±2,048 ticks; out-of-window BBO flagged | Accepted |
+| [0003](decisions/0003-gap-stale-semantics.md) | MoldUDP64 gaps: stale is sticky until reset; overlaps dropped whole; malformed packets deliver what they carry | Accepted |
+| [0004](decisions/0004-locate-filter.md) | Locate learned from `R` for the configured symbol, optional host override | Accepted |
 
 Still to write: price-level storage, cut-through vs. store-and-forward, core clock, timestamp
 design, `DATA_W` default, locate-filter population, gap/stale semantics.
