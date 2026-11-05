@@ -10,6 +10,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0002](decisions/0002-price-window-base.md) | Window base: opening mid, ±2,048 ticks; out-of-window BBO flagged | Accepted |
 | [0003](decisions/0003-gap-stale-semantics.md) | MoldUDP64 gaps: stale is sticky until reset; overlaps dropped whole; malformed packets deliver what they carry | Accepted |
 | [0004](decisions/0004-locate-filter.md) | Locate learned from `R` for the configured symbol, optional host override | Accepted |
+| [0005](decisions/0005-data-width.md) | `DATA_W = 8` default; 64-bit (message aligner) in Phase E for the capacity measurement | Accepted |
 
 Still to write: price-level storage, cut-through vs. store-and-forward, core clock, timestamp
 design, `DATA_W` default, locate-filter population, gap/stale semantics.

@@ -58,5 +58,14 @@ change resets tracking. It leaves four questions open:
 - a truncated packet that still delivers its first 11 messages
 
 Planted bugs each fail a test: duplicates applied, a gap not marking stale, `expected`
-advanced by delivered instead of claimed messages. Full-day replay through
-`FeedDecoder` (0 gaps expected on a clean replay): `[TBD]`.
+advanced by delivered instead of claimed messages.
+
+The full day replayed through `FeedDecoder` (302,347,067 messages in 6,456,827 packets)
+gave 0 gaps, 0 duplicates and 0 malformed packets, and the book was never stale
+([`_feed.csv`](../../data/results/2019-10-18_AAPL_feed.csv),
+[sidecar](../../data/results/2019-10-18_AAPL_feed.md)).
+
+In RTL (`tb/cocotb/test_feed.py`), directed single-cause tests pin the stale flag
+exactly. The mixed adversarial stream could not: once one cause sets the sticky flag,
+it hides whether another would have. Planted "gap not stale" and "session change not
+stale" bugs passed the adversarial test and fail the directed ones.
