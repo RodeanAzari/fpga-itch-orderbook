@@ -152,3 +152,23 @@ All work in `fpga-eth-core` (commits `0afa76b` → `f51a3bd`, pushed).
 - Fix: declaration moved up; filter limited to `IS_SEQUENTIAL`. Formal re-run: PASS.
 
 Not yet done: hardware link-up and the eth-core-v0.1 sustained-stream test.
+
+## 2026-11-04 (later): first light on the board; host sender
+
+**Board bring-up** (board claimed via fpga-coord, released afterwards)
+- `rx_stats_top.bit` programmed over JTAG (usbipd-win → WSL, Vivado hw_server), DONE=1.
+- UART (`/dev/ttyUSB1`, 115200) prints one `RX ...` line per second, uptime incrementing,
+  all Ethernet counters 0. The MMCM, resets, stats formatter and UART work on silicon.
+- No Ethernet link: Windows shows the I225-LM as Disconnected. Root cause: no cable plugged
+  in yet. The user is ordering a Cat5e/Cat6 patch cable (both PHYs do Auto-MDIX, so no
+  crossover needed).
+
+**Host sender** (fpga-eth-core `23e8d21`)
+- `host/udp_seq_send`, C++20: big-endian 64-bit sequence per datagram, absolute-schedule
+  busy-wait pacing, queue-full retried with the same sequence, key=value summary.
+- `make host-test`: 20,000 datagrams over loopback, each checked (size, filler, contiguous
+  sequence across the 2^64 wrap). Planted little-endian encoding and a 32-bit counter
+  each fail it. `make ci` green with host-test included.
+
+Open: WSL2 NAT can't reach the wired NIC. Mirrored networking vs. a Windows-side sender
+is the user's call (mirrored needs `wsl --shutdown`).

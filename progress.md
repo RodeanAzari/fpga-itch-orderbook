@@ -22,9 +22,11 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    - Done (fpga-eth-core `f51a3bd`, pushed): full RX path `eth_rx` + `udp_rx`; 20 cocotb
      tests, planted bugs caught, `make ci` green. `examples/rx_stats` Arty harness:
      bitstream built, timing met at 125 MHz (WNS +0.663 ns), reports committed.
-   - Next: hardware bring-up of rx_stats (board claim, program, link up, UART counters),
-     a host sequence-number UDP sender (C++), then the eth-core-v0.1 gate test
-     (>= 10 min, zero drops, FIFO high-water mark). Then submodule here.
+   - On hardware: rx_stats programs, UART counter lines print (uptime ticking). No link
+     yet: **waiting on an Ethernet cable** (user ordering a Cat5e/Cat6 patch cable).
+   - Done (fpga-eth-core `23e8d21`, pushed): `host/udp_seq_send` C++ sender + loopback test.
+   - Next, once the cable is in: link LEDs → host networking (see open question) →
+     eth-core-v0.1 gate test (>= 10 min, zero drops, FIFO high-water mark). Then submodule here.
    - Still missing: tcpreplay (needs sudo).
 2. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
 
@@ -45,4 +47,6 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 
 ## Open questions
 
-None.
+- Host networking for the gate test: WSL2 is in NAT mode and can't reach the wired NIC
+  (Intel I225-LM). Options: WSL mirrored networking (`.wslconfig`, needs `wsl --shutdown`,
+  which stops every WSL session), or run the sender on Windows. Awaiting the user's choice.
