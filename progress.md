@@ -4,7 +4,8 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 
 ## Where we are
 
-**Phase A done** (signed off 2026-11-03, tag `v0.1-model`). **Phase B in progress.**
+**Phase A done** (signed off 2026-11-03, tag `v0.1-model`). **Phase B in progress**
+(waiting on the cable). **Phase C started in parallel** (sim only).
 
 - Golden model: parser, unbounded book, bounded book (d-left table, out-of-window flag),
   seeded generator. 24 tests, `make model-test` clean.
@@ -24,9 +25,19 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
      zero drops, FIFO high-water mark) → v0.2 gate (`udp_echo` + `udp_echo_check`). Pin
      the senders with `taskset`. The host needs an address on 192.168.10.0/24 (or a relaxed
      rp_filter) and a Windows firewall rule for inbound UDP. Then tag, and add the submodule here.
-   - Still to write: the consumer guide in the fpga-eth-core README (needed for v0.2).
+   - Consumer guide written in the fpga-eth-core README (2026-11-05).
    - Still missing: tcpreplay (needs sudo).
-2. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
+2. Phase C (MoldUDP64 + ITCH decoder):
+   - Done: golden model `model/moldudp64.py` (ADR 0003 gap/stale, ADR 0004 locate,
+     ADR 0005 `DATA_W` = 8). Full day through it: 1,658,958 records = Phase A's count,
+     0 gaps (`data/results/2019-10-18_AAPL_feed.md`).
+   - Done: RTL `rtl/feed/` (`mold_deframer`, `itch_decoder`, `feed_frontend`); 9 cocotb
+     tests match the model record for record; 6 planted bugs caught.
+   - Next: Vivado OOC build of `feed_frontend` for timing at 125 MHz; annotated waveform
+     (Phase C media); then hardware full-day decode once the fpga-eth-core tags exist.
+   - Open: the 64-bit path (message aligner) is deferred to Phase E (ADR 0005), so §8.1's
+     "every alignment" coverage waits for it.
+3. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
 
 ## Important decisions
 

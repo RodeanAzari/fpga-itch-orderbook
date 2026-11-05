@@ -237,3 +237,49 @@ cable hasn't arrived.
   NIC could reorder in the same way and show up as false `seq_err`.
 
 Not yet done: the eth-core-v0.1 and v0.2 hardware gates (cable), and the consumer guide.
+
+## 2026-11-05 (later): READMEs; Phase C model and RTL in simulation
+
+**Repos.** The fpga-eth-core README is rewritten as a full write-up, including the
+consumer guide v0.2 needs. tb-common gets a full README. This README now links both.
+
+**Phase C golden model** (`model/moldudp64.py`)
+- `SeqTracker` implements the MoldUDP64 sequence rules (ADR 0003): stale is sticky
+  until reset, a partial overlap is dropped whole and resurfaces as a gap, a malformed
+  packet delivers what it carries.
+- `FeedDecoder` checks type, then length, then locate, then fields (ADR 0004). That is the
+  order the RTL uses, which also made the full-day run fast enough.
+- 14 tests; 4 planted model bugs fail them.
+- Full day: 302,347,067 messages in 6,456,827 packets → 1,658,958 AAPL records. That is
+  exactly Phase A's independently counted A+F+E+C+X+D+U. 5,388,821 unknown types equal
+  the day's non-subset messages. 0 gaps, never stale (14 min 25 s).
+
+**Phase C RTL** (`rtl/feed/`, `DATA_W` = 8 per ADR 0005)
+- `mold_deframer` → `itch_decoder`. The decoder reads fields at fixed distances from the
+  message's last byte, held in a right-aligned 40-byte window.
+- cocotb feeds every packet to the model as well, and requires records field for field,
+  every counter and the stale flag to match. 9/9 pass. Six planted bugs are each caught.
+
+**Bug (deframer): `m_tuser` on every byte.** Symptom: an assertion fired at cycle 208.
+Root cause: tuser was set on every mid-message beat, not only on a truncated message's
+last beat. Fix: `s_tlast_i && remain != 1`.
+
+**Bug (test): planted bugs that seemed caught were not.** Symptom: P2 (gap not stale) and
+P4 (locate never relearned) passed once the seed was fixed. Root causes:
+- The test sometimes chose a 60-byte packet size that cannot hold a 39-byte message, so
+  `packetize` raised and the adversarial test failed for that reason alone. Every
+  plant's "FAIL" in that test was ambiguous.
+- Stale is sticky, so in a stream with many causes, one missing cause is invisible.
+- The single locate-change packet could be randomly dropped.
+
+Fix: a minimum packet size of 84 bytes, fixed seeds when judging plants, and six
+directed single-cause tests with an exact expected stale value. P2, P4 and P6 (session
+change not stale) are now caught by those tests.
+
+**Bug (test): a missing record hung the run.** Symptom: the P4 run never finished.
+Root cause: an unbounded `while sb.pending` wait. Fix: a bounded wait, then
+`check_done()`, which reports "580 expected item(s) never observed".
+
+**Bug (my analysis): "dead" logic.** I removed `bad_q` from the deframer as redundant. It
+is: a packet ending in `S_TRAIL` already fails `end_ok`. The clean failure seen right
+afterwards was the 60-byte stimulus bug above, confirmed on two fixed seeds.
