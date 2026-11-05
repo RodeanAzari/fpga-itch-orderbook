@@ -25,8 +25,9 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    - On hardware: rx_stats programs, UART counter lines print (uptime ticking). No link
      yet: **waiting on an Ethernet cable** (user ordering a Cat5e/Cat6 patch cable).
    - Done (fpga-eth-core `23e8d21`, pushed): `host/udp_seq_send` C++ sender + loopback test.
-   - Next, once the cable is in: link LEDs → check the I225 is visible in WSL (mirrored) →
-     eth-core-v0.1 gate test (>= 10 min, zero drops, FIFO high-water mark). Then submodule here.
+   - Mirrored networking confirmed (2026-11-05): WSL sees the I225-LM as `eth0`; Arty
+     reprograms over usbipd (DONE=1, UART ticking). Cable still not arrived.
+   - Next, once the cable is in: link LEDs → `eth0` carrier → eth-core-v0.1 gate test (>= 10 min, zero drops, FIFO high-water mark). Then submodule here.
    - Still missing: tcpreplay (needs sudo).
 2. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
 
