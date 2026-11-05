@@ -30,6 +30,9 @@
 //
 // DATA_W: only 8 for now (ADR 0005); 64 adds a message aligner in front of the decoder.
 // Latency: 1 cycle from a message byte in to its output beat. Throughput 1 byte/cycle.
+// Timing: the header verdict's wide compares are precomputed at bytes 10, 11 and 18, and
+// expected = seq + count is formed on the cycle after the header (the next header is
+// at least 20 bytes away).
 // Backpressure: s_tready_o = !m_tvalid_o || m_tready_i, also while parsing headers.
 // Reset: synchronous, active-high; clears the session, expected and stale.
 module mold_deframer #(
@@ -88,11 +91,18 @@ module mold_deframer #(
     logic [79:0] session_q, sess_in_q;
     logic [63:0] seq_in_q, msg_seq_q;
     logic [7:0]  cnt_hi_q, len_b0_q;
-    logic [15:0] msgs_left_q, remain_q;
+    logic [15:0] msgs_left_q, remain_q, count_q;
+    // Header verdict, precomputed while the header streams in (timing: no 64/80-bit
+    // compare or add on the last header byte). Valid from the byte noted.
+    logic        new_sess_q;    // byte 10: session differs from the stored one (or none)
+    logic [63:0] exp_q;         // byte 11: expected sequence for this packet
+    logic        seq_lt_q;      // byte 18: seq < expected (duplicate / late)
+    logic        seq_gt_q;      // byte 18: seq > expected (gap)
+    logic [63:0] gap_q;         // byte 18: seq - expected
+    logic        upd_exp_q;     // expected <= seq + count on the cycle after the header
 
-    logic        fire, emit, hdr_last, new_session, last_msg, is_dup, end_ok, drop_pkt;
+    logic        fire, emit, hdr_last, last_msg, is_dup, end_ok, drop_pkt;
     logic [15:0] count, len;
-    logic [63:0] exp_now;
 
     always_comb begin
         s_tready_o  = !m_tvalid_o || m_tready_i;
@@ -101,10 +111,8 @@ module mold_deframer #(
         hdr_last    = state_q == S_HDR && hcnt_q == 5'(HDR_LEN - 1);
         count       = {cnt_hi_q, s_tdata_i};
         len         = {len_b0_q, s_tdata_i};
-        new_session = !have_session_q || sess_in_q != session_q;
-        exp_now     = new_session ? FIRST_SEQ : expected_q;
         last_msg    = msgs_left_q == 16'd1;
-        is_dup      = hdr_last && seq_in_q < exp_now;
+        is_dup      = hdr_last && seq_lt_q;
         // A packet is well formed only if its tlast is its final byte: the last header
         // byte of a heartbeat / end of session, the last byte of the last message, or
         // the zero-length prefix of the last message. Dropped duplicates are never judged.
@@ -121,10 +129,21 @@ module mold_deframer #(
                 if (hcnt_q < 5'(SEQ_OFF)) sess_in_q <= {sess_in_q[71:0], s_tdata_i};
                 else if (hcnt_q < 5'(CNT_OFF)) seq_in_q <= {seq_in_q[55:0], s_tdata_i};
                 else cnt_hi_q <= s_tdata_i;
+                // The session is complete before byte 10, the sequence before byte 18.
+                if (hcnt_q == 5'(SEQ_OFF))
+                    new_sess_q <= !have_session_q || sess_in_q != session_q;
+                if (hcnt_q == 5'(SEQ_OFF + 1))
+                    exp_q <= new_sess_q ? FIRST_SEQ : expected_q;
+                if (hcnt_q == 5'(CNT_OFF)) begin
+                    seq_lt_q <= seq_in_q < exp_q;
+                    seq_gt_q <= seq_in_q > exp_q;
+                    gap_q    <= seq_in_q - exp_q;
+                end
             end
             if (hdr_last) begin
                 msg_seq_q   <= seq_in_q;
                 msgs_left_q <= count;
+                count_q     <= count;
             end
             if (state_q == S_LEN && !len_hi_q) len_b0_q <= s_tdata_i;
             if (state_q == S_LEN && len_hi_q) remain_q <= len;
@@ -135,13 +154,13 @@ module mold_deframer #(
                 msg_seq_q   <= msg_seq_q + 64'd1;
                 msgs_left_q <= msgs_left_q - 16'd1;
             end
-            if (hdr_last && new_session) session_q <= sess_in_q;
+            if (hdr_last && new_sess_q) session_q <= sess_in_q;
         end
         if (emit) begin
             m_tdata_o <= s_tdata_i;
             m_seq_o   <= msg_seq_q;
         end
-        gap_msgs_o <= seq_in_q - exp_now;
+        gap_msgs_o <= gap_q;
     end
 
     // Control.
@@ -152,6 +171,7 @@ module mold_deframer #(
             len_hi_q         <= 1'b0;
             have_session_q   <= 1'b0;
             expected_q       <= FIRST_SEQ;
+            upd_exp_q        <= 1'b0;
             stale_o          <= 1'b0;
             m_tvalid_o       <= 1'b0;
             m_tlast_o        <= 1'b0;
@@ -173,6 +193,9 @@ module mold_deframer #(
             session_change_o <= 1'b0;
             malformed_o      <= 1'b0;
             empty_msg_o      <= 1'b0;
+            upd_exp_q        <= 1'b0;
+            // seq_in_q and count_q are stable for >= 10 cycles after the header.
+            if (upd_exp_q) expected_q <= seq_in_q + 64'(count_q);
 
             if (emit) begin
                 m_tvalid_o <= 1'b1;
@@ -188,16 +211,16 @@ module mold_deframer #(
                         hcnt_q <= hcnt_q + 5'd1;
                         if (hdr_last) begin
                             have_session_q <= 1'b1;
-                            if (new_session && have_session_q) begin
+                            if (new_sess_q && have_session_q) begin
                                 session_change_o <= 1'b1;
                                 stale_o          <= 1'b1;
                             end
                             if (is_dup) begin
                                 dup_o      <= 1'b1;
-                                expected_q <= exp_now;
+                                expected_q <= exp_q;
                                 state_q    <= S_DROP;
                             end else begin
-                                if (seq_in_q > exp_now) begin
+                                if (seq_gt_q) begin
                                     gap_o   <= 1'b1;
                                     stale_o <= 1'b1;
                                 end
@@ -207,7 +230,7 @@ module mold_deframer #(
                                     expected_q  <= seq_in_q;
                                     state_q     <= S_TRAIL;
                                 end else begin
-                                    expected_q <= seq_in_q + 64'(count);
+                                    upd_exp_q  <= 1'b1;
                                     state_q    <= S_LEN;
                                     len_hi_q   <= 1'b0;
                                 end

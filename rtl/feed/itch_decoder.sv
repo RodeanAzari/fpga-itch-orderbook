@@ -12,8 +12,8 @@
 //         Unused fields are 0. C's execution price is not decoded: the book uses the
 //         resting price.
 //
-// Checks, in the model's order, on the message's last byte:
-//   1. zero length or a type outside §5.3      -> unknown_o (skipped by length)
+// Checks, in the model's order:
+//   1. a type outside §5.3                     -> unknown_o (skipped by length)
 //   2. length differs from the type's spec     -> malformed_o
 //   3. R: stock == cfg_symbol_i -> learn its locate (dir_match_o; locate_change_o if it
 //      replaces a different one). S: nothing.
@@ -22,11 +22,20 @@
 //   6. otherwise                               -> record
 // A zero-length message never reaches here (mold_deframer counts it).
 //
-// Fields are taken from a shift register holding the last MAX_LEN bytes: once the length
-// equals the spec, every field sits at a fixed distance from the message's last byte.
+// Structure: every field offset in §5.3 is fixed from the start of the message, so each
+// byte is written to a fixed place in a capture register as it streams in, selected by
+// its byte index alone (no shifting, no length-dependent muxing). Five capture
+// registers cover every field of every subset type:
+//   loc   bytes 1..2      ts   bytes 5..10      w11  bytes 11..18 (ref; R: stock)
+//   w19   bytes 19..26 (A/F side 19, shares 20..23; E/C/X shares 19..22; U new ref)
+//   w27   bytes 27..35 (U shares 27..30, price 31..34; A/F price 32..35)
+// The type and length check are registered on the last byte (stage 1, the T1 event);
+// the locate/side checks and the record are formed one cycle later (stage 2), from
+// registers only. A byte of the next message may be accepted during stage 2: it can
+// only write the type and length registers, which stage 2 no longer reads.
 //
-// Latency: record valid 1 cycle after the message's last byte is accepted (that byte is
-// the T1 event, t1_o). Throughput: 1 byte/cycle; the input stalls only while a record
+// Latency: record valid 2 cycles after the message's last byte is accepted (t1_o pulses
+// 1 cycle after it). Throughput: 1 byte/cycle; the input stalls only while a record
 // waits for m_ready_i.
 // Configuration: cfg_symbol_i (8 ASCII bytes, space padded, as in the R message);
 // cfg_locate_valid_i / cfg_locate_i preload the locate at reset (host fallback).
@@ -73,108 +82,128 @@ module itch_decoder #(
                            T_C = 8'h43, T_X = 8'h58, T_D = 8'h44, T_U = 8'h55;
     localparam int L_S = 12, L_R = 39, L_A = 36, L_F = 40, L_E = 31, L_C = 36, L_X = 23,
                    L_D = 19, L_U = 35;
-    localparam int MAX_LEN = 40;          // longest type in the subset (F)
-    // Common header: type 0, locate 1, tracking 3, timestamp 5 (6 bytes)
-    localparam int OFF_LOCATE = 1;
-    localparam int OFF_TS     = 5;
-    // Body offsets (ITCH 5.0 §1.3+): Add 'A' ref 11, side 19, shares 20, stock 24,
-    // price 32 ('F' the same, plus MPID); E/C/X ref 11, shares 19; D ref 11;
-    // U orig ref 11, new ref 19, shares 27, price 31; R stock 11.
-    localparam int OFF_REF        = 11;
-    localparam int OFF_ADD_SIDE   = 19;
-    localparam int OFF_ADD_SHARES = 20;
-    localparam int OFF_ADD_PRICE  = 32;
-    localparam int OFF_RED_SHARES = 19;
-    localparam int OFF_U_NEWREF   = 19;
-    localparam int OFF_U_SHARES   = 27;
-    localparam int OFF_U_PRICE    = 31;
-    localparam int OFF_R_STOCK    = 11;
+    // Capture-register start offsets (ITCH 5.0 §1.2 header, §1.3+ bodies)
+    localparam int OFF_LOC = 1;   // stock locate, 2 bytes
+    localparam int OFF_TS  = 5;   // timestamp, 6 bytes
+    localparam int OFF_W11 = 11;  // order ref / R stock, 8 bytes
+    localparam int OFF_W19 = 19;  // 8 bytes
+    localparam int OFF_W27 = 27;  // 9 bytes
     localparam logic [7:0] SIDE_B = 8'h42, SIDE_S = 8'h53;
+    localparam int IDX_W = 6;     // byte index into the capture registers (< 64)
 
     if (DATA_W != 8) begin : g_bad_width
         $error("itch_decoder: only DATA_W = 8 is implemented (ADR 0005)");
     end
 
-    // Field at byte offset OFF, N bytes, of a message of length L held right-aligned in
-    // win (last byte in win[7:0]).
-    function automatic logic [63:0] field(input logic [MAX_LEN*8-1:0] win, input int l,
-                                          input int off, input int n);
-        logic [63:0] v;
-        v = '0;
-        for (int i = 0; i < n; i++) v = {v[55:0], win[(l - 1 - off - i) * 8 +: 8]};
-        return v;
+    function automatic logic [15:0] spec_len(input logic [7:0] t);
+        unique case (t)
+            T_S:     spec_len = 16'(L_S);
+            T_R:     spec_len = 16'(L_R);
+            T_A:     spec_len = 16'(L_A);
+            T_F:     spec_len = 16'(L_F);
+            T_E:     spec_len = 16'(L_E);
+            T_C:     spec_len = 16'(L_C);
+            T_X:     spec_len = 16'(L_X);
+            T_D:     spec_len = 16'(L_D);
+            T_U:     spec_len = 16'(L_U);
+            default: spec_len = '0;
+        endcase
     endfunction
 
-    logic [(MAX_LEN-1)*8-1:0] win_q;  // previous MAX_LEN-1 bytes, the latest at [7:0]
-    logic [15:0]          len_q;    // bytes seen so far (saturating)
-    logic [7:0]           type_q;
+    // ---------------------------------------------------------------- capture
+    logic [15:0] len_q;      // bytes of the current message accepted so far (saturating)
+    logic [7:0]  type_q;
+    // Capture registers (datapath, not reset). Byte k of a field lives at [(N-1-k)*8 +: 8].
+    logic [15:0] loc_q;
+    logic [47:0] ts_q;
+    logic [63:0] w11_q, w19_q;
+    logic [71:0] w27_q;
 
-    logic                 fire, done;
-    logic [MAX_LEN*8-1:0] win;      // including this cycle's byte
-    logic [15:0]          len;
-    logic [7:0]           kind;
-    logic                 known, len_ok, is_book, is_add, is_red, is_u, loc_ok, side_ok;
-    logic [15:0]          loc;
-    logic [7:0]           side;
-    int                   spec;
+    logic             fire, done;
+    logic [7:0]       kind;
+    logic [IDX_W-1:0] idx;
+    logic             idx_ok;
 
     always_comb begin
         s_tready_o = !m_valid_o || m_ready_i;
         fire       = s_tvalid_i && s_tready_o;
         done       = fire && s_tlast_i && !s_tuser_i;
-        win        = {win_q, s_tdata_i};
-        len        = len_q + 16'd1;
         kind       = (len_q == '0) ? s_tdata_i : type_q;
-
-        unique case (kind)
-            T_S:     spec = L_S;
-            T_R:     spec = L_R;
-            T_A:     spec = L_A;
-            T_F:     spec = L_F;
-            T_E:     spec = L_E;
-            T_C:     spec = L_C;
-            T_X:     spec = L_X;
-            T_D:     spec = L_D;
-            T_U:     spec = L_U;
-            default: spec = 0;
-        endcase
-        known   = spec != 0;
-        len_ok  = known && len == 16'(spec);
-        is_add  = kind == T_A || kind == T_F;
-        is_red  = kind == T_E || kind == T_C || kind == T_X;
-        is_u    = kind == T_U;
-        is_book = is_add || is_red || is_u || kind == T_D;
-        loc     = 16'(field(win, spec, OFF_LOCATE, 2));
-        loc_ok  = locate_valid_o && loc == locate_o;
-        side    = 8'(field(win, spec, OFF_ADD_SIDE, 1));
-        side_ok = !is_add || side == SIDE_B || side == SIDE_S;
+        idx        = len_q[IDX_W-1:0];
+        idx_ok     = len_q < 16'(1 << IDX_W);
     end
 
-    // Datapath (not reset): window and record fields.
     always_ff @(posedge clk_i) begin
         if (fire) begin
-            win_q <= win[(MAX_LEN-1)*8-1:0];
             if (len_q == '0) type_q <= s_tdata_i;
-        end
-        if (done && len_ok && is_book && loc_ok && side_ok) begin
-            m_type_o    <= kind;
-            m_seq_o     <= s_seq_i;
-            m_ts_o      <= 48'(field(win, spec, OFF_TS, 6));
-            m_ref_o     <= field(win, spec, OFF_REF, 8);
-            m_new_ref_o <= is_u ? field(win, spec, OFF_U_NEWREF, 8) : '0;
-            m_sell_o    <= is_add && side == SIDE_S;
-            m_shares_o  <= is_add ? 32'(field(win, spec, OFF_ADD_SHARES, 4))
-                         : is_red ? 32'(field(win, spec, OFF_RED_SHARES, 4))
-                         : is_u   ? 32'(field(win, spec, OFF_U_SHARES, 4)) : '0;
-            m_price_o   <= is_add ? 32'(field(win, spec, OFF_ADD_PRICE, 4))
-                         : is_u   ? 32'(field(win, spec, OFF_U_PRICE, 4)) : '0;
+            for (int k = 0; k < 2; k++)
+                if (idx_ok && idx == IDX_W'(OFF_LOC + k)) loc_q[(1 - k) * 8 +: 8] <= s_tdata_i;
+            for (int k = 0; k < 6; k++)
+                if (idx_ok && idx == IDX_W'(OFF_TS + k)) ts_q[(5 - k) * 8 +: 8] <= s_tdata_i;
+            for (int k = 0; k < 8; k++) begin
+                if (idx_ok && idx == IDX_W'(OFF_W11 + k)) w11_q[(7 - k) * 8 +: 8] <= s_tdata_i;
+                if (idx_ok && idx == IDX_W'(OFF_W19 + k)) w19_q[(7 - k) * 8 +: 8] <= s_tdata_i;
+            end
+            for (int k = 0; k < 9; k++)
+                if (idx_ok && idx == IDX_W'(OFF_W27 + k)) w27_q[(8 - k) * 8 +: 8] <= s_tdata_i;
         end
     end
 
-    // Control.
+    // ---------------------------------------------------- stage 1: type, length
+    logic        pend_q;     // a finished message awaits stage 2
+    logic [7:0]  d_kind_q;
+    logic        d_known_q, d_len_ok_q;
+    logic [63:0] d_seq_q;
+
+    always_ff @(posedge clk_i) begin
+        if (done) begin
+            d_kind_q   <= kind;
+            d_known_q  <= spec_len(kind) != '0;
+            d_len_ok_q <= len_q + 16'd1 == spec_len(kind);
+            d_seq_q    <= s_seq_i;
+        end
+    end
+
+    // ------------------------------------------- stage 2: locate, side, record
+    logic        go;         // stage 2 runs this cycle
+    logic        is_add, is_red, is_u, is_book, loc_ok, side_ok, sym_ok;
+    logic [7:0]  side;
+
+    always_comb begin
+        go      = pend_q && (!m_valid_o || m_ready_i);
+        is_add  = d_kind_q == T_A || d_kind_q == T_F;
+        is_red  = d_kind_q == T_E || d_kind_q == T_C || d_kind_q == T_X;
+        is_u    = d_kind_q == T_U;
+        is_book = is_add || is_red || is_u || d_kind_q == T_D;
+        loc_ok  = locate_valid_o && loc_q == locate_o;
+        side    = w19_q[63:56];                      // byte 19
+        side_ok = !is_add || side == SIDE_B || side == SIDE_S;
+        sym_ok  = w11_q == cfg_symbol_i;             // R: stock, bytes 11..18
+    end
+
+    always_ff @(posedge clk_i) begin
+        if (go && d_known_q && d_len_ok_q && is_book && loc_ok && side_ok) begin
+            m_type_o    <= d_kind_q;
+            m_seq_o     <= d_seq_q;
+            m_ts_o      <= ts_q;
+            m_ref_o     <= w11_q;
+            m_new_ref_o <= is_u ? w19_q : '0;
+            m_sell_o    <= is_add && side == SIDE_S;
+            m_shares_o  <= is_add ? w19_q[55:24]     // bytes 20..23
+                         : is_red ? w19_q[63:32]     // bytes 19..22
+                         : is_u   ? w27_q[71:40]     // bytes 27..30
+                         : '0;
+            m_price_o   <= is_add ? w27_q[31:0]      // bytes 32..35
+                         : is_u   ? w27_q[39:8]      // bytes 31..34
+                         : '0;
+        end
+    end
+
+    // ---------------------------------------------------------------- control
     always_ff @(posedge clk_i) begin
         if (rst_i) begin
             len_q           <= '0;
+            pend_q          <= 1'b0;
             m_valid_o       <= 1'b0;
             t1_o            <= 1'b0;
             unknown_o       <= 1'b0;
@@ -185,7 +214,7 @@ module itch_decoder #(
             locate_valid_o  <= cfg_locate_valid_i;
             locate_o        <= cfg_locate_i;
         end else begin
-            t1_o            <= 1'b0;
+            t1_o            <= done;
             unknown_o       <= 1'b0;
             malformed_o     <= 1'b0;
             other_locate_o  <= 1'b0;
@@ -193,20 +222,20 @@ module itch_decoder #(
             locate_change_o <= 1'b0;
             if (m_ready_i) m_valid_o <= 1'b0;
 
-            if (fire) len_q <= s_tlast_i ? '0 : (len_q == '1 ? len_q : len);
+            if (fire) len_q <= s_tlast_i ? '0 : (len_q == '1 ? len_q : len_q + 16'd1);
 
-            if (done) begin
-                t1_o <= 1'b1;
-                if (!known) begin
+            if (go) begin
+                pend_q <= 1'b0;
+                if (!d_known_q) begin
                     unknown_o <= 1'b1;
-                end else if (!len_ok) begin
+                end else if (!d_len_ok_q) begin
                     malformed_o <= 1'b1;
-                end else if (kind == T_R) begin
-                    if (field(win, L_R, OFF_R_STOCK, 8) == cfg_symbol_i) begin
+                end else if (d_kind_q == T_R) begin
+                    if (sym_ok) begin
                         dir_match_o     <= 1'b1;
-                        locate_change_o <= locate_valid_o && loc != locate_o;
+                        locate_change_o <= locate_valid_o && loc_q != locate_o;
                         locate_valid_o  <= 1'b1;
-                        locate_o        <= loc;
+                        locate_o        <= loc_q;
                     end
                 end else if (is_book) begin
                     if (!loc_ok)       other_locate_o <= 1'b1;
@@ -214,13 +243,17 @@ module itch_decoder #(
                     else               m_valid_o      <= 1'b1;
                 end
             end
+            if (done) pend_q <= 1'b1;  // after go: a 1-byte message may finish during go
         end
     end
 
 `ifndef SYNTHESIS
     always_ff @(posedge clk_i) begin
-        if (!rst_i) assert ($countones({unknown_o, malformed_o, other_locate_o,
-                                        dir_match_o}) <= 1);
+        if (!rst_i) begin
+            assert ($countones({unknown_o, malformed_o, other_locate_o, dir_match_o}) <= 1);
+            // stage 2 must have run before another message can finish
+            assert (!(done && pend_q && !go));
+        end
     end
 `endif
 endmodule

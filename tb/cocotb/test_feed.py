@@ -178,12 +178,16 @@ async def run(
     await src.send(
         AxisBeat(b, last=(k == len(p) - 1), user=0) for p in pkts if p for k, b in enumerate(p)
     )
-    # All input is in; the last record needs a few cycles plus output stalls. A record
-    # that never comes must fail (check_done dumps context), not hang the run.
-    for _ in range(200):
-        if not sb.pending:
+    # Drained = every packet has been counted by the DUT and every expected record seen.
+    # Judged by the work, not a fixed delay: the last packet's pulses can trail the
+    # source's return. Bounded, so a missing record or packet fails (check_done dumps
+    # context) instead of hanging the run.
+    n_pkts = sum(1 for p in pkts if p)
+    for _ in range(500):
+        if not sb.pending and counts["pkt_o"] >= n_pkts:
             break
         await ClockCycles(dut.clk_i, 10)
+    await ClockCycles(dut.clk_i, 10)  # stage-2 status pulses of the last message
     sb.check_done()
 
     t, f = model.tracker.c, model.c
