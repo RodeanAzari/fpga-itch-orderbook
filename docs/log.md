@@ -172,3 +172,68 @@ Not yet done: hardware link-up and the eth-core-v0.1 sustained-stream test.
 
 Open: WSL2 NAT can't reach the wired NIC. Mirrored networking vs. a Windows-side sender
 is the user's call (mirrored needs `wsl --shutdown`).
+
+## 2026-11-05: fpga-eth-core TX path (toward eth-core-v0.2); cable still pending
+
+**Host:** WSL2 mirrored networking works. WSL sees the I225-LM as `eth0`, the Arty
+reprograms over usbipd (DONE=1), and the UART ticks. There is no link, because the patch
+cable hasn't arrived.
+
+**RTL** (fpga-eth-core)
+- `mii_tx`: preamble/SFD, low nibble first, zero padding to 60 bytes, FCS, and exactly 24
+  idle nibbles between frames. The MII cannot stall, so an underrun ends the frame with a
+  deliberately wrong FCS and is counted.
+- `eth_tx`: core → async FIFO → `mii_tx`. The underrun pulse returns through a toggle
+  synchronizer.
+- `udp_tx`: store-and-forward payload buffer, length counted from tlast (user decision:
+  no length input), destination sampled on the first beat, RFC 791 checksum.
+- `examples/udp_echo`: echoes every datagram to the sender MAC/IP/port that `udp_rx`
+  learned. It's the second non-ITCH example and the v0.2 hardware harness.
+- `host/udp_echo_check`: paced random-length (1–1,472 B) sender plus byte-exact echo
+  checker.
+
+**Verification**
+- cocotb, all with `make ci` green:
+  - `mii_tx`: 300 back-to-back frames byte-exact with IFG exactly 24; starved frames all
+    spoiled and counted.
+  - `udp_tx`: 539 frames checked by an independent RFC parser.
+  - `udp_echo` end to end, MII pins to MII pins: 120 echoes of 1–1,472 B to 4 rotating
+    senders, counters exact.
+- 8 planted bugs each fail a test: high nibble first, IFG short, FCS not spoiled,
+  padding to 59, destination sampled late, single-fold checksum, UDP length off by one,
+  oversize not counted.
+- A single-fold checksum bug is invisible to random headers (about 1 in 10⁴ need the
+  second carry), so the test forces that case directly.
+
+**Vivado 2025.2** (`make example-echo`, `docs/reports/udp_echo/`)
+- Timing met at 125 MHz: WNS +0.312 ns, WHS +0.060 ns.
+- MII TX output setup +20.645 ns against DP83848 T2.4.2 (10 ns setup; read from
+  SNLS250E, which the subagent fetched and pypdf extracted).
+- 1,119 LUT, 2,367 FF, 3 BRAM36; 0 critical warnings.
+
+**Bug (async_fifo): "unsafe" clock crossings in a formally proven FIFO**
+- Symptom: the first `udp_echo` build met timing, but `report_clock_interaction` marked
+  core ↔ tx_clk as "Timed (unsafe)" / "Partial False Path (unsafe)".
+- Root cause, two parts:
+  1. The 64-deep TX FIFO mapped to distributed RAM, whose asynchronous read makes the
+     memory itself a crossing (write clock → `m_tdata_o`). Only the Gray pointers were
+     constrained.
+  2. Synthesis merged `wr_gray_q[MSB]` into the identical `wr_bin_q[MSB]`, so the
+     pointer max-delay filter missed that bit. The RX FIFO escaped only because the
+     merge kept the Gray name.
+- A first fix (a `-quiet` LUTRAM max-delay) still raised a critical warning on BRAM
+  instances and didn't clear the flag, so I reverted it.
+- Fix: `async_fifo` forces block RAM and marks the Gray registers `DONT_TOUCH`. The
+  `eth_tx` FIFO went from 64 to 2,048 deep (one BRAM18). All crossings now report "Max
+  Delay Datapath Only". Formal re-run: PASS.
+
+**Bug (host test): loopback reorders**
+- Symptom: `test_udp_seq_send` failed 4 of 5 runs.
+- Root cause: WSL loopback reorders a few datagrams per 20,000 (per-CPU backlog when
+  the thread migrates). Every datagram was present and contiguous; the sender was fine.
+- Fix: the test checks each sequence number arrives once, not arrival order. The planted
+  bugs still fail it.
+- Hardware consequence: the gate senders are pinned with `taskset`, since a multi-queue
+  NIC could reorder in the same way and show up as false `seq_err`.
+
+Not yet done: the eth-core-v0.1 and v0.2 hardware gates (cable), and the consumer guide.

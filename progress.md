@@ -14,20 +14,17 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 
 ## Next steps
 
-1. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on `eth-core-v0.1`):
-   - Done: toolchain pinned (`docs/toolchain.md`); `async_fifo` formally proven + cocotb.
-   - `github.com/RodeanAzari/fpga-eth-core` (private) created and pushed.
-   - `tb-common-v0.1` released (private repo `RodeanAzari/tb-common`), pinned in
-     `requirements.txt`; fpga-eth-core tests use it.
-   - Done (fpga-eth-core `f51a3bd`, pushed): full RX path `eth_rx` + `udp_rx`; 20 cocotb
-     tests, planted bugs caught, `make ci` green. `examples/rx_stats` Arty harness:
-     bitstream built, timing met at 125 MHz (WNS +0.663 ns), reports committed.
-   - On hardware: rx_stats programs, UART counter lines print (uptime ticking). No link
-     yet: **waiting on an Ethernet cable** (user ordering a Cat5e/Cat6 patch cable).
-   - Done (fpga-eth-core `23e8d21`, pushed): `host/udp_seq_send` C++ sender + loopback test.
-   - Mirrored networking confirmed (2026-11-05): WSL sees the I225-LM as `eth0`; Arty
-     reprograms over usbipd (DONE=1, UART ticking). Cable still not arrived.
-   - Next, once the cable is in: link LEDs → `eth0` carrier → eth-core-v0.1 gate test (>= 10 min, zero drops, FIFO high-water mark). Then submodule here.
+1. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on v0.1 and v0.2):
+   - RX path done (sim, Vivado, board programs). TX path done in sim and Vivado
+     (2026-11-05): `mii_tx`, `eth_tx`, `udp_tx`, `examples/udp_echo`, `host/udp_echo_check`;
+     `make ci` green; udp_echo WNS +0.312 ns at 125 MHz. Neither is tagged.
+   - Host: WSL2 mirrored networking works (I225-LM is `eth0`; Arty reprograms over
+     usbipd). **Waiting on the Ethernet cable.**
+   - Once the cable is in: link LEDs → `eth0` carrier → v0.1 gate (`rx_stats`, >= 10 min,
+     zero drops, FIFO high-water mark) → v0.2 gate (`udp_echo` + `udp_echo_check`). Pin
+     the senders with `taskset`. The host needs an address on 192.168.10.0/24 (or a relaxed
+     rp_filter) and a Windows firewall rule for inbound UDP. Then tag, and add the submodule here.
+   - Still to write: the consumer guide in the fpga-eth-core README (needed for v0.2).
    - Still missing: tcpreplay (needs sudo).
 2. Before RTL is tagged in Phase D: check the table sizing on a second, busier day.
 
@@ -46,6 +43,8 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | `tb-common` built directly as its own repo, not in `tb/common/` first | P3 had already started and was waiting on it; CLAUDE.md §8.1 updated. |
 | Shared Ethernet core keeps the name `fpga-eth-core` | P3/P4 consume it too; a trading name would contradict its payload-agnostic contract. |
 | `BoundedBook` subclasses `OrderBook` through small hooks | Bounded and unbounded logic can't drift apart. |
+| `udp_tx` counts the payload length from tlast; there is no length input (2026-11-05) | TX must buffer a whole payload anyway (the MII cannot stall), so consumers never compute a length and length/tlast can't disagree. |
+| `async_fifo` is always block RAM, with `DONT_TOUCH` Gray registers | Distributed RAM and a merged Gray bit produced unconstrained crossings in Vivado. |
 
 ## Open questions
 
