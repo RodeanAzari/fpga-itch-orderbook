@@ -11,8 +11,9 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0003](decisions/0003-gap-stale-semantics.md) | MoldUDP64 gaps: stale is sticky until reset; overlaps dropped whole; malformed packets deliver what they carry | Accepted |
 | [0004](decisions/0004-locate-filter.md) | Locate learned from `R` for the configured symbol, optional host override | Accepted |
 | [0005](decisions/0005-data-width.md) | `DATA_W = 8` default; 64-bit (message aligner) in Phase E for the capacity measurement | Accepted |
+| [0006](decisions/0006-price-level-storage.md) | Price levels: 4,096 × 36-bit arrays per side + 64 × 64 two-level bitmap; BBO once per message; in-window sub-penny → stale | Accepted |
 
-Still to write: price-level storage, cut-through vs. store-and-forward, core clock, timestamp
+Still to write: cut-through vs. store-and-forward, core clock, timestamp
 design, `DATA_W` default, locate-filter population, gap/stale semantics.
 
 ## Sizing from Phase A data
@@ -32,8 +33,8 @@ From AAPL on 2019-10-18 (`data/results/2019-10-18_AAPL.md`):
 | Block | Arithmetic | BRAM36 |
 |---|---|---|
 | Order table | 2 banks × (8,192 sets / 512 deep) × 3 lanes of 72 bits (4 × 54-bit entries) | 96 |
-| Price levels | 2 sides × 4,096 levels × 32-bit aggregate shares (4K × 36 → 4 BRAM36 per side) | 8 |
-| Occupancy bitmaps | 2 × 64 × 64 bits in registers / LUTRAM | 0 |
+| Price levels | 2 sides × 4,096 levels × 36-bit aggregate shares (4K × 9 mode → 4 BRAM36 per side) | 8 |
+| Occupancy bitmaps | 2 × (64-bit L1 registers + 64 × 64 L2 LUTRAM) | 0 |
 | MII async FIFO, frame buffer, TX buffer | estimate, confirm at synthesis | ~4 |
 | Latency histogram | estimate, confirm at synthesis | ~2 |
 | **Committed so far** | | **~110** |

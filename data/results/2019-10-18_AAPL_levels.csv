@@ -1,0 +1,3 @@
+side,max_level_shares,max_level_shares_bits,max_live_levels,best_emptied_search,best_emptied_side_empty,best_improved,max_search_ticks,searches_over_64_ticks
+B,44920,16,922,47197,1,48261,188,1
+S,294065,19,843,49571,1,50215,108,1
