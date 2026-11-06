@@ -313,3 +313,22 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
 
 **Docs.** CLAUDE.md split: §5–§11 to `docs/buildplan.md` (749 → 248 lines), phase table to
 `progress.md`, lean-docs rule added.
+
+## 2026-11-05 (night): eth-core-v0.1 tagged; v0.2 TX gate passed
+
+- `eth-core-v0.1` tagged and pushed; P3's hard gate "Streaming full passes" is MET.
+- **v0.2 gate** (fpga-eth-core `e148085`, `data/results/2026-11-05_v0.2_udp_echo_sustained.md`):
+  `udp_echo`, 600 s at 15,000 datagrams/s (96.3 Mbit/s each way): 9,000,000 echoes of
+  1–1,472 B intact byte for byte, 0 lost; every length ≥ 5,782 times; board `udp_ok` =
+  `tx_sent`, 0 underruns.
+- **Bug (host): no echoes at all.** Symptom: board `tx_sent` = sent, host echo_ok = 0, tcpdump
+  on WSL `eth0` sees nothing. Root cause: the Hyper-V firewall blocks all inbound to WSL by
+  default. Fix: a Hyper-V firewall rule for UDP from 192.168.10.2 (user ran it as admin).
+- **Bug (host checker): false losses.** Symptom: `lost` = `mismatched` in erratic bursts (0 to
+  16% per 10 s run, not rate-dependent) while the board echoed every datagram. Root cause:
+  `udp_echo_check` wrote a datagram off after 256 later datagrams, and while catching up after
+  a stall it sent without reading; intact late echoes then matched nothing. Fix (`79fba80`):
+  loss judged 1 s after send, socket drained before every send; a loopback case with 600
+  late echoes fails on the old checker (lost = 1,042) and passes now.
+- Correction: I first read the board's `udp_ok` before its last UART line printed and thought
+  it had missed 11,304 datagrams. The per-second log showed it had not.
