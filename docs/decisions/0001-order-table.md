@@ -40,12 +40,12 @@ Each table was replayed against the day's real refs (`analysis/sizing.py`).
 - **Hash:** bank *b* index = top 13 bits of `(ref[31:0] × M_b) mod 2^32`, with odd
   multipliers `M_0 = 0x9E3779B1` and `M_1 = 0x85EBCA6B`. Odd multipliers make it a
   bijection, so the remaining 19 product bits are a complete tag and refs never alias.
-  Cost: one DSP48 multiply per bank, pipelined.
+  Cost: a 32 × 32 multiply per bank, pipelined (3 DSP48 each; see the implementation note).
 - **Entry (54 bits):** tag 19, price index 12, out-of-window 1, shares 20, side 1, valid 1.
   - For an out-of-window order the price index is unused, so its top bit records which edge
     it fell past. That is enough for ADR 0002's flag at no extra width.
-  - Four ways make 216 bits per set, exactly three 72-bit BRAM36 lanes (512 × 72 SDP).
-  - Each bank is 16 deep × 3 wide = 48 BRAM36, so 96 for both.
+  - Four ways make 216 bits per set: 24 BRAM36 in 4K × 9 mode per 4,096 sets.
+  - Each bank is 2 halves × 24 = 48 BRAM36, so 96 for both.
 - **New counted limits:**
   - `ref_overflow`: ref ≥ 2^32.
   - `shares_overflow`: order > 1,048,575 shares (today's max is 82,045).
@@ -68,3 +68,16 @@ Each table was replayed against the day's real refs (`analysis/sizing.py`).
 - `data/results/2019-10-18_AAPL_bounded.csv`: the golden model at this exact geometry has
   zero `table_overflow`, `ref_overflow`, `shares_overflow` and `unknown_ref` over the day.
 - **Limitation:** one trading day. A second, busier day should be checked before RTL is tagged.
+
+## Implementation note (2026-11-06, `rtl/book/order_table.sv`)
+
+- **BRAM mapping.** One 8,192 × 216 RAM per bank was mapped by Vivado as 8K × 4 tiles: 54
+  per bank, 108 total. Each bank is now two 4,096-deep halves selected by the set's top
+  bit; Vivado maps each half as 4K × 9 tiles (24), giving the budgeted 96.
+- **Timing at 125 MHz** took three changes, each from the worst path of an OOC run:
+  the BRAM read address comes from its own registers (it fans out to 48 BRAMs), the
+  price-to-index divide is spread over three lookup states, the reduce compare and
+  subtract are precomputed for every way during the match, and the BRAM output register
+  is used. Lookup latency is 7 cycles (measured by `latency_matches_header`).
+- **Result** (`docs/reports/ooc_book/`, out of context, xc7a100tcsg324-1, Vivado 2025.2):
+  WNS +0.294 ns at 8.000 ns, 96 BRAM36, 8 DSP48, 1,973 LUTs, 2,446 FFs, 0 critical warnings.

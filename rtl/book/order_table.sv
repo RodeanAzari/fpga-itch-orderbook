@@ -38,10 +38,12 @@
 // Status pulses (one cycle): the eight counters above. stale_o: sticky level, set by every
 // pulse except price_oow (ADR 0006).
 //
-// Latency: first delta beat valid 5 cycles after the record is accepted (hash, BRAM read,
-// match, act, beat); a U's second beat follows 5 cycles after its first is taken. One
-// message at a time: s_ready_o is high only in the idle state. After reset the table is
-// cleared, one set per cycle (2^SET_BITS cycles), with s_ready_o low.
+// Latency (cycle 0 = the record's handshake cycle): the first delta beat is valid in cycle
+// 7 (hash, address, BRAM read, BRAM output register, match, act, beat); a U's second beat
+// 7 cycles after its first is taken; s_ready_o is high again the cycle after the last beat
+// is taken. Measured by test latency_matches_header. One message at a time: s_ready_o is
+// high only in the idle state. After reset the table is cleared, one set per cycle
+// (2^SET_BITS cycles), with s_ready_o low.
 // Reset: synchronous, active-high.
 module order_table #(
     parameter int SET_BITS = 13,
@@ -120,8 +122,8 @@ module order_table #(
         logic [TAG_W-1:0]    tag;
     } entry_t;
 
-    typedef enum logic [2:0] {
-        S_CLEAR, S_IDLE, S_HASH, S_READ, S_EVAL, S_ACT, S_EMIT
+    typedef enum logic [3:0] {
+        S_CLEAR, S_IDLE, S_HASH, S_ADDR, S_READ, S_RDREG, S_EVAL, S_ACT, S_EMIT
     } state_t;
     typedef enum logic [1:0] { OP_ADD, OP_REDUCE, OP_DELETE, OP_REPLACE } op_t;
 
@@ -137,55 +139,61 @@ module order_table #(
     logic [31:0] shares_q, price_q;
 
     // ---------------------------------------------------------------- price class
-    // Registered in S_HASH from price_q; used in S_ACT.
+    // Three stages, one per lookup state: S_HASH offset and window compare, S_ADDR
+    // reciprocal multiply, S_READ remainder and class. Used in S_ACT.
     logic [32:0]         off_full;
-    logic [OFF_W-1:0]    off;
+    logic [OFF_W-1:0]    off_q;
+    logic                below_q, above_q;
     // Only qprod[RSHIFT +: WIN_BITS] is the quotient: the low bits are the fraction and the
     // top bits are always 0 for in-window offsets.
     /* verilator lint_off UNUSEDSIGNAL */
     logic [PROD_W-1:0]   qprod;
     /* verilator lint_on UNUSEDSIGNAL */
-    logic [WIN_BITS-1:0] pidx;
+    logic [WIN_BITS-1:0] pidx_q;
     logic [OFF_W-1:0]    prem;
-    logic                below, above;
     logic                p_oow_q, p_better_q, p_sub_q;
     logic [WIN_BITS-1:0] p_idx_q;
 
     always_comb begin
         off_full = {1'b0, price_q} - {1'b0, cfg_lo_price_i};
-        below    = off_full[32];                                  // price < lo
-        above    = !below && (off_full[31:0] >= 32'(WIN * TICK));
-        off      = off_full[OFF_W-1:0];
-        qprod    = PROD_W'(off) * PROD_W'(RECIP);
-        pidx     = qprod[RSHIFT +: WIN_BITS];
-        prem     = off - OFF_W'(pidx) * OFF_W'(TICK);
+        qprod    = PROD_W'(off_q) * PROD_W'(RECIP);
+        prem     = off_q - OFF_W'(pidx_q) * OFF_W'(TICK);
     end
 
     // ---------------------------------------------------------------- hash and banks
     logic [63:0] key;              // ref being looked up
-    logic [31:0] prod0_q, prod1_q;
+    logic [31:0] prod0_q, prod1_q; // S_HASH: the hash products
     logic        key_wide_q;       // key >= 2^32: never in the table
     assign key = ins_q && op_q == OP_REPLACE ? new_ref_q : ref_q;
 
-    logic [SET_BITS-1:0] set0, set1;
-    logic [TAG_W-1:0]    tag0, tag1;
-    assign set0 = prod0_q[31 -: SET_BITS];
-    assign set1 = prod1_q[31 -: SET_BITS];
-    assign tag0 = prod0_q[TAG_W-1:0];
-    assign tag1 = prod1_q[TAG_W-1:0];
+    // S_ADDR: set and tag registered from the products, so each bank's read address
+    // comes straight from flip-flops (it fans out to every BRAM of the bank; replicable).
+    (* max_fanout = 16 *) logic [SET_BITS-1:0] set0_q, set1_q;
+    logic [TAG_W-1:0]    tag0_q, tag1_q;
 
-    logic                we0, we1;
-    logic [SET_BITS-1:0] waddr0, waddr1;
+    (* max_fanout = 16 *) logic                we0, we1;
+    (* max_fanout = 16 *) logic [SET_BITS-1:0] waddr0, waddr1;
     logic [SET_W-1:0]    wdata0, wdata1, rdata0, rdata1;
 
-    sdp_ram #(.ADDR_W(SET_BITS), .DATA_W(SET_W)) u_bank0 (
-        .clk_i(clk_i), .we_i(we0), .waddr_i(waddr0), .wdata_i(wdata0),
-        .raddr_i(set0), .rdata_o(rdata0)
-    );
-    sdp_ram #(.ADDR_W(SET_BITS), .DATA_W(SET_W)) u_bank1 (
-        .clk_i(clk_i), .we_i(we1), .waddr_i(waddr1), .wdata_i(wdata1),
-        .raddr_i(set1), .rdata_o(rdata1)
-    );
+    // Each bank is two half-depth RAMs selected by the set's top bit: 2^(SET_BITS-1) x
+    // SET_W maps to 4K x 9 BRAM tiles (24 per half at the defaults, 48 per bank), where
+    // one 8K-deep RAM was mapped as 8K x 4 tiles (54 per bank). ADR 0001's budget is 96.
+    localparam int HALF_W = SET_BITS - 1;
+    logic [SET_W-1:0] rd0 [2], rd1 [2];
+    for (genvar h = 0; h < 2; h++) begin : g_half
+        sdp_ram #(.ADDR_W(HALF_W), .DATA_W(SET_W), .OUT_REG(1'b1)) u_bank0 (
+            .clk_i(clk_i), .we_i(we0 && waddr0[HALF_W] == 1'(h)),
+            .waddr_i(waddr0[HALF_W-1:0]), .wdata_i(wdata0),
+            .raddr_i(set0_q[HALF_W-1:0]), .rdata_o(rd0[h])
+        );
+        sdp_ram #(.ADDR_W(HALF_W), .DATA_W(SET_W), .OUT_REG(1'b1)) u_bank1 (
+            .clk_i(clk_i), .we_i(we1 && waddr1[HALF_W] == 1'(h)),
+            .waddr_i(waddr1[HALF_W-1:0]), .wdata_i(wdata1),
+            .raddr_i(set1_q[HALF_W-1:0]), .rdata_o(rd1[h])
+        );
+    end
+    assign rdata0 = rd0[set0_q[HALF_W]];  // set*_q is held from S_READ through S_ACT
+    assign rdata1 = rd1[set1_q[HALF_W]];
 
     // ---------------------------------------------------------------- match (S_EVAL)
     entry_t [WAYS-1:0] row0, row1;
@@ -195,6 +203,10 @@ module order_table #(
     logic              hit0, hit1;
     logic [WAY_W-1:0]  hway0, hway1, fway0, fway1;
     logic [FILL_W-1:0] fill0, fill1;
+    // Reduce arithmetic for every way, in parallel with the tag match, so S_ACT only selects
+    // the matched way's result: ge = the reduce removes the order, gt = over-reduce.
+    logic [WAYS-1:0]                ge0, ge1, gt0, gt1;
+    logic [WAYS-1:0][SHARES_W-1:0]  left0, left1;
 
     always_comb begin
         hit0 = 1'b0; hit1 = 1'b0;
@@ -202,14 +214,20 @@ module order_table #(
         fway0 = '0;  fway1 = '0;
         fill0 = '0;  fill1 = '0;
         for (int w = WAYS - 1; w >= 0; w--) begin  // descending: lowest index wins
-            if (row0[w].valid && row0[w].tag == tag0) begin hit0 = 1'b1; hway0 = WAY_W'(w); end
-            if (row1[w].valid && row1[w].tag == tag1) begin hit1 = 1'b1; hway1 = WAY_W'(w); end
+            if (row0[w].valid && row0[w].tag == tag0_q) begin hit0 = 1'b1; hway0 = WAY_W'(w); end
+            if (row1[w].valid && row1[w].tag == tag1_q) begin hit1 = 1'b1; hway1 = WAY_W'(w); end
             if (!row0[w].valid) fway0 = WAY_W'(w);
             if (!row1[w].valid) fway1 = WAY_W'(w);
         end
         for (int w = 0; w < WAYS; w++) begin
             fill0 = fill0 + FILL_W'(row0[w].valid);
             fill1 = fill1 + FILL_W'(row1[w].valid);
+            ge0[w] = shares_q >= 32'(row0[w].shares);
+            ge1[w] = shares_q >= 32'(row1[w].shares);
+            gt0[w] = shares_q > 32'(row0[w].shares);
+            gt1[w] = shares_q > 32'(row1[w].shares);
+            left0[w] = row0[w].shares - shares_q[SHARES_W-1:0];
+            left1[w] = row1[w].shares - shares_q[SHARES_W-1:0];
         end
     end
 
@@ -217,8 +235,8 @@ module order_table #(
     entry_t [WAYS-1:0] row0_q, row1_q;
     logic              hit_q, hbank_q, full_q, ibank_q;
     logic [WAY_W-1:0]  hway_q, iway_q;
-    logic [SET_BITS-1:0] set0_q, set1_q;
-    logic [TAG_W-1:0]  tag0_q, tag1_q;
+    logic [WAYS-1:0]               ge0_q, ge1_q, gt0_q, gt1_q;
+    logic [WAYS-1:0][SHARES_W-1:0] left0_q, left1_q;
 
     // ---------------------------------------------------------------- act (S_ACT)
     entry_t              found;    // the matched entry
@@ -229,7 +247,7 @@ module order_table #(
     always_comb begin
         found = hbank_q ? row1_q[hway_q] : row0_q[hway_q];
         removes = op_q == OP_DELETE || op_q == OP_REPLACE ||
-                  (op_q == OP_REDUCE && shares_q >= 32'(found.shares));
+                  (op_q == OP_REDUCE && (hbank_q ? ge1_q[hway_q] : ge0_q[hway_q]));
         ins.valid   = 1'b1;
         ins.sell    = sell_q;
         ins.shares  = shares_q[SHARES_W-1:0];
@@ -239,7 +257,7 @@ module order_table #(
         ins.tag     = ibank_q ? tag1_q : tag0_q;
         upd = found;
         if (removes) upd.valid = 1'b0;
-        else upd.shares = found.shares - shares_q[SHARES_W-1:0];
+        else upd.shares = hbank_q ? left1_q[hway_q] : left0_q[hway_q];
         wrow0 = row0_q;
         wrow1 = row1_q;
         if (ins_q) begin
@@ -292,17 +310,32 @@ module order_table #(
                 prod0_q    <= key[31:0] * M0;
                 prod1_q    <= key[31:0] * M1;
                 key_wide_q <= |key[63:32];
-                p_oow_q    <= below || above;
-                p_better_q <= above == !sell_q;  // bids: above is better; asks: below is
-                p_sub_q    <= !below && !above && prem != '0;
-                p_idx_q    <= pidx;
-                state_q    <= S_READ;
+                below_q    <= off_full[32];                               // price < lo
+                above_q    <= !off_full[32] && off_full[31:0] >= 32'(WIN * TICK);
+                off_q      <= off_full[OFF_W-1:0];
+                state_q    <= S_ADDR;
             end
-            S_READ: state_q <= S_EVAL;          // BRAM read of set0 / set1
+            S_ADDR: begin
+                set0_q  <= prod0_q[31 -: SET_BITS];
+                set1_q  <= prod1_q[31 -: SET_BITS];
+                tag0_q  <= prod0_q[TAG_W-1:0];
+                tag1_q  <= prod1_q[TAG_W-1:0];
+                pidx_q  <= qprod[RSHIFT +: WIN_BITS];
+                state_q <= S_READ;
+            end
+            S_READ: begin                       // BRAM read of set0_q / set1_q
+                p_oow_q    <= below_q || above_q;
+                p_better_q <= above_q == !sell_q;  // bids: above is better; asks: below is
+                p_sub_q    <= !below_q && !above_q && prem != '0;
+                p_idx_q    <= pidx_q;
+                state_q    <= S_RDREG;
+            end
+            S_RDREG: state_q <= S_EVAL;        // BRAM output register
             S_EVAL: begin
                 row0_q  <= row0; row1_q <= row1;
-                set0_q  <= set0; set1_q <= set1;
-                tag0_q  <= tag0; tag1_q <= tag1;
+                ge0_q   <= ge0;  ge1_q  <= ge1;
+                gt0_q   <= gt0;  gt1_q  <= gt1;
+                left0_q <= left0; left1_q <= left1;
                 hit_q   <= !key_wide_q && (hit0 || hit1);
                 hbank_q <= !hit0;
                 hway_q  <= hit0 ? hway0 : hway1;
@@ -345,7 +378,7 @@ module order_table #(
                     end else begin
                         we0 <= 1'b1; waddr0 <= set0_q; wdata0 <= wrow0;
                     end
-                    over_q     <= op_q == OP_REDUCE && shares_q > 32'(found.shares);
+                    over_q     <= op_q == OP_REDUCE && (hbank_q ? gt1_q[hway_q] : gt0_q[hway_q]);
                     m_sell_o   <= found.sell;
                     m_idx_o    <= found.idx;
                     m_better_o <= found.idx[WIN_BITS-1];
@@ -402,7 +435,7 @@ module order_table #(
             // A ref lives in at most one bank (inserts check both first).
             if (state_q == S_EVAL) assert (!(hit0 && hit1));
             // The reciprocal divide is exact over the window.
-            if (state_q == S_HASH && !below && !above) assert (prem < OFF_W'(TICK));
+            if (state_q == S_READ && !below_q && !above_q) assert (prem < OFF_W'(TICK));
             // Records arrive only with a book type.
             if (state_q == S_IDLE && s_valid_i)
                 assert (s_type_i inside {T_A, T_F, T_E, T_C, T_X, T_D, T_U});

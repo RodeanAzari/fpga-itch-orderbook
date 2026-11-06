@@ -291,3 +291,49 @@ async def out_of_window_alone_is_not_stale(dut):
     msgs = generator.generate(seed=get_rng("ot_oow_gen").randrange(1 << 30), count=4000, cfg=cfg)
     book = await run(dut, "ot_oow", records(msgs), cfg.base_price // TICK, 1.0, 1.0)
     assert book.price_oow > 0 and not book.stale
+
+
+@cocotb.test()
+async def latency_matches_header(dut):
+    """The header's cycle counts feed docs/latency.md, so they are measured, not trusted.
+    Cycle 0 is the record's handshake cycle: the first beat is presented in cycle LATENCY,
+    a U's second beat LATENCY cycles after its first is taken, and s_ready_o is high again
+    the cycle after the last beat is taken (all with m_ready_i held high)."""
+    latency = 7
+    cocotb.start_soon(Clock(dut.clk_i, 8, unit="ns").start())
+    base = 10_000
+    dut.cfg_lo_price_i.value = (base - HALF) * TICK
+    dut.s_valid_i.value = 0
+    dut.m_ready_i.value = 1
+    dut.rst_i.value = 1
+    await ClockCycles(dut.clk_i, 3)
+    dut.rst_i.value = 0
+    while not int(dut.s_ready_o.value):  # table clear after reset
+        await RisingEdge(dut.clk_i)
+
+    async def send(raw: bytes) -> list[int]:
+        """Cycles from the accepting edge to each beat's taking edge, and to ready."""
+        ((kind, m),) = records([raw])
+        for k, v in dut_fields(kind, m).items():
+            getattr(dut, f"s_{k}_i").value = v
+        dut.s_seq_i.value = 0
+        dut.s_valid_i.value = 1
+        await RisingEdge(dut.clk_i)
+        while not int(dut.s_ready_o.value):
+            await RisingEdge(dut.clk_i)
+        dut.s_valid_i.value = 0
+        marks, n = [], 0
+        while True:
+            await RisingEdge(dut.clk_i)
+            n += 1
+            if int(dut.m_valid_o.value) and int(dut.m_ready_i.value):
+                marks.append(n)
+                if int(dut.m_last_o.value):
+                    break
+        await RisingEdge(dut.clk_i)
+        marks.append(n + 1 if int(dut.s_ready_o.value) else -1)
+        return marks
+
+    price = base * TICK
+    assert await send(a_msg(7, b"B", 100, price)) == [latency, latency + 1]
+    assert await send(u_msg(7, 8, 50, price)) == [latency, 2 * latency, 2 * latency + 1]
