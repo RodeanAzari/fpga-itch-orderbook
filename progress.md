@@ -39,8 +39,18 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
   `netadaptercx.sys` (I225-LM miniport). Evidence: `C:\Users\rodea\fpga_capture\`.
 - WSL `ethtool -L eth0 combined 1` did not help (restored to 16 at the user's request).
 - MoldUDP64 turns reordering into gaps + stale book, so Phase D needs in-order delivery.
-  Options: Intel driver queue setting (try first, free); USB Ethernet adapter passed to
-  WSL via usbipd (reliable); Windows-side pinned sender.
+- Driver is Intel `e2fn.sys` 2.1.4.3 (Lenovo OEM): no RSS, VMQ or queue-count setting exists
+  (checked 2026-11-06). Likely cause (unproven): sends reach the miniport from different
+  CPUs and land in different hardware TX queues.
+- **Agreed plan, next time the user is home with the board** (rig: `rx_stats` bitstream +
+  `udp_seq_send`, count `seq_err`/`seq_lost`; claim the board first):
+  1. Rate sweep: 60 s each at several rates (e.g. 100/85/70/50% of line rate), current settings.
+  2. User disables "Packet Priority & VLAN" (Windows adapter settings, admin), repeat at the
+     worst rate; optionally Interrupt Moderation off too.
+- Fallbacks if neither gives zero: USB 3 Ethernet adapter (RTL8153/AX88179) to WSL via usbipd
+  (in order by construction; verify 100 Mbps through usbipd with a 10-min sustained run);
+  newer Intel driver; Windows-native pinned sender; native Linux / separate Linux host.
+  Rejected: a reorder buffer in the FPGA (changes ADR 0003, hides a host defect).
 
 ## Important decisions
 
