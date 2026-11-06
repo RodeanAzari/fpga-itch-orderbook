@@ -79,5 +79,7 @@ Each table was replayed against the day's real refs (`analysis/sizing.py`).
   price-to-index divide is spread over three lookup states, the reduce compare and
   subtract are precomputed for every way during the match, and the BRAM output register
   is used. Lookup latency is 7 cycles (measured by `latency_matches_header`).
-- **Result** (`docs/reports/ooc_book/`, out of context, xc7a100tcsg324-1, Vivado 2025.2):
-  WNS +0.294 ns at 8.000 ns, 96 BRAM36, 8 DSP48, 1,973 LUTs, 2,446 FFs, 0 critical warnings.
+- **Result.** Standalone at `272094e`: WNS +0.294 ns at 8.000 ns, 96 BRAM36, 8 DSP48.
+  Integrated with the price levels (ADR 0006), the hash key and the price-class divide
+  gained one more register each (no extra cycles) to keep timing; current numbers are in
+  `docs/reports/ooc_book_engine/` (out of context, xc7a100tcsg324-1, Vivado 2025.2).

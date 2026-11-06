@@ -133,21 +133,23 @@ module order_table #(
     logic [SET_BITS-1:0] clear_q;
 
     // Message registers (datapath, not reset)
-    logic [63:0] ref_q, new_ref_q, seq_q;
+    logic [63:0] new_ref_q, seq_q;
     logic [47:0] ts_q;
     logic        sell_q;
     logic [31:0] shares_q, price_q;
 
     // ---------------------------------------------------------------- price class
-    // Three stages, one per lookup state: S_HASH offset and window compare, S_ADDR
-    // reciprocal multiply, S_READ remainder and class. Used in S_ACT.
+    // One stage per lookup state, while the table read is in flight: S_HASH offset and
+    // window compare; S_ADDR and S_READ the reciprocal multiply (two register stages, so
+    // it can use the DSP's pipeline registers); S_RDREG the quotient; S_EVAL remainder and
+    // class. Used in S_ACT.
     logic [32:0]         off_full;
     logic [OFF_W-1:0]    off_q;
     logic                below_q, above_q;
     // Only qprod[RSHIFT +: WIN_BITS] is the quotient: the low bits are the fraction and the
     // top bits are always 0 for in-window offsets.
     /* verilator lint_off UNUSEDSIGNAL */
-    logic [PROD_W-1:0]   qprod;
+    logic [PROD_W-1:0]   qprod_q, qprod2_q;
     /* verilator lint_on UNUSEDSIGNAL */
     logic [WIN_BITS-1:0] pidx_q;
     logic [OFF_W-1:0]    prem;
@@ -156,15 +158,14 @@ module order_table #(
 
     always_comb begin
         off_full = {1'b0, price_q} - {1'b0, cfg_lo_price_i};
-        qprod    = PROD_W'(off_q) * PROD_W'(RECIP);
         prem     = off_q - OFF_W'(pidx_q) * OFF_W'(TICK);
     end
 
     // ---------------------------------------------------------------- hash and banks
-    logic [63:0] key;              // ref being looked up
+    logic [63:0] key_q;            // ref being looked up: the record's ref, then (U insert)
+                                   // its new_ref; a register, so the hash starts from FFs
     logic [31:0] prod0_q, prod1_q; // S_HASH: the hash products
     logic        key_wide_q;       // key >= 2^32: never in the table
-    assign key = ins_q && op_q == OP_REPLACE ? new_ref_q : ref_q;
 
     // S_ADDR: set and tag registered from the products, so each bank's read address
     // comes straight from flip-flops (it fans out to every BRAM of the bank; replicable).
@@ -294,7 +295,7 @@ module order_table #(
             end
             S_IDLE: begin
                 if (s_valid_i) begin
-                    ref_q <= s_ref_i; new_ref_q <= s_new_ref_i; seq_q <= s_seq_i;
+                    key_q <= s_ref_i; new_ref_q <= s_new_ref_i; seq_q <= s_seq_i;
                     ts_q <= s_ts_i; sell_q <= s_sell_i; shares_q <= s_shares_i;
                     price_q <= s_price_i;
                     unique case (s_type_i)
@@ -307,9 +308,9 @@ module order_table #(
                 end
             end
             S_HASH: begin
-                prod0_q    <= key[31:0] * M0;
-                prod1_q    <= key[31:0] * M1;
-                key_wide_q <= |key[63:32];
+                prod0_q    <= key_q[31:0] * M0;
+                prod1_q    <= key_q[31:0] * M1;
+                key_wide_q <= |key_q[63:32];
                 below_q    <= off_full[32];                               // price < lo
                 above_q    <= !off_full[32] && off_full[31:0] >= 32'(WIN * TICK);
                 off_q      <= off_full[OFF_W-1:0];
@@ -320,18 +321,22 @@ module order_table #(
                 set1_q  <= prod1_q[31 -: SET_BITS];
                 tag0_q  <= prod0_q[TAG_W-1:0];
                 tag1_q  <= prod1_q[TAG_W-1:0];
-                pidx_q  <= qprod[RSHIFT +: WIN_BITS];
+                qprod_q <= PROD_W'(off_q) * PROD_W'(RECIP);
                 state_q <= S_READ;
             end
             S_READ: begin                       // BRAM read of set0_q / set1_q
+                qprod2_q <= qprod_q;
+                state_q  <= S_RDREG;
+            end
+            S_RDREG: begin                      // BRAM output register
+                pidx_q  <= qprod2_q[RSHIFT +: WIN_BITS];
+                state_q <= S_EVAL;
+            end
+            S_EVAL: begin
                 p_oow_q    <= below_q || above_q;
                 p_better_q <= above_q == !sell_q;  // bids: above is better; asks: below is
                 p_sub_q    <= !below_q && !above_q && prem != '0;
                 p_idx_q    <= pidx_q;
-                state_q    <= S_RDREG;
-            end
-            S_RDREG: state_q <= S_EVAL;        // BRAM output register
-            S_EVAL: begin
                 row0_q  <= row0; row1_q <= row1;
                 ge0_q   <= ge0;  ge1_q  <= ge1;
                 gt0_q   <= gt0;  gt1_q  <= gt1;
@@ -395,6 +400,7 @@ module order_table #(
                 if (m_ready_i) begin
                     if (!m_last_o) begin
                         ins_q   <= 1'b1;                // U: now insert new_ref
+                        key_q   <= new_ref_q;
                         state_q <= S_HASH;
                     end else begin
                         state_q <= S_IDLE;
@@ -435,7 +441,7 @@ module order_table #(
             // A ref lives in at most one bank (inserts check both first).
             if (state_q == S_EVAL) assert (!(hit0 && hit1));
             // The reciprocal divide is exact over the window.
-            if (state_q == S_READ && !below_q && !above_q) assert (prem < OFF_W'(TICK));
+            if (state_q == S_EVAL && !below_q && !above_q) assert (prem < OFF_W'(TICK));
             // Records arrive only with a book type.
             if (state_q == S_IDLE && s_valid_i)
                 assert (s_type_i inside {T_A, T_F, T_E, T_C, T_X, T_D, T_U});
