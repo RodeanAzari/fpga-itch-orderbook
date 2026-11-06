@@ -85,3 +85,21 @@ stocks above $1.
 - `data/results/2019-10-18_AAPL_levels.csv` and its sidecar: level size, depth, search
   frequency and distance.
 - `data/results/2019-10-18_AAPL_bounded.csv`: `price_oow`, `bbo_oow` (ADR 0002).
+
+## Implementation note (2026-11-06, `rtl/book/book_levels.sv`, `book_engine.sv`)
+
+- One delta at a time. A message's BBO update is presented 8 cycles after its last level
+  delta is taken, 14 when the best empties (L1 encode, L2 read, L2 encode, size read).
+  From the record's handshake (order table included): 15 and 21 cycles, measured by
+  `test_book.py latency_matches_header`.
+- L2 maps to distributed RAM (128 × 64, 44 RAM64M); levels to 8 BRAM36 as budgeted.
+- Verified against `BoundedBook`'s BBO stream, update for update: adversarial and directed
+  streams at 512 and 8,192 sets, a whole-window stream with ~4,200 bitmap searches up to
+  2,485 ticks, and the first 50,000 messages of 2019-10-18 (10,582 BBO updates, 0
+  mismatches). 9 injected bugs in the level logic each caught.
+- **Timing** (`docs/reports/ooc_book_engine/`, out of context, order table + levels):
+  WNS +0.069 ns at 8.000 ns, 104 BRAM36, 10 DSP48, 3,172 LUTs, 3,528 FFs, 172 LUTs as
+  memory, 0 critical warnings. Getting there took registering the L2 read address and the
+  search's L2 word, a two-stage reciprocal multiply and a registered hash key in the
+  order table. **The margin is under 1 %**: the full design may need another stage or a
+  lower core clock (core-clock ADR still to write).

@@ -15,12 +15,14 @@ from cocotb_tools.runner import get_results, get_runner
 ROOT = Path(__file__).resolve().parent.parent
 FEED = ["rtl/feed/mold_deframer.sv", "rtl/feed/itch_decoder.sv", "rtl/feed/feed_frontend.sv"]
 BOOK = ["rtl/lib/sdp_ram.sv", "rtl/book/order_table.sv"]
+ENGINE = [*BOOK, "rtl/book/book_levels.sv", "rtl/book/book_engine.sv"]
 
 # test module -> (toplevel, sources, parameter sets)
 TESTS = {
     "test_feed": ("feed_frontend", FEED, [{"DATA_W": 8}]),
     # 512 sets: the generator's bucket collisions overflow it; 8,192: ADR 0001's geometry.
     "test_order_table": ("order_table", BOOK, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
+    "test_book": ("book_engine", ENGINE, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
 }
 
 

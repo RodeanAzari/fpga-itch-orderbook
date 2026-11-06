@@ -41,6 +41,9 @@ From AAPL on 2019-10-18 (`data/results/2019-10-18_AAPL.md`):
 
 Rows marked "estimate" become measured utilization at Phase B/E synthesis.
 
+Measured so far: order table + price levels (`book_engine`, out of context) use 104 BRAM36,
+as budgeted (`docs/reports/ooc_book_engine/`).
+
 ## CDC crossings
 
 None yet (no RTL).

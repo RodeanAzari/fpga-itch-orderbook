@@ -1,6 +1,7 @@
-# Out-of-context Vivado build of rtl/book/order_table for timing and utilization:
-#   vivado -mode batch -source syn/ooc_book.tcl [-tclargs <period_ns>]
-# Non-project flow; writes only build/ooc_book/ and docs/reports/ooc_book/.
+# Out-of-context Vivado build of a rtl/book top (default book_engine) for timing and
+# utilization:
+#   vivado -mode batch -source syn/ooc_book.tcl [-tclargs <period_ns> [<top>]]
+# Non-project flow; writes only build/ooc_<top>/ and docs/reports/ooc_<top>/.
 # I/O is unconstrained (OOC): only the internal register-to-register paths are judged.
 
 set expected_vivado 2025.2
@@ -11,10 +12,11 @@ if {[version -short] ne $expected_vivado} {
 set period [lindex $argv 0]
 if {$period eq ""} { set period 8.000 }
 set part    xc7a100tcsg324-1
-set top     order_table
+set top     [lindex $argv 1]
+if {$top eq ""} { set top book_engine }
 set repo    [file normalize [file join [file dirname [info script]] ..]]
-set rundir  [file join $repo build ooc_book]
-set reports [file join $repo docs reports ooc_book]
+set rundir  [file join $repo build ooc_$top]
+set reports [file join $repo docs reports ooc_$top]
 file mkdir $rundir $reports
 cd $rundir
 
