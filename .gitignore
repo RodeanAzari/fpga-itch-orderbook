@@ -12,3 +12,4 @@ build/
 *.jou
 *.log
 *.str
+tb/cocotb/results.xml
