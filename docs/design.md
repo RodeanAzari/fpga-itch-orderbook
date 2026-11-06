@@ -13,8 +13,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0005](decisions/0005-data-width.md) | `DATA_W = 8` default; 64-bit (message aligner) in Phase E for the capacity measurement | Accepted |
 | [0006](decisions/0006-price-level-storage.md) | Price levels: 4,096 × 36-bit arrays per side + 64 × 64 two-level bitmap; BBO once per message; in-window sub-penny → stale | Accepted |
 
-Still to write: cut-through vs. store-and-forward, core clock, timestamp
-design, `DATA_W` default, locate-filter population, gap/stale semantics.
+Still to write: cut-through vs. store-and-forward, core clock, timestamp design.
 
 ## Sizing from Phase A data
 
