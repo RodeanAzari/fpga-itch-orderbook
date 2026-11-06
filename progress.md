@@ -57,5 +57,4 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 
 ## Open questions
 
-- The buildplan's "Generic TX" requirement says "AXI-Stream + length"; `udp_tx` has no
-  length input (decision above). Update the requirement wording? (user)
+None.

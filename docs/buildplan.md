@@ -10,8 +10,9 @@ This file is not imported: read the section you need before working on it.
   satellite pass (~15 min) and cannot tolerate drops. Add a sustained-load test
   (sim + hardware): ≥10 min continuous at the highest rate the link sustains, zero drops,
   and report the RX FIFO high-water mark.
-- **Generic TX:** the TX path takes an arbitrary payload (AXI-Stream + length +
-  destination port), not just BBO/stats packets. Prove it with an echo test of random
+- **Generic TX:** the TX path takes an arbitrary payload (AXI-Stream + destination
+  port; the length is counted from tlast, see the fpga-eth-core CHANGELOG), not just
+  BBO/stats packets. Prove it with an echo test of random
   payload lengths 1–1472 bytes.
 - **Runtime-configurable RX filter:** multicast group and UDP port set by registers,
   not parameters baked into the bitstream.
