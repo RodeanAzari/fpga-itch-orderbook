@@ -18,7 +18,7 @@ from model.bounded import TICK, in_window
 from model.itch import Add, Directory, MalformedMessage, Replace, decode, iter_raw
 
 OPEN_NS = int(9.5 * 3600e9)
-HALF_WINDOW = 2048  # ticks; CLAUDE.md §6.4 window of 4,096
+HALF_WINDOW = 2048  # ticks; docs/buildplan.md §6.4 window of 4,096
 MINUTE_NS = int(60e9)
 
 

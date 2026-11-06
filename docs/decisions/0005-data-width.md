@@ -5,7 +5,7 @@ is planned for the Phase E capacity measurement.
 
 ## Context
 
-CLAUDE.md §4.1 asks for a parameterized datapath that starts at 8 bits, and §6.7 asks
+CLAUDE.md §4.1 asks for a parameterized datapath that starts at 8 bits, and buildplan §6.7 asks
 for pipeline capacity at `DATA_W` = 8 and 64. The MAC (fpga-eth-core) delivers one
 byte per core cycle. At 125 MHz that is 1 Gbit/s, ten times what the 100 Mbps link can
 carry, so the link, not the datapath, limits real traffic. Only the on-chip injector

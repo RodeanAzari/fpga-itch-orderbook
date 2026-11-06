@@ -1,4 +1,4 @@
-"""MoldUDP64 framing (CLAUDE.md §5.2) and the Phase C feed front end, as golden models.
+"""MoldUDP64 framing (docs/buildplan.md §5.2) and the Phase C feed front end, as golden models.
 
 Pure: functions and small state machines, no I/O. Three pieces:
   - pack / packetize / heartbeat / end_of_session: build packets (host replayer reference,

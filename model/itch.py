@@ -1,4 +1,4 @@
-"""ITCH 5.0 parser for the CLAUDE.md §5.3 subset. Pure: reads a stream, returns values."""
+"""ITCH 5.0 parser for the docs/buildplan.md §5.3 subset. Pure: reads a stream, returns values."""
 
 from __future__ import annotations
 

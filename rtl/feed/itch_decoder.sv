@@ -6,7 +6,7 @@
 //         output). s_seq_i is the message's MoldUDP64 sequence number. s_tuser_i on
 //         tlast = discard the message (already counted upstream).
 // Output: one record per accepted book message (A F E C X D U for the configured
-//         stock), valid/ready. Field meaning per type (ITCH 5.0, CLAUDE.md §5.3):
+//         stock), valid/ready. Field meaning per type (ITCH 5.0, docs/buildplan.md §5.3):
 //           A/F  ref, side, shares, price      E/C/X  ref, shares
 //           D    ref                            U      ref (original), new_ref, shares, price
 //         Unused fields are 0. C's execution price is not decoded: the book uses the
@@ -77,7 +77,7 @@ module itch_decoder #(
     output logic                   locate_valid_o,
     output logic [15:0]            locate_o
 );
-    // ITCH 5.0 (CLAUDE.md §5.3): message types and lengths
+    // ITCH 5.0 (docs/buildplan.md §5.3): message types and lengths
     localparam logic [7:0] T_S = 8'h53, T_R = 8'h52, T_A = 8'h41, T_F = 8'h46, T_E = 8'h45,
                            T_C = 8'h43, T_X = 8'h58, T_D = 8'h44, T_U = 8'h55;
     localparam int L_S = 12, L_R = 39, L_A = 36, L_F = 40, L_E = 31, L_C = 36, L_X = 23,

@@ -9,7 +9,7 @@
 //         beat of it. m_tuser_o on tlast = the packet ended inside this message: discard
 //         it (the packet is already counted as malformed).
 //
-// Packet format (CLAUDE.md §5.2, big-endian): session (10 bytes), sequence of the first
+// Packet format (docs/buildplan.md §5.2, big-endian): session (10 bytes), sequence of the first
 // message (8), count (2; 0 = heartbeat, 0xFFFF = end of session), then per message a
 // 2-byte length and the message.
 //
@@ -65,7 +65,7 @@ module mold_deframer #(
     output logic                   empty_msg_o,
     output logic                   stale_o
 );
-    // MoldUDP64 header, CLAUDE.md §5.2
+    // MoldUDP64 header, docs/buildplan.md §5.2
     localparam int          HDR_LEN     = 20;
     localparam int          SEQ_OFF     = 10;   // sequence number, bytes 10..17
     localparam int          CNT_OFF     = 18;   // message count, bytes 18..19
