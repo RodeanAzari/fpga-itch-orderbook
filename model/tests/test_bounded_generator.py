@@ -149,3 +149,56 @@ def test_generator_actually_reaches_the_adversarial_cases() -> None:
     kinds = {m[:1] for m in msgs}
     assert {b"R", b"A", b"F", b"E", b"C", b"X", b"D", b"U"} <= kinds
     assert kinds - {b"R", b"A", b"F", b"E", b"C", b"X", b"D", b"U"}  # non-subset noise exists
+
+
+def test_subpenny_in_window_stays_out_of_levels_and_marks_stale() -> None:
+    # ADR 0006: a 1-tick array would merge $100.0050 into $100.00 and publish a wrong size.
+    book = BoundedBook(base_ticks=1000, half_window=10)
+    book.apply(add(1, "B", 100, 100_000))
+    bbo = book.apply(add(2, "B", 50, 100_050))  # better than the best, but not storable
+    assert bbo is None  # the published book did not move...
+    assert book.bids == {100_000: 100}
+    assert book.price_subpenny == 1 and book.price_oow == 0
+    assert book.stale  # ...so it is marked stale instead of silently wrong
+    book.apply(Delete(1, 2, 2))  # it is still in the table: its cancel resolves
+    assert book.counters.unknown_ref == 0 and 2 not in book.orders
+    assert book.stale  # sticky: the book was wrong for a while
+    assert all(v == 0 for v in book._oow.values())
+
+
+def test_subpenny_outside_window_is_out_of_window_not_subpenny() -> None:
+    # The day's 10 sub-penny prices are all far stubs: they must stay on ADR 0002's path
+    # (flagged exactly), not mark the book stale.
+    book = BoundedBook(base_ticks=1000, half_window=10)
+    book.apply(add(1, "S", 100, 100 * 2000 + 1))
+    assert (book.price_oow, book.price_subpenny) == (1, 0)
+    assert book._oow["S", "worse"] == 1
+    book.apply(Delete(1, 2, 1))
+    assert book._oow["S", "worse"] == 0
+    assert not book.stale
+
+
+def test_every_silent_divergence_marks_stale_and_nothing_else_does() -> None:
+    def fresh() -> BoundedBook:
+        return BoundedBook(base_ticks=1000, half_window=10)
+
+    clean = fresh()
+    clean.apply(add(1, "B", 100, 100_000))
+    clean.apply(add(2, "B", 100, 100 * 900))  # out of window: flagged, not stale
+    clean.apply(Reduce(1, 2, 1, 100))  # exact full execution
+    assert not clean.stale
+
+    a, b, c = colliding_refs(1, 3)
+    table_full = BoundedBook(base_ticks=1000, sets_per_bank=2, ways=1)
+    for ref in (a, b, c):
+        table_full.apply(add(ref, "B", 100, 100_000))
+    ref_wide, shares_wide, unknown, duplicate, over = fresh(), fresh(), fresh(), fresh(), fresh()
+    ref_wide.apply(add(1 << 32, "B", 100, 100_000))
+    shares_wide.apply(add(1, "B", 1 << 20, 100_000))
+    unknown.apply(Delete(1, 2, 99))
+    duplicate.apply(add(1, "B", 100, 100_000))
+    duplicate.apply(add(1, "B", 100, 100_000))
+    over.apply(add(1, "B", 100, 100_000))
+    over.apply(Reduce(1, 2, 1, 101))
+    for book in (table_full, ref_wide, shares_wide, unknown, duplicate, over):
+        assert book.stale

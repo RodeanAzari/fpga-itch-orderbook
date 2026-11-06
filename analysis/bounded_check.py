@@ -40,6 +40,10 @@ def main(path: str, base_ticks: str, out_csv: str) -> None:
         "shares_overflow": book.shares_overflow,
         "unknown_ref": book.counters.unknown_ref,
         "price_oow": book.price_oow,
+        "price_subpenny": book.price_subpenny,
+        "duplicate_ref": book.counters.duplicate_ref,
+        "over_reduce": book.counters.over_reduce,
+        "book_stale": int(book.stale),
         "bbo_oow": book.bbo_oow,
         "flag_contract_violations": contract_violations,
     }

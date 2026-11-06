@@ -1,7 +1,9 @@
 """Book with the RTL's capacity limits: the scoreboard's reference for the DUT.
 
 Order table: 2-bank d-left hash (ADR 0001). Price window: fixed base, out-of-window orders
-stay in the table and are tracked by edge so the true BBO can be flagged (ADR 0002).
+stay in the table and are tracked by edge so the true BBO can be flagged (ADR 0002). Levels
+are 1-tick slots, so an in-window sub-penny order stays in the table but out of the levels,
+and marks the book stale (ADR 0006).
 """
 
 from __future__ import annotations
@@ -56,14 +58,34 @@ class BoundedBook(OrderBook):
     ref_overflow: int = 0
     shares_overflow: int = 0
     price_oow: int = 0
+    price_subpenny: int = 0  # in-window orders whose price is not a whole tick (ADR 0006)
     bbo_oow: int = 0  # BBO updates published with out_of_window set
     _fill: list[Counter[int]] = field(default_factory=lambda: [Counter(), Counter()])
     _slot: dict[int, tuple[int, int]] = field(default_factory=dict)  # ref -> (bank, set)
     # Live out-of-window orders per (side, edge). "better" beats every in-window price.
     _oow: Counter[tuple[str, str]] = field(default_factory=Counter)
 
-    def _has_level(self, price: int) -> bool:
+    @property
+    def stale(self) -> bool:
+        """Sticky: some order is untracked, or tracked without its level, so the published
+        book may differ from the feed's in a way no flag shows (ADR 0006). Out-of-window
+        orders do not count: ADR 0002's flag covers them exactly."""
+        c = self.counters
+        return bool(
+            self.table_overflow
+            or self.ref_overflow
+            or self.shares_overflow
+            or self.price_subpenny
+            or c.unknown_ref
+            or c.duplicate_ref
+            or c.over_reduce
+        )
+
+    def _in_window(self, price: int) -> bool:
         return in_window(price, self.base_ticks, self.half_window)
+
+    def _has_level(self, price: int) -> bool:
+        return self._in_window(price) and price % TICK == 0
 
     def _edge(self, side: str, price: int) -> str:
         above = price // TICK - self.base_ticks >= self.half_window
@@ -88,9 +110,11 @@ class BoundedBook(OrderBook):
         index = bucket(bank, ref, bits)
         self._fill[bank][index] += 1
         self._slot[ref] = (bank, index)
-        if not self._has_level(price):
+        if not self._in_window(price):
             self.price_oow += 1
             self._oow[side, self._edge(side, price)] += 1
+        elif not self._has_level(price):
+            self.price_subpenny += 1
         OrderBook._insert(self, ref, side, price, shares)
 
     def _remove(self, ref: int) -> None:
@@ -98,7 +122,7 @@ class BoundedBook(OrderBook):
         if order is not None:
             bank, index = self._slot.pop(ref)
             self._fill[bank][index] -= 1
-            if not self._has_level(order.price):
+            if not self._in_window(order.price):
                 self._oow[order.side, self._edge(order.side, order.price)] -= 1
         OrderBook._remove(self, ref)
 

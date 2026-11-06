@@ -68,8 +68,14 @@ stocks above $1.
 
 - BRAM: 8 BRAM36 for both sides, as already budgeted in `design.md`. L2 bitmaps are
   ~2 × 64 × 64 bits of LUTRAM; L1 is 128 flip-flops.
-- **Golden model first:** `BoundedBook` gains `price_subpenny` and a sticky book-stale flag
+- **Golden model first:** `BoundedBook` has `price_subpenny` and a sticky `stale` flag
   before any level RTL is written, so the scoreboard and the RTL share one rule.
+- **Book stale** is set (sticky until reset) by every condition where the published book can
+  differ from the feed's without a flag showing it: `table_overflow`, `ref_overflow`,
+  `shares_overflow`, `price_subpenny`, `unknown_ref`, `duplicate_ref`, `over_reduce`.
+  `price_oow` does not set it: ADR 0002's out-of-window flag covers those exactly. The
+  BBO output's stale bit is book stale OR feed stale (ADR 0003). All seven were 0 on
+  2019-10-18 (`_bounded.csv`, `book_stale` = 0).
 - The single-delta, no-forwarding design is the simplest correct one. Phase E's injector
   measures whether it limits pipeline capacity; pipelining is a later ADR if it does.
 - Depth is complete inside the window; nothing is lost when the top depletes.
