@@ -1,0 +1,293 @@
+"""cocotb tests for rtl/book/order_table, scored against model.bounded.BoundedBook.
+
+Why these tests matter: the order table is the only place an order's side, price and size
+live after its Add. A wrong placement, a missed tag match, a reduce applied to the wrong
+way, a replace that loses its side, or an out-of-window order dropped from the table all
+turn into a silently wrong book later. So each record is applied to the DUT and to the
+golden model in lockstep. The DUT's level deltas are applied to a shadow book, and after
+every message's last beat the shadow's bid levels, ask levels and out-of-window counts
+must equal the model's, exactly. Every counter and the stale flag must match at the end.
+Nothing here re-derives the table's logic: the model is the reference (ADR 0001/0002/0006).
+
+Stimulus: the seeded adversarial generator (bucket collisions aimed at 512 sets per bank,
+far prices, unknown refs, locked/crossed episodes) plus directed messages for each limit
+(ref and shares width, duplicates, over-reduce, sub-penny prices, every window edge), with
+and without backpressure; and at the real geometry, the first 50,000 messages of
+2019-10-18 AAPL.
+"""
+
+from __future__ import annotations
+
+import os
+import struct
+from collections import Counter, deque
+from pathlib import Path
+
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import ClockCycles, RisingEdge
+from tb_common import get_rng
+
+from model import generator
+from model.bounded import TICK, BoundedBook
+from model.itch import Add, Delete, Message, Reduce, Replace, decode, iter_raw
+
+SET_BITS = int(os.environ.get("SET_BITS", "13"))
+HALF = 2048
+K_NONE, K_LEVEL, K_OOW = 0, 1, 2
+FIXTURE = Path(__file__).resolve().parents[2] / "data/samples/2019-10-18_AAPL_head50k.itch"
+REAL_BASE = 23_455  # ADR 0002: 2019-10-18 AAPL opening mid, in ticks
+STATUS = {  # DUT pulse -> model counter (attribute path)
+    "ref_overflow_o": "ref_overflow",
+    "duplicate_ref_o": "counters.duplicate_ref",
+    "shares_overflow_o": "shares_overflow",
+    "table_overflow_o": "table_overflow",
+    "unknown_ref_o": "counters.unknown_ref",
+    "over_reduce_o": "counters.over_reduce",
+    "price_oow_o": "price_oow",
+    "price_subpenny_o": "price_subpenny",
+}
+
+
+def model_count(book: BoundedBook, path: str) -> int:
+    obj: object = book
+    for part in path.split("."):
+        obj = getattr(obj, part)
+    assert isinstance(obj, int)
+    return obj
+
+
+# ------------------------------------------------------------------ raw ITCH builders
+def _hdr(kind: bytes, ts: int) -> bytes:
+    return kind + struct.pack(">HH", 1, 0) + ts.to_bytes(6)
+
+
+def a_msg(ref: int, side: bytes, shares: int, price: int, ts: int = 1) -> bytes:
+    return _hdr(b"A", ts) + struct.pack(">QcI8sI", ref, side, shares, b"TEST    ", price)
+
+
+def e_msg(ref: int, shares: int, ts: int = 1) -> bytes:
+    return _hdr(b"E", ts) + struct.pack(">QIQ", ref, shares, 0)
+
+
+def d_msg(ref: int, ts: int = 1) -> bytes:
+    return _hdr(b"D", ts) + struct.pack(">Q", ref)
+
+
+def u_msg(ref: int, new_ref: int, shares: int, price: int, ts: int = 1) -> bytes:
+    return _hdr(b"U", ts) + struct.pack(">QQII", ref, new_ref, shares, price)
+
+
+def directed(base_ticks: int) -> list[bytes]:
+    """One block per limit or edge. Refs from 2^31 up so they never meet the generator's."""
+    lo = (base_ticks - HALF) * TICK
+    top = lo + 2 * HALF * TICK  # first price above the window
+    r = iter(range(1 << 31, (1 << 31) + 10_000))
+    out: list[bytes] = []
+    # Every window edge, both sides: in, sub-penny, out below, out above. Then remove.
+    for side in (b"B", b"S"):
+        for price in (lo, lo + 1, lo + 99, lo + 100, top - 100, top - 1, top, lo - 1, lo - 100):
+            ref = next(r)
+            out += [a_msg(ref, side, 300, price), e_msg(ref, 100), d_msg(ref)]
+    # Width limits: a 33-bit ref and a 2^20-share order are counted, never truncated.
+    out += [a_msg(1 << 32 | 5, b"B", 100, lo + 500), a_msg(next(r), b"B", 1 << 20, lo + 500)]
+    out += [a_msg(next(r), b"S", (1 << 20) - 1, lo + 900)]  # largest that fits
+    # Duplicate Add of a live ref, and over-reduce (removes the order).
+    ref = next(r)
+    out += [a_msg(ref, b"B", 100, lo + 700), a_msg(ref, b"B", 50, lo + 600)]
+    out += [e_msg(ref, 150), e_msg(ref, 1)]  # over-reduce, then unknown
+    # Replace keeps the original side, and moves between level, out of window and sub-penny.
+    a, b, c, d = next(r), next(r), next(r), next(r)
+    out += [a_msg(a, b"S", 200, lo + 1000), u_msg(a, b, 400, top + 500)]  # level -> oow
+    out += [u_msg(b, c, 100, lo + 1050), u_msg(c, d, 100, lo + 1051)]  # oow -> level -> sub
+    out += [e_msg(d, 40), u_msg(d, d, 70, lo + 1000), d_msg(d)]  # U to the same ref
+    # Replace whose new ref is already live: the original goes, the insert is a duplicate.
+    a, b = next(r), next(r)
+    out += [a_msg(a, b"B", 100, lo + 300), a_msg(b, b"B", 100, lo + 301), u_msg(a, b, 9, lo)]
+    out += [u_msg(next(r), next(r), 5, lo)]  # replace of an unknown ref
+    return out
+
+
+def records(raws: list[bytes]) -> list[tuple[int, Message]]:
+    out = []
+    for raw in raws:
+        if raw[:1] in b"AFECXDU" and len(raw) > 1:
+            m = decode(raw)
+            if isinstance(m, Add | Reduce | Delete | Replace):
+                out.append((raw[0], m))
+    return out
+
+
+def dut_fields(kind: int, m: Message) -> dict[str, int]:
+    f = {"ref": 0, "new_ref": 0, "sell": 0, "shares": 0, "price": 0}
+    if isinstance(m, Add):
+        f.update(ref=m.ref, sell=int(m.side == "S"), shares=m.shares, price=m.price)
+    elif isinstance(m, Reduce):
+        f.update(ref=m.ref, shares=m.shares)
+    elif isinstance(m, Delete):
+        f.update(ref=m.ref)
+    elif isinstance(m, Replace):
+        f.update(ref=m.ref, new_ref=m.new_ref, shares=m.shares, price=m.price)
+    return f | {"type": kind, "ts": m.ts}
+
+
+# ------------------------------------------------------------------ the run
+async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_valid: float,
+              p_ready: float) -> BoundedBook:  # fmt: skip
+    rng = get_rng(name)
+    cocotb.start_soon(Clock(dut.clk_i, 8, unit="ns").start())
+    lo_ticks = base - HALF
+    dut.cfg_lo_price_i.value = lo_ticks * TICK
+    dut.s_valid_i.value = 0
+    dut.m_ready_i.value = 0
+    dut.rst_i.value = 1
+    await ClockCycles(dut.clk_i, 3)
+    dut.rst_i.value = 0
+
+    book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=4)
+    pending = deque(enumerate(recs))
+    history: deque[str] = deque(maxlen=8)
+    bids: dict[int, int] = {}
+    asks: dict[int, int] = {}
+    oow: Counter[tuple[str, str]] = Counter()
+    beats: list[str] = []
+    counts = dict.fromkeys(STATUS, 0)
+    done = {"messages": 0}
+
+    def fail(why: str) -> None:
+        ctx = "\n  ".join(history)
+        raise AssertionError(f"{name}: {why}\n last messages:\n  {ctx}\n beats: {beats}")
+
+    def apply_beat() -> None:
+        kind, sell = int(dut.m_kind_o.value), int(dut.m_sell_o.value)
+        dec, shares = int(dut.m_dec_o.value), int(dut.m_shares_o.value)
+        side = "S" if sell else "B"
+        beats.append(f"kind={kind} side={side} idx={int(dut.m_idx_o.value)} dec={dec} n={shares}")
+        if kind == K_LEVEL:
+            levels = asks if sell else bids
+            price = (lo_ticks + int(dut.m_idx_o.value)) * TICK
+            now = levels.get(price, 0) + (-shares if dec else shares)
+            if now < 0:
+                fail(f"level {price} went negative")
+            if now:
+                levels[price] = now
+            else:
+                levels.pop(price, None)
+        elif kind == K_OOW:
+            oow[side, "better" if int(dut.m_better_o.value) else "worse"] += -1 if dec else 1
+        elif kind != K_NONE:
+            fail(f"bad delta kind {kind}")
+
+    def check_message() -> None:
+        if not pending:
+            fail("a last beat with no message outstanding")
+        i, (kind, m) = pending.popleft()
+        history.append(f"#{i} {chr(kind)} {m}")
+        if int(dut.m_seq_o.value) != i or int(dut.m_ts_o.value) != m.ts:
+            fail(f"seq/ts {int(dut.m_seq_o.value)}/{int(dut.m_ts_o.value)} != {i}/{m.ts}")
+        book.apply(m)
+        want_oow = {k: v for k, v in book._oow.items() if v}
+        got_oow = {k: v for k, v in oow.items() if v}
+        if bids != book.bids or asks != book.asks or got_oow != want_oow:
+            fail(
+                f"book differs after #{i}\n DUT   bids {bids}\n model bids {book.bids}\n"
+                f" DUT   asks {asks}\n model asks {book.asks}\n DUT oow {got_oow} model {want_oow}"
+            )
+        beats.clear()
+        done["messages"] += 1
+
+    async def monitor() -> None:
+        while True:
+            await RisingEdge(dut.clk_i)
+            for s in STATUS:
+                counts[s] += int(getattr(dut, s).value)
+            if int(dut.m_valid_o.value) and int(dut.m_ready_i.value):
+                apply_beat()
+                if int(dut.m_last_o.value):
+                    check_message()
+            dut.m_ready_i.value = int(rng.random() < p_ready)
+
+    cocotb.start_soon(monitor())
+    for i, (kind, m) in enumerate(recs):
+        while rng.random() >= p_valid:
+            dut.s_valid_i.value = 0
+            await RisingEdge(dut.clk_i)
+        f = dut_fields(kind, m)
+        dut.s_type_i.value = f["type"]
+        dut.s_seq_i.value = i
+        dut.s_ts_i.value = f["ts"]
+        dut.s_ref_i.value = f["ref"]
+        dut.s_new_ref_i.value = f["new_ref"]
+        dut.s_sell_i.value = f["sell"]
+        dut.s_shares_i.value = f["shares"]
+        dut.s_price_i.value = f["price"]
+        dut.s_valid_i.value = 1
+        while True:
+            await RisingEdge(dut.clk_i)
+            if int(dut.s_ready_o.value):
+                break
+    dut.s_valid_i.value = 0
+
+    # Drained = every message's last beat seen; bounded so a lost beat fails, not hangs.
+    for _ in range(1000):
+        if done["messages"] == len(recs):
+            break
+        await ClockCycles(dut.clk_i, 10)
+    await ClockCycles(dut.clk_i, 5)
+    if done["messages"] != len(recs):
+        fail(f"only {done['messages']} of {len(recs)} messages completed")
+
+    want = {s: model_count(book, p) for s, p in STATUS.items()}
+    assert counts == want, f"{name}: counters\n DUT   {counts}\n model {want}"
+    assert int(dut.stale_o.value) == int(book.stale), "stale flag"
+    cocotb.log.info("%s: %d messages, counters %s, stale %d", name, len(recs), want, book.stale)
+    return book
+
+
+def adversarial(seed: int, n: int) -> list[tuple[int, Message]]:
+    rng = get_rng(f"ot_gen_{seed}")
+    msgs = generator.generate(seed=rng.randrange(1 << 30), count=n)
+    base = generator.DEFAULT.base_price // TICK
+    block = directed(base)
+    k = rng.randrange(len(msgs) // 4, len(msgs) // 2)  # mid-stream, with a busy table
+    return records(msgs[:k] + block + msgs[k:] + directed(base))
+
+
+@cocotb.test()
+async def adversarial_full_rate(dut):
+    """Generator + directed limits, no stalls: every counter path must be reached."""
+    base = generator.DEFAULT.base_price // TICK
+    book = await run(dut, "ot_adv", adversarial(1, 20_000), base, 1.0, 1.0)
+    for path in STATUS.values():
+        if path == "table_overflow" and SET_BITS != 9:
+            continue  # the generator aims its collisions at 512 sets per bank
+        assert model_count(book, path) > 0, f"stimulus never produced {path}"
+
+
+@cocotb.test()
+async def adversarial_backpressure(dut):
+    """Same mix with input gaps and output stalls: the handshake must not lose a beat."""
+    base = generator.DEFAULT.base_price // TICK
+    await run(dut, "ot_adv_bp", adversarial(2, 8_000), base, 0.6, 0.4)
+
+
+@cocotb.test(skip=SET_BITS != 13)
+async def real_day_head(dut):
+    """First 50,000 messages of 2019-10-18 AAPL at the real geometry (ADR 0001/0002)."""
+    with FIXTURE.open("rb") as f:
+        recs = records(list(iter_raw(f)))
+    book = await run(dut, "ot_real", recs, REAL_BASE, 1.0, 0.9)
+    assert not book.stale and book.table_overflow == 0
+
+
+@cocotb.test()
+async def out_of_window_alone_is_not_stale(dut):
+    """ADR 0006: out-of-window orders are flagged by ADR 0002, so they must not mark stale.
+
+    The adversarial streams are always stale for other reasons, so they cannot see a stale
+    flag raised by price_oow; this clean stream has far prices and nothing else.
+    """
+    cfg = generator.Config(p_collide=0.0, p_unknown_ref=0.0, p_far_price=0.1)
+    msgs = generator.generate(seed=get_rng("ot_oow_gen").randrange(1 << 30), count=4000, cfg=cfg)
+    book = await run(dut, "ot_oow", records(msgs), cfg.base_price // TICK, 1.0, 1.0)
+    assert book.price_oow > 0 and not book.stale
