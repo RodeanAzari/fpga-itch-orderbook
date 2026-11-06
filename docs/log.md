@@ -283,3 +283,33 @@ Root cause: an unbounded `while sb.pending` wait. Fix: a bounded wait, then
 **Bug (my analysis): "dead" logic.** I removed `bad_q` from the deframer as redundant. It
 is: a packet ending in `S_TRAIL` already fails `end_ok`. The clean failure seen right
 afterwards was the 60-byte stimulus bug above, confirmed on two fixed seeds.
+
+## 2026-11-05 (evening): link up; eth-core-v0.1 RX gate passed on hardware
+
+**Link.** The cable is in: DP83848J ↔ I225-LM at 100 Mbit/s full duplex. `rx_stats`
+reprogrammed over JTAG (DONE=1).
+
+**Gate (fpga-eth-core `dc3e0b9`, `data/results/2026-11-05_v0.1_rx_stats_sustained.md`).**
+610 s at 8,000 datagrams/s × 1,472 B (98.4 Mbit/s on the wire): 4,880,000 sent, 4,880,000
+delivered, payload bytes exact, CRC/RX/runt/oversize/overflow/IP-checksum/malformed all 0,
+RX FIFO high-water mark 1 byte of 2,048. PASS on the registered criterion (zero drops).
+
+**Bug (host): datagrams arrive out of order.** Symptom: `seq_err` ≈ `seq_lost` ≈ 0.08% of
+datagrams although `udp_ok` = sent. Root cause, narrowed by elimination: WSL egress is in
+order (tcpdump, 80,000/80,000); Windows pktmon, following IP IDs, shows order intact through
+vmswitch and first broken at `netadaptercx.sys` (I225-LM miniport). WSL `ethtool -L eth0
+combined 1` did not help. Not fixed yet: MoldUDP64 would turn it into gaps, so Phase D needs
+an in-order host path (Intel driver queue setting, a usbipd USB NIC, or a pinned Windows sender).
+
+**Mistakes of mine worth remembering.**
+- Called the 6/6 `seq_err`/`seq_lost` pattern "reordering" before measuring, then called the
+  next run's pattern "a skipped check in the FPGA". Neither follows from the counters alone; a
+  datagram arriving k late adds about k+1 to `seq_lost` for 3 errors. Only the captures settled it.
+- Claimed opening `/dev/ttyUSB1` resets the design. It is closing it with HUPCL set (DTR drop);
+  with `-hupcl` the counters persist.
+
+**Environment.** Vivado aborts on a locale error outside `vivado-env`. fpga-eth-core `make ci`
+needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump installed in WSL.
+
+**Docs.** CLAUDE.md split: §5–§11 to `docs/buildplan.md` (749 → 248 lines), phase table to
+`progress.md`, lean-docs rule added.

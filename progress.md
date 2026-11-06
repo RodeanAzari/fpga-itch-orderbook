@@ -7,7 +7,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | Phase | Status | Key result |
 |---|---|---|
 | A — Python golden model + data | COMPLETE (`v0.1-model`) | Peak 27,814 live orders; d-left table 0 overflows over the day |
-| B — MAC + IPv4/UDP on hardware | IN PROGRESS | Link up 100 Mbps FD; RX path clean on hardware; v0.1 gate run in progress |
+| B — MAC + IPv4/UDP on hardware | IN PROGRESS | v0.1 RX gate PASSED on hardware: 4.88 M datagrams, 610 s at 98.4 Mbit/s, zero drops (tag pending user OK) |
 | C — MoldUDP64 + ITCH decoder | IN PROGRESS (sim) | RTL matches the model record for record; OOC WNS +0.896 ns at 125 MHz |
 | D — Order book engine | NOT STARTED | — |
 | E — Timestamping + latency measurement | NOT STARTED | — |
@@ -16,9 +16,9 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 ## Next steps
 
 1. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on v0.1 and v0.2):
-   - v0.1 gate (`rx_stats`, >= 10 min at 8,000 datagrams/s, zero drops, FIFO high-water
-     mark): judged on loss (`udp_ok` = sent, `ovf_lost` = 0), matching the registered test.
-     Then: CSV + sidecar in fpga-eth-core, CHANGELOG, ask the user before tagging.
+   - v0.1 gate passed (fpga-eth-core `dc3e0b9`, evidence in its `data/results/`). Waiting
+     on the user's OK to tag `eth-core-v0.1`; at tag time, move the RX entries out of
+     CHANGELOG "Unreleased" into the v0.1 section.
    - v0.2 gate: program `udp_echo`, run `host/udp_echo_check`. The host has only the
      link-local address 169.254.235.36 on `eth0`; the echo reply needs a Windows firewall
      rule for inbound UDP.
