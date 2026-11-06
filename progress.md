@@ -9,7 +9,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | A — Python golden model + data | COMPLETE (`v0.1-model`) | Peak 27,814 live orders; d-left table 0 overflows over the day |
 | B — MAC + IPv4/UDP on hardware | IN PROGRESS: only the user's physical captures left | `eth-core-v0.1`/`v0.2` tagged: RX 4.88 M datagrams zero drops; TX 9 M echoes intact; submodule at v0.2 |
 | C — MoldUDP64 + ITCH decoder | IN PROGRESS (sim) | RTL matches the model record for record; OOC WNS +0.896 ns at 125 MHz |
-| D — Order book engine | NOT STARTED | — |
+| D — Order book engine | IN PROGRESS (sim) | ADR 0006 (levels) accepted; model has sub-penny rule + book stale; no RTL yet |
 | E — Timestamping + latency measurement | NOT STARTED | — |
 | F — Stress, coverage closure, portfolio | NOT STARTED | — |
 
@@ -29,7 +29,8 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    (`make host host-test`; byte-identical to `model.moldudp64.packetize` on the AAPL day).
    The 64-bit message aligner is deferred to Phase E (ADR 0005), so "every alignment"
    coverage waits for it.
-3. Before Phase D on hardware: fix host-side reordering (below). Before RTL is tagged in
+3. Phase D (sim): order-table RTL + cocotb vs `BoundedBook` next, then level arrays/bitmap/BBO
+   (ADR 0006). Before Phase D on hardware: fix host-side reordering (below). Before RTL is tagged in
    Phase D: check the table sizing on a second, busier day.
 
 ## Open problem: the host reorders datagrams (blocks a zero-mismatch full day)
