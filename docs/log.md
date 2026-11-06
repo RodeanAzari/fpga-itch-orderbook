@@ -332,3 +332,18 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   late echoes fails on the old checker (lost = 1,042) and passes now.
 - Correction: I first read the board's `udp_ok` before its last UART line printed and thought
   it had missed 11,304 datagrams. The per-second log showed it had not.
+
+## 2026-11-05 (late): host/replay
+
+- `host/replay` (C++20): gzip or plain ITCH file → MoldUDP64 packets (≤ 1,472 B, greedy,
+  end-of-session last) over UDP, or `--out` to a file. Pacing: flat out, `--pps`, or
+  `--realtime --speed X` (each packet paced by its first message's ITCH timestamp; lag is logged).
+  Deterministic `--drop-every/--dup-every/--swap-every` faults. `make host host-test host-lint`,
+  all in `make ci`. GoogleTest 1.17.0 comes in via CMake FetchContent, SHA-256 pinned.
+- Verified: 14 GoogleTest cases (ASan/UBSan), 25 pytest cases checking replay byte for byte
+  against `model.moldudp64.packetize` + `SeqTracker`; 5 injected bugs (payload-limit
+  off-by-one, fault on the wrong packet, swap not reordered, little-endian seq, missing count
+  cap) each caught, then reverted. AAPL 2019-10-18 extract: 1,669,592 messages → 35,313
+  packets, byte-identical to the model (smoke check to a file; not a reported result).
+- Lint note: clang-tidy's `bugprone-unchecked-optional-access` does not treat gtest's
+  `ASSERT_TRUE(opt)` as a guard, so it is disabled for `test_mold.cpp` only.
