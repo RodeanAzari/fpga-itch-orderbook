@@ -7,7 +7,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | Phase | Status | Key result |
 |---|---|---|
 | A — Python golden model + data | COMPLETE (`v0.1-model`) | Peak 27,814 live orders; d-left table 0 overflows over the day |
-| B — MAC + IPv4/UDP on hardware | IN PROGRESS | `eth-core-v0.1` tagged (RX: 4.88 M datagrams, zero drops); v0.2 TX gate PASSED (9 M echoes intact), tag pending user OK |
+| B — MAC + IPv4/UDP on hardware | IN PROGRESS: only the user's physical captures left | `eth-core-v0.1`/`v0.2` tagged: RX 4.88 M datagrams zero drops; TX 9 M echoes intact; submodule at v0.2 |
 | C — MoldUDP64 + ITCH decoder | IN PROGRESS (sim) | RTL matches the model record for record; OOC WNS +0.896 ns at 125 MHz |
 | D — Order book engine | NOT STARTED | — |
 | E — Timestamping + latency measurement | NOT STARTED | — |
@@ -16,8 +16,10 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 ## Next steps
 
 1. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on v0.1 and v0.2):
-   - `eth-core-v0.1` tagged. v0.2 gate passed (fpga-eth-core `e148085`); tag on the user's OK.
-   - Then add `fpga-eth-core` as the `rtl/eth/` submodule here at `eth-core-v0.2`.
+   - Both tags released; `rtl/eth/` is the fpga-eth-core submodule at `eth-core-v0.2`.
+   - Left for the Phase B DoD: the user's board photo (link LEDs) and ILA screenshot
+     (`docs/portfolio-todo.md`), then the README Phase B section. The "10 M packets from
+     `replay`" item waits for `host/replay` (Phase C); the gate runs used `udp_seq_send`.
    - Host setup that the runs need: `eth0` has only link-local 169.254.235.36; a Hyper-V
      firewall rule (`fpga-udp-echo`) admits UDP from 192.168.10.2; fpga-eth-core `make ci`
      needs `PY=~/OrderBook/.venv/bin/python`.

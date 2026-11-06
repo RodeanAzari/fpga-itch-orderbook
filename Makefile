@@ -11,6 +11,7 @@ RTL := $(wildcard rtl/*/*.sv)
 .PHONY: setup lint sim model-test day-stats plots clean
 
 setup:
+	git submodule update --init
 	python3 -m venv $(VENV)
 	$(PY) -m pip install -q -r requirements.txt
 
