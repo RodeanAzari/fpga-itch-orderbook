@@ -8,7 +8,7 @@ OSS := $(HOME)/.local/opt/oss-cad-suite/bin
 export PATH := $(PATH):$(OSS)
 RTL := $(wildcard rtl/*/*.sv)
 
-.PHONY: setup lint sim model-test day-stats plots clean
+.PHONY: setup lint sim model-test ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -31,6 +31,9 @@ model-test:
 	$(PY) -m ruff format --check model analysis tb
 	$(PY) -m mypy
 	$(PY) -m pytest -q
+
+# Everything CI runs, locally. formal, host and host-test join when this repo has them.
+ci: lint sim model-test
 
 # Full-day replay of one symbol through the golden model (~minutes; needs the day file).
 day-stats:
