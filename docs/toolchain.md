@@ -15,6 +15,8 @@ warn when `version -short` differs from the version below.
 | CMake | 4.2.3 | system |
 | g++ | 15.2.0 | system |
 | clang-tidy / clang-format | 21.1.6 | pip wheels in `.venv` (`requirements.txt`); no sudo needed |
+| GoogleTest | 1.17.0 | fetched by `host/CMakeLists.txt` (FetchContent, SHA-256 pinned); needs network on first configure |
+| zlib | 1.3.1 (`zlib1g-dev`) | system; `host/replay` reads `.gz` day files |
 | tcpreplay | — | **not installed yet** (`sudo apt install tcpreplay`) |
 | GTKWave | system package | waveforms |
 

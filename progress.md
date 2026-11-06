@@ -18,12 +18,15 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 1. Phase B (`fpga-eth-core`, local at `~/fpga-eth-core`; P3 is hard-gated on v0.1 and v0.2):
    - Both tags released; `rtl/eth/` is the fpga-eth-core submodule at `eth-core-v0.2`.
    - Left for the Phase B DoD: the user's board photo (link LEDs) and ILA screenshot
-     (`docs/portfolio-todo.md`), then the README Phase B section. The "10 M packets from
-     `replay`" item waits for `host/replay` (Phase C); the gate runs used `udp_seq_send`.
+     (`docs/portfolio-todo.md`), then the README Phase B section, and the "10 M packets from
+     `replay`" hardware run (`host/replay` now exists; needs the board and a frame-counter
+     bitstream that accepts the feed's group/port).
    - Host setup that the runs need: `eth0` has only link-local 169.254.235.36; a Hyper-V
      firewall rule (`fpga-udp-echo`) admits UDP from 192.168.10.2; fpga-eth-core `make ci`
      needs `PY=~/OrderBook/.venv/bin/python`.
-2. Phase C: annotated waveform (media); hardware full-day decode once the eth-core tags exist.
+2. Phase C: annotated waveform (media); hardware full-day decode needs a top level
+   (eth-core RX → feed_frontend → decoded-stream report to host). `host/replay` is done
+   (`make host host-test`; byte-identical to `model.moldudp64.packetize` on the AAPL day).
    The 64-bit message aligner is deferred to Phase E (ADR 0005), so "every alignment"
    coverage waits for it.
 3. Before Phase D on hardware: fix host-side reordering (below). Before RTL is tagged in
