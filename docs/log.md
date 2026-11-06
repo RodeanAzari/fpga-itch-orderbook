@@ -347,3 +347,37 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   packets, byte-identical to the model (smoke check to a file; not a reported result).
 - Lint note: clang-tidy's `bugprone-unchecked-optional-access` does not treat gtest's
   `ASSERT_TRUE(opt)` as a guard, so it is disabled for `test_mold.cpp` only.
+
+## 2026-11-06: ADR 0006 (price levels), model stale rule, order-table RTL
+
+- **Host reordering, no board today.** The I225-LM driver (`e2fn.sys` 2.1.4.3, Lenovo OEM)
+  exposes no RSS/VMQ/queue setting, so the "driver queue setting" idea was wrong. Agreed
+  plan for the next board session is in `progress.md` (rate sweep, Packet Priority off).
+- **ADR 0006** from `analysis/levels.py` over the AAPL day: max level 294,065 shares; up to
+  922 live levels per side; ~97k next-best searches; max search distance 188 ticks. 36-bit
+  level words make overflow impossible (65,536 orders × < 2^20 shares) at no BRAM cost.
+  In-window sub-penny prices: 0 on the day (10 sub-penny prices, all out of window).
+- **Model:** `BoundedBook` gains `price_subpenny` and a sticky `stale` (table/ref/shares
+  overflow, sub-penny, unknown/duplicate ref, over-reduce). Real day: all 0, `book_stale` 0.
+- **Order table RTL** (`rtl/book/order_table.sv`, `rtl/lib/sdp_ram.sv`): records → level
+  deltas, one message at a time, first beat in cycle 5. cocotb at 512 and 8,192 sets per
+  bank against `BoundedBook`, shadow book compared after every message; 49,271 real
+  messages (first 50k of the day) with 0 overflow, never stale.
+- **Bug (test gap): stale raised by `price_oow` went unnoticed.** Symptom: that injected
+  RTL bug passed the adversarial tests. Root cause: every adversarial stream is already
+  stale from unknown refs and overflows, so the flag could not be wrong there. Fix: a
+  clean stream with far prices only (`out_of_window_alone_is_not_stale`); it now fails on
+  that bug. The other 9 injected bugs were caught from the start.
+- **My own miscount:** I hand-counted the order table's latency as 4 cycles and nearly
+  "corrected" the header's 5; the new latency test measured 5. Latency numbers come from
+  that test, not from reading the FSM.
+- **Bug (synthesis): order table failed timing and BRAM budget.** First OOC run: WNS
+  −8.449 ns at 125 MHz and 108 BRAM36. Root causes, one per run: (1) the hash's final add
+  fed the BRAM read address directly, which fans out to 54 BRAMs across the die (8.5 ns of
+  route), and the whole price → index divide sat in one cycle; (2) one 8K-deep RAM per bank
+  mapped as 8K × 4 tiles (54 each); (3) the reduce compare/subtract/row-mux chain in
+  S_ACT; (4) BRAM clock-to-out into the tag match. Fixes: registered set/tag (S_ADDR), a
+  three-stage price class, two 4K-deep halves per bank, per-way reduce arithmetic in
+  S_EVAL, BRAM output register. Result: WNS +0.294 ns, 96 BRAM36, 8 DSP, 1,973 LUTs,
+  2,446 FFs, 0 critical warnings. Latency 5 → 7 cycles (measured); 4 more injected bugs
+  in the new logic were each caught.
