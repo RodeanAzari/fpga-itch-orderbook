@@ -9,7 +9,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | A — Python golden model + data | COMPLETE (`v0.1-model`) | Peak 27,814 live orders; d-left table 0 overflows over the day |
 | B — MAC + IPv4/UDP on hardware | IN PROGRESS: only the user's physical captures left | `eth-core-v0.1`/`v0.2` tagged: RX 4.88 M datagrams zero drops; TX 9 M echoes intact; submodule at v0.2 |
 | C — MoldUDP64 + ITCH decoder | IN PROGRESS (sim) | RTL matches the model record for record; OOC WNS +0.896 ns at 125 MHz |
-| D — Order book engine | IN PROGRESS (sim) | Order table RTL matches `BoundedBook` (sim); OOC WNS +0.294 ns at 125 MHz, 96 BRAM36 |
+| D — Order book engine | IN PROGRESS (sim) | `book_engine` (table + levels + BBO) matches `BoundedBook` BBO stream (sim); OOC WNS +0.069 ns at 125 MHz, 104 BRAM36 |
 | E — Timestamping + latency measurement | NOT STARTED | — |
 | F — Stress, coverage closure, portfolio | NOT STARTED | — |
 
@@ -29,11 +29,12 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    (`make host host-test`; byte-identical to `model.moldudp64.packetize` on the AAPL day).
    The 64-bit message aligner is deferred to Phase E (ADR 0005), so "every alignment"
    coverage waits for it.
-3. Phase D (sim): order table done (`rtl/book/order_table.sv`, 7-cycle lookup). Next: price
-   levels + two-level bitmap + BBO tracker (ADR 0006), consuming its delta beats; then the
-   1M+-event stress run (`make sim-full`). Model edge to settle first: a 0-share Add leaves a
-   0-size level in `OrderBook` but would not set an occupancy bit. Before Phase D on hardware: fix host-side reordering (below). Before RTL is tagged in
-   Phase D: check the table sizing on a second, busier day.
+3. Phase D (sim): `book_engine` done (record → BBO 15 cycles, 21 with a search). Next:
+   `make sim-full` 1M+-event stress run (DoD), formal on bitmap find-first-set (§8.3), then
+   the Phase C/D top level. Timing margin is < 1 % OOC: the full design may need another
+   stage or a lower core clock (write the core-clock ADR then). Before Phase D on hardware:
+   fix host-side reordering (below). Before RTL is tagged in Phase D: check the table
+   sizing on a second, busier day.
 
 ## Open problem: the host reorders datagrams (blocks a zero-mismatch full day)
 

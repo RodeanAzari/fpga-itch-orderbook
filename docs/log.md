@@ -381,3 +381,21 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   S_EVAL, BRAM output register. Result: WNS +0.294 ns, 96 BRAM36, 8 DSP, 1,973 LUTs,
   2,446 FFs, 0 critical warnings. Latency 5 → 7 cycles (measured); 4 more injected bugs
   in the new logic were each caught.
+- **Model fixes before the level RTL.** A 0-share Add left a 0-size level in `OrderBook`
+  (the RTL bitmap would not mark it); `BoundedBook` compared a 5-field state to a 4-field
+  initial value, so its first message always published a BBO. Both fixed, each with a
+  test that fails on the old model; real-day CSV unchanged.
+- **Price levels + bitmap + BBO** (`rtl/book/book_levels.sv`, `book_engine.sv`): matches
+  `BoundedBook`'s BBO stream update for update, 0 mismatches: adversarial/directed at 512
+  and 8,192 sets, a whole-window stream (~4,200 bitmap searches, up to 2,485 ticks), and
+  the first 50k real messages (10,582 BBO updates). Record → BBO: 15 cycles, 21 when the
+  best empties (measured).
+- **Bug (test gap): worse-edge flag.** Symptom: the injected bug "flag a worse-edge order
+  even while the side has levels" passed at 512 sets. Root cause: the seeded stream never
+  had a far-worse order live beside in-window levels on the same side. Fix: a directed
+  case for both sides in `book_stim.directed`; caught at both geometries now.
+- **Timing (book_engine OOC):** −0.240 → −0.335 → +0.006 → +0.065 → +0.089 → +0.069 ns
+  at 125 MHz, each run's worst path fixed in turn (L2 read address register, two-stage
+  reciprocal multiply, L2 word register in the search, registered hash key, registered
+  level-non-zero). Stopped at +0.069 ns: the last runs differ by placement noise. 104
+  BRAM36, 10 DSP, 3,172 LUTs, 3,528 FFs, 0 critical warnings. Margin < 1 %.
