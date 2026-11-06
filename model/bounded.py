@@ -64,6 +64,9 @@ class BoundedBook(OrderBook):
     _slot: dict[int, tuple[int, int]] = field(default_factory=dict)  # ref -> (bank, set)
     # Live out-of-window orders per (side, edge). "better" beats every in-window price.
     _oow: Counter[tuple[str, str]] = field(default_factory=Counter)
+    # Same shape as _state() (BBO plus the out-of-window flag), so the first message is
+    # published only if it really changes the empty book.
+    _last: tuple[int, ...] = (0, 0, 0, 0, False)
 
     @property
     def stale(self) -> bool:

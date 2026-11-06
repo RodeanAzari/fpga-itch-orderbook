@@ -202,3 +202,21 @@ def test_every_silent_divergence_marks_stale_and_nothing_else_does() -> None:
     over.apply(Reduce(1, 2, 1, 101))
     for book in (table_full, ref_wide, shares_wide, unknown, duplicate, over):
         assert book.stale
+
+
+def test_first_message_that_changes_nothing_publishes_nothing() -> None:
+    # The RTL compares against an all-empty, unflagged BBO from reset; so must the model.
+    for book in (OrderBook(), BoundedBook(base_ticks=1000, half_window=10)):
+        assert book.apply(Delete(1, 1, 99)) is None
+        assert book.counters.unknown_ref == 1
+
+
+def test_zero_share_order_is_live_but_adds_no_level() -> None:
+    # A 0-size level would be "occupied" in the model but not in the RTL's bitmap.
+    for book in (OrderBook(), BoundedBook(base_ticks=1000, half_window=10)):
+        assert book.apply(add(1, "B", 0, 100_000)) is None
+        assert 1 in book.orders and not book.bids
+        bbo = book.apply(add(2, "B", 100, 100_000))
+        assert bbo is not None and (bbo.bid_price, bbo.bid_size) == (100_000, 100)
+        assert book.apply(Delete(1, 2, 1)) is None  # resolves, and the level keeps 100
+        assert book.bids == {100_000: 100} and book.counters.unknown_ref == 0

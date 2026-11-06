@@ -83,8 +83,8 @@ class OrderBook:
             return
         self.orders[ref] = _Order(side, price, shares)
         self.peak_live_orders = max(self.peak_live_orders, len(self.orders))
-        if not self._has_level(price):
-            return
+        if not self._has_level(price) or shares == 0:
+            return  # a 0-share order is live but adds no level
         levels = self.bids if side == "B" else self.asks
         if price not in levels:
             heap, key = (self._bid_heap, -price) if side == "B" else (self._ask_heap, price)
@@ -112,7 +112,7 @@ class OrderBook:
         if order is None:
             self.counters.unknown_ref += 1
             return
-        if not self._has_level(order.price):
+        if not self._has_level(order.price) or order.shares == 0:
             return
         levels = self.bids if order.side == "B" else self.asks
         levels[order.price] -= order.shares
