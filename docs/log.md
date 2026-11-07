@@ -399,3 +399,12 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   reciprocal multiply, L2 word register in the search, registered hash key, registered
   level-non-zero). Stopped at +0.069 ns: the last runs differ by placement noise. 104
   BRAM36, 10 DSP, 3,172 LUTs, 3,528 FFs, 0 critical warnings. Margin < 1 %.
+- **Formal (§8.3):** the best-price search's encoders now live in `rtl/book/prio_enc.sv`;
+  `tb/formal/bitmap_search.sby` proves, for any 4,096-level bitmap, that the L1 → L2
+  search returns exactly the best set level (bids highest, asks lowest). 38 s; 3 injected
+  encoder bugs each fail the proof. `make formal` is in `make ci`.
+- **`make sim-full`** (`data/results/2026-11-06_sim_full_book.*`, 1 h 03 min): the whole
+  2019-10-18 AAPL day through `book_engine` in simulation, 1,658,958 messages → 831,842
+  BBO updates identical to the golden model, `bbo_oow` 4, never stale. Wide stream:
+  204,162 messages, 69,739 searches. Random: 970,835 records, 0 mismatches, but below 1M
+  on its own and the table saturates (290,065 overflows), so it mostly exercises overflow.
