@@ -71,8 +71,11 @@ message whose best price, size or out-of-window flag changed).
 | 56 | 8 | `t2` | cycle count when this update was valid at the book output; 0 until Phase E |
 
 Flags:
-- `stale`: the book or the feed is stale at this update (ADR 0003, ADR 0006): a gap, a
-  malformed message, or a capacity limit since the last config. Sticky until the next config.
+- `stale`: the feed decoder was stale when it decoded the cause message (a gap or a
+  malformed message before it, ADR 0003), or the book is stale after applying it (a
+  capacity limit, ADR 0006). The feed's bit travels with the record through the book, so
+  a gap found while an earlier message is still in the book does not flag that earlier
+  update. Sticky until the next config. Golden model: `model.protocol.expected`.
 - `crossed`: both sides non-empty and `bid_px > ask_px`. `locked`: both non-empty and
   `bid_px == ask_px`. Same definitions as `model.book.Bbo`.
 - `out_of_window`: ADR 0002. Set exactly when this BBO differs from the unbounded book.
@@ -159,7 +162,7 @@ decoded). A rejected packet changes nothing and gets no ack.
 | 0 | 4 | `feed_group` | multicast group of the feed (class D) |
 | 4 | 2 | `feed_port` | UDP port of the feed |
 | 6 | 1 | `mode` | 0 = BBO records, 1 = trace records; other values rejected |
-| 7 | 1 | `locate_valid` | 1 = use `locate` (host fallback, ADR 0004); 0 = learn it from `R` |
+| 7 | 1 | `locate_valid` | 1 = use `locate` (host fallback, ADR 0004); 0 = learn it from `R`; other values rejected |
 | 8 | 8 | `symbol` | ASCII, left-justified, space-padded (ITCH stock field) |
 | 16 | 4 | `lo_price` | price window's low edge in ITCH price units, (base − 2,048) × 100 (ADR 0002) |
 | 20 | 2 | `locate` | used when `locate_valid` = 1 |

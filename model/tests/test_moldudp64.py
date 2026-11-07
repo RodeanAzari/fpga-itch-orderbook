@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import random
 import struct
+from dataclasses import replace
 
 from model import generator
 from model.itch import Add, Directory, decode
@@ -150,7 +151,7 @@ def _reference(msgs: list[bytes], symbol: str) -> list[Record]:
         if isinstance(m, Directory) and m.stock == symbol:
             locate = m.locate
         elif m is not None and raw[:1] in b"AFECXDU" and m.locate == locate:
-            out.append(Record(seq, m))
+            out.append(Record(seq, m, raw[0]))
     return out
 
 
@@ -204,4 +205,8 @@ def test_malformed_message_is_skipped_by_length_and_marks_stale() -> None:
     for p in packetize(msgs, S1):
         dec.feed(p)
     assert dec.c.malformed_messages == 1 and dec.stale
-    assert dec.records == [x for x in _reference(msgs, cfg.stock) if x.seq != k + 1]
+    want = [x for x in _reference(msgs, cfg.stock) if x.seq != k + 1]
+    assert [replace(x, stale=False) for x in dec.records] == want
+    # Stale rides with each record: set from the first record after the bad one, not before.
+    assert [x.stale for x in dec.records] == [x.seq > k + 1 for x in want]
+    assert any(x.stale for x in dec.records) and not all(x.stale for x in dec.records)

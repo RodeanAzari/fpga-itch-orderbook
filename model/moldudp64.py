@@ -143,6 +143,8 @@ class Record:
 
     seq: int  # MoldUDP64 sequence number of the message (the "cause" in BBO output)
     msg: Message
+    kind: int  # ITCH type byte (A and F both decode to Add; E, C and X to Reduce)
+    stale: bool = False  # the decoder was stale when this record left it (rides with it)
 
 
 @dataclass(slots=True)
@@ -209,6 +211,6 @@ class FeedDecoder:
                 self.c.malformed_messages += 1  # e.g. a side that is not B or S
                 continue
             assert m is not None
-            new.append(Record(seq, m))
+            new.append(Record(seq, m, kind[0], self.stale))
         self.records.extend(new)
         return new
