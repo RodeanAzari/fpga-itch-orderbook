@@ -15,7 +15,7 @@ from cocotb_tools.runner import get_results, get_runner
 ROOT = Path(__file__).resolve().parent.parent
 FEED = ["rtl/feed/mold_deframer.sv", "rtl/feed/itch_decoder.sv", "rtl/feed/feed_frontend.sv"]
 BOOK = ["rtl/lib/sdp_ram.sv", "rtl/book/order_table.sv"]
-ENGINE = [*BOOK, "rtl/book/book_levels.sv", "rtl/book/book_engine.sv"]
+ENGINE = [*BOOK, "rtl/book/prio_enc.sv", "rtl/book/book_levels.sv", "rtl/book/book_engine.sv"]
 
 # test module -> (toplevel, sources, parameter sets)
 TESTS = {

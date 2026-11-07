@@ -13,3 +13,6 @@ build/
 *.log
 *.str
 tb/cocotb/results.xml
+tb/formal/*_prove/
+tb/formal/*_cover/
+tb/formal/bitmap_search/

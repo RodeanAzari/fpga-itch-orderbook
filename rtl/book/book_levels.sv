@@ -87,31 +87,6 @@ module book_levels #(
     logic [63:0]         seq_q;
     logic [47:0]         ts_q;
 
-    // Priority encoders: highest set bit for bids (sell = 0), lowest for asks.
-    function automatic logic [HI_BITS-1:0] pe_group(input logic [GROUPS-1:0] v, input logic sell);
-        logic [HI_BITS-1:0] r;
-        r = '0;
-        for (int i = 0; i < GROUPS; i++) begin
-            if (sell) begin
-                if (v[GROUPS-1-i]) r = HI_BITS'(GROUPS - 1 - i);  // last write: lowest
-            end else begin
-                if (v[i]) r = HI_BITS'(i);                        // last write: highest
-            end
-        end
-        return r;
-    endfunction
-    function automatic logic [LO_BITS-1:0] pe_level(input logic [GW-1:0] v, input logic sell);
-        logic [LO_BITS-1:0] r;
-        r = '0;
-        for (int i = 0; i < GW; i++) begin
-            if (sell) begin
-                if (v[GW-1-i]) r = LO_BITS'(GW - 1 - i);
-            end else begin
-                if (v[i]) r = LO_BITS'(i);
-            end
-        end
-        return r;
-    endfunction
 
     // ---------------------------------------------------------------- level RAMs
     logic [WIN_BITS-1:0] rd_addr_q;             // the one read address (delta, or new best)
@@ -142,6 +117,17 @@ module book_levels #(
 
     always_ff @(posedge clk_i) if (l2_we) l2[l2_wa] <= l2_wd;
     assign l2_rd = l2[l2_ra_q];
+
+    // Best-price search encoders (ADR 0006): highest set bit for bids (sell = 0), lowest
+    // for asks. S_FIND1 encodes L1, S_FIND3 the found group's L2 word.
+    logic [HI_BITS-1:0] grp_found;
+    logic [LO_BITS-1:0] lvl_found;
+    prio_enc #(.IDX_W(HI_BITS)) u_pe_group (
+        .v_i(l1_q[sell_q]), .lowest_i(sell_q), .idx_o(grp_found)
+    );
+    prio_enc #(.IDX_W(LO_BITS)) u_pe_level (
+        .v_i(gw_q), .lowest_i(sell_q), .idx_o(lvl_found)
+    );
 
     // ---------------------------------------------------------------- best, counters
     logic [1:0]                    bv_q;        // side has an in-window level
@@ -243,8 +229,8 @@ module book_levels #(
                     bsz_q[sell_q] <= '0;
                     state_q <= S_DONE;
                 end else begin
-                    g_q     <= pe_group(l1_q[sell_q], sell_q);
-                    l2_ra_q <= {sell_q, pe_group(l1_q[sell_q], sell_q)};
+                    g_q     <= grp_found;
+                    l2_ra_q <= {sell_q, grp_found};
                     state_q <= S_FIND2;
                 end
             end
@@ -253,8 +239,8 @@ module book_levels #(
                 state_q <= S_FIND3;
             end
             S_FIND3: begin                               // priority encode the word
-                best_q[sell_q] <= {g_q, pe_level(gw_q, sell_q)};
-                rd_addr_q      <= {g_q, pe_level(gw_q, sell_q)};
+                best_q[sell_q] <= {g_q, lvl_found};
+                rd_addr_q      <= {g_q, lvl_found};
                 state_q        <= S_SZ;
             end
             S_SZ:    state_q <= S_SZREG;

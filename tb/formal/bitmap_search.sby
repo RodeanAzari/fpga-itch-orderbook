@@ -1,0 +1,23 @@
+# buildplan §8.3: bitmap find-first-set always returns the best non-empty level.
+# Combinational, so depth 1 covers every input. Run: make formal
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 1
+cover: mode cover
+cover: depth 1
+
+[engines]
+smtbmc bitwuzla
+
+[script]
+read -formal -sv prio_enc.sv
+read -formal -sv bitmap_search_fv.sv
+prep -top bitmap_search_fv
+
+[files]
+../../rtl/book/prio_enc.sv
+bitmap_search_fv.sv

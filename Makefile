@@ -8,7 +8,7 @@ OSS := $(HOME)/.local/opt/oss-cad-suite/bin
 export PATH := $(PATH):$(OSS)
 RTL := $(wildcard rtl/*/*.sv)
 
-.PHONY: setup lint sim model-test host host-test host-lint ci day-stats plots clean
+.PHONY: setup lint sim formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -25,6 +25,10 @@ lint:
 # cocotb + Verilator regression (tb/run.py [test_module ...] for a subset).
 sim:
 	$(PY) tb/run.py
+
+# SymbiYosys proofs (buildplan §8.3).
+formal:
+	cd tb/formal && sby -f bitmap_search.sby
 
 model-test:
 	$(PY) -m ruff check model analysis tb host
@@ -53,8 +57,8 @@ host-lint: host
 	$(VENV)/bin/clang-tidy -p build/host-Release --quiet \
 	  --checks=-bugprone-unchecked-optional-access host/test_mold.cpp
 
-# Everything CI runs, locally. formal joins when this repo has it.
-ci: lint sim model-test host-test host-lint
+# Everything CI runs, locally.
+ci: lint sim formal model-test host-test host-lint
 
 # Full-day replay of one symbol through the golden model (~minutes; needs the day file).
 day-stats:
@@ -64,4 +68,4 @@ plots:
 	$(PY) -m analysis.plots
 
 clean:
-	rm -rf build .mypy_cache .ruff_cache .pytest_cache
+	rm -rf build .mypy_cache .ruff_cache .pytest_cache tb/formal/*_prove tb/formal/*_cover
