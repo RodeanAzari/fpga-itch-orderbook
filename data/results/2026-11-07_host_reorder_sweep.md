@@ -20,6 +20,8 @@ OUT=build/sweep/run1 RATES="4000" START_SEQ=1584000 scripts/reorder_sweep.sh
 OUT=build/sweep/run2 RATES="4000 4000 8000" START_SEQ=1824000 scripts/reorder_sweep.sh
 # user: Interrupt Moderation -> Disabled
 OUT=build/sweep/run3 RATES="4000 4000 8000" START_SEQ=2784000 scripts/reorder_sweep.sh
+# board reprogrammed (same bitstream); other sessions loading 2-3 cores
+OUT=build/sweep/run4 RATES="4000 4000" scripts/reorder_sweep.sh
 python3 scripts/reorder_table.py build/sweep/runN/runs.txt <label>   # one block per run dir
 ```
 
@@ -44,5 +46,12 @@ for the field list). Each CSV row is the difference of the lines before and afte
   reach the I225-LM miniport from different CPUs and are spread across its TX queues"
   (still not proven directly). The Phase D hardware full day needs a host path without
   this driver: next is a USB 3 Ethernet adapter attached to WSL with usbipd.
+- **CPU load from other sessions (rows `heavy_cpu_load`, later the same day):** with other
+  sessions' jobs using 2–3 cores (`_load_run4.txt`, 10 s samples of the top processes),
+  4,000 pps reordered 1.20 % and 1.40 %, about 10× the lightly loaded runs. Still 0 loss.
+  The board was reprogrammed with the same bitstream first (another session had used the
+  JTAG). Load is a strong driver of the rate, but no run so far has reached zero, and a
+  fully idle machine was not tested. Whether Interrupt Moderation was back to Enabled for
+  these runs is unknown.
 - **Host state left behind:** Packet Priority & VLAN stays Disabled (it helps a little);
   the user was asked to restore Interrupt Moderation to Enabled.
