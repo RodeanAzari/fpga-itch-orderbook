@@ -445,3 +445,14 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   reaches zero, so the Windows I225 driver path is a dead end; next is a USB 3 NIC in WSL.
 - **Mistake of mine:** a 3 s `cat /dev/ttyUSB1` peek before setting `-hupcl` reset the
   design (the §12 trap). It was harmless before the run, but configure the TTY first, always.
+- **Book sideband + per-update stale.** `book_engine` gained `USER_W` (`s_user_i` →
+  `m_user_o`, the feed's stale bit now, T1 in Phase E) and `m_stale_o`.
+- **Bug (design, caught before RTL existed for it): stale race.** Symptom (on paper): a
+  BBO flagged stale by a *later* message's overflow. Root cause: `order_table` takes the
+  next record while `book_levels` still searches (6–12 cycles), so the live `stale_o` can
+  be ahead of the BBO being published. Fix: each delta beat carries `stale_o` OR that
+  cycle's error pulses (the pulses lead `stale_o` by a cycle), which rides as a sideband
+  bit. test_book checks it per BBO; the "live sample" and "pulses missing" injections both
+  fail, but only at 512 sets: at 8,192 the stimulus rarely goes stale mid-run.
+- **USB NIC choice:** this WSL kernel has `ax88179_178a` (+ `cdc_ncm`, `lan78xx`) but no
+  `r8152`, so the adapter must be ASIX AX88179, not the more common Realtek RTL8153.

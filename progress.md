@@ -31,8 +31,9 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    coverage waits for it.
 3. Phase D (sim) is nearly complete (`make sim`, `make formal`, `make sim-full`). Left:
    - Phase C/D top level, contract in `docs/protocol.md` v1 (ADR 0007); golden encoder
-     `model/protocol.py` done (`expected()` gives the record stream). RTL left, in order:
-     1-bit feed-stale sideband through `book_engine` (record → BBO); `rtl/out/` builder
+     `model/protocol.py` done (`expected()` gives the record stream). `book_engine` now
+     carries `s_user_i`→`m_user_o` (USER_W; feed stale now, T1 in Phase E) and a
+     per-update `m_stale_o`. RTL left, in order: `rtl/out/` builder
      (record FIFO, flush-on-idle batching, stats snapshot, config parser + ack); second
      `udp_rx` for the control port; top level; frames-in → datagrams-out cocotb test vs
      `expected()`; `host/capture`. First full-chip synthesis settles timing: book_engine's
@@ -55,7 +56,8 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
   4,000 pps, Interrupt Moderation off trades rates; nothing reaches zero. Host state:
   Packet Priority & VLAN left Disabled; Interrupt Moderation should be back to Enabled
   (asked the user; confirm).
-- **Next: USB 3 Ethernet adapter (RTL8153/AX88179) to WSL via usbipd** (Linux drives it
+- **Next: USB 3 Ethernet adapter with an ASIX AX88179 chip (USB ID 0b95:1790) to WSL via usbipd**
+  (this WSL kernel ships `ax88179_178a`, `cdc_ncm`, `lan78xx`, but NOT `r8152`: avoid Realtek RTL8153) (Linux drives it
   directly; verify 100 Mb/s in order with a 10-min `scripts/reorder_sweep.sh` run).
   Then: newer Intel driver; Windows-native pinned sender; native Linux host.
   Rig: `rx_stats` bitstream (`~/fpga-eth-core/build/rx_stats/`), `stty -hupcl` BEFORE any read.
