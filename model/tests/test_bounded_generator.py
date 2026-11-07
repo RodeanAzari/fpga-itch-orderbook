@@ -220,3 +220,15 @@ def test_zero_share_order_is_live_but_adds_no_level() -> None:
         assert bbo is not None and (bbo.bid_price, bbo.bid_size) == (100_000, 100)
         assert book.apply(Delete(1, 2, 1)) is None  # resolves, and the level keeps 100
         assert book.bids == {100_000: 100} and book.counters.unknown_ref == 0
+
+
+def test_max_live_caps_the_book_and_is_reached() -> None:
+    # random_1m relies on this to stay below table capacity; uncapped, this seed passes 500.
+    def peak(cfg: Config) -> int:
+        book = OrderBook()
+        replay(book, generate(3, 20_000, cfg))
+        return book.peak_live_orders
+
+    assert peak(Config()) > 2_000
+    # The cap binds generator-tracked orders; a locked/crossed episode adds two more briefly.
+    assert 490 <= peak(Config(max_live=500)) <= 502

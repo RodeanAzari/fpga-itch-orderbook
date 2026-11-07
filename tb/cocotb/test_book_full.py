@@ -53,9 +53,14 @@ def record(test: str, n: int, book: BoundedBook, stats: dict[str, int], t0: floa
 
 @cocotb.test(skip=SET_BITS != 13)
 async def random_1m(dut):
-    """1,000,000 adversarial generator messages plus the directed limit blocks."""
+    """1M+ adversarial book records plus the directed limit blocks.
+
+    Live orders are capped near the real day's peak (27,814), so the table runs below
+    capacity and this exercises the normal paths, not mostly overflow.
+    """
     t0 = time.monotonic()
-    recs = adversarial(10, 1_000_000)
+    recs = adversarial(10, 1_040_000, generator.Config(max_live=30_000))
+    assert len(recs) >= 1_000_000, len(recs)
     stats: dict[str, int] = {}
     base = generator.DEFAULT.base_price // TICK
     book = await run(dut, "full_random", recs, base, 1.0, 0.9, stats)

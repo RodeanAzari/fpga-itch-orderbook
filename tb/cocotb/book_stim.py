@@ -100,9 +100,11 @@ def dut_fields(kind: int, m: Message) -> dict[str, int]:
     return f | {"type": kind, "ts": m.ts}
 
 
-def adversarial(seed: int, n: int) -> list[tuple[int, Message]]:
+def adversarial(
+    seed: int, n: int, cfg: generator.Config = generator.DEFAULT
+) -> list[tuple[int, Message]]:
     rng = get_rng(f"ot_gen_{seed}")
-    msgs = generator.generate(seed=rng.randrange(1 << 30), count=n)
+    msgs = generator.generate(seed=rng.randrange(1 << 30), count=n, cfg=cfg)
     base = generator.DEFAULT.base_price // TICK
     block = directed(base)
     k = rng.randrange(len(msgs) // 4, len(msgs) // 2)  # mid-stream, with a busy table

@@ -25,6 +25,7 @@ class Config:
     p_episode: float = 0.01  # brief locked or crossed book around base_price
     p_noise: float = 0.03  # non-subset message that must be skipped by length
     p_unknown_ref: float = 0.01  # message for an order that does not exist
+    max_live: int | None = None  # at this many live orders, no new adds (None: unbounded)
 
 
 DEFAULT = Config()
@@ -83,7 +84,7 @@ def generate(seed: int, count: int, cfg: Config = DEFAULT) -> list[bytes]:
             add(ask, b"S", 100, cfg.base_price - rng.randrange(2) * TICK)
             out.append(_header(b"D", cfg.locate, ts) + struct.pack(">Q", ask))
             out.append(_header(b"D", cfg.locate, ts) + struct.pack(">Q", bid))
-        elif roll < 0.45 or not live:
+        elif (roll < 0.45 and (cfg.max_live is None or len(live) < cfg.max_live)) or not live:
             ref, side = new_ref(), rng.choice((b"B", b"S"))
             shares = rng.randrange(1, 100) * 100
             add(ref, side, shares, price(side))
