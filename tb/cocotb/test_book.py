@@ -76,7 +76,7 @@ async def reset(dut, base: int) -> None:
 
 
 async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_valid: float,
-              p_ready: float) -> BoundedBook:  # fmt: skip
+              p_ready: float, stats: dict[str, int] | None = None) -> BoundedBook:  # fmt: skip
     rng = get_rng(name)
     await reset(dut, base)
     book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=4)
@@ -128,6 +128,8 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
     cocotb.log.info(
         "%s: %d messages, %d BBO updates, counters %s", name, len(recs), sb.matched, want
     )
+    if stats is not None:
+        stats["bbo_updates"] = sb.matched
     return book
 
 

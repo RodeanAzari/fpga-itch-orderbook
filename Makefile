@@ -8,7 +8,7 @@ OSS := $(HOME)/.local/opt/oss-cad-suite/bin
 export PATH := $(PATH):$(OSS)
 RTL := $(wildcard rtl/*/*.sv)
 
-.PHONY: setup lint sim formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -29,6 +29,15 @@ sim:
 # SymbiYosys proofs (buildplan §8.3).
 formal:
 	cd tb/formal && sby -f bitmap_search.sby
+
+# Phase D stress: book_engine on 1M+ events and the whole real day (minutes). Appends one
+# row per passing test to SIM_FULL_CSV; SEED makes it reproducible.
+SEED ?= 20261106
+SIM_FULL_CSV ?= build/sim_full.csv
+ITCH_EXTRACT ?= /mnt/d/itch/derived/2019-10-18_AAPL.itch
+sim-full:
+	SEED=$(SEED) SIM_FULL_CSV=$(abspath $(SIM_FULL_CSV)) ITCH_EXTRACT=$(ITCH_EXTRACT) \
+	  $(PY) tb/run.py test_book_full
 
 model-test:
 	$(PY) -m ruff check model analysis tb host

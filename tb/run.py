@@ -23,12 +23,15 @@ TESTS = {
     # 512 sets: the generator's bucket collisions overflow it; 8,192: ADR 0001's geometry.
     "test_order_table": ("order_table", BOOK, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
     "test_book": ("book_engine", ENGINE, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
+    # make sim-full only: minutes per run, real geometry.
+    "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 13}]),
 }
+FULL_ONLY = {"test_book_full"}
 
 
 def main(names: list[str]) -> int:
     failed = 0
-    for name in names or list(TESTS):
+    for name in names or [t for t in TESTS if t not in FULL_ONLY]:
         top, srcs, param_sets = TESTS[name]
         for params in param_sets:
             tag = "_".join(f"{k}{v}" for k, v in params.items()) or "default"
