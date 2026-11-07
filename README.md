@@ -256,3 +256,8 @@ This project owns two shared repos, built here and consumed only at release tags
 - **Phase E:** latency distributions, a scope cross-check, and cut-through vs.
   store-and-forward.
 - **Phase F:** coverage closure, timing closure, and a demo video.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The `rtl/eth/` submodule (`fpga-eth-core`) is a separate
+repository with its own terms.
