@@ -85,7 +85,8 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
     sb = InOrderScoreboard(
         name,
         fmt=lambda x: (
-            f"#{x[0]} ts={x[1]} bid {x[2]}x{x[3]} ask {x[4]}x{x[5]} oow={x[6]} u={x[7]} stale={x[8]}"
+            f"#{x[0]} ts={x[1]} bid {x[2]}x{x[3]} ask {x[4]}x{x[5]} oow={x[6]}"
+            f" u={x[7]} stale={x[8]}"
         ),
     )
     for i, (_, m) in enumerate(recs):
