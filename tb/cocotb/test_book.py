@@ -4,7 +4,8 @@ model.bounded.BoundedBook's BBO stream.
 Why these tests matter: this is the book the project publishes. Every message goes to the
 DUT and to the golden model; the DUT must publish exactly the model's BBO updates, in
 order, field by field (bid price/size, ask price/size, out-of-window flag, and the seq and
-ts of the message that caused it), no more and no fewer. A best level that empties
+ts of the message that caused it, its user sideband, and the book's stale state right
+after that message), no more and no fewer. A best level that empties
 without a correct next-best search, a bitmap bit left set, a size taken from the wrong
 level, a Replace that publishes its transient state, or an unflagged out-of-window BBO
 all show up as a mismatch or a missing/extra update. Counters, bbo_oow and stale must
@@ -83,14 +84,16 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
     book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=4)
     sb = InOrderScoreboard(
         name,
-        fmt=lambda x: f"#{x[0]} ts={x[1]} bid {x[2]}x{x[3]} ask {x[4]}x{x[5]} oow={x[6]} u={x[7]}",
+        fmt=lambda x: (
+            f"#{x[0]} ts={x[1]} bid {x[2]}x{x[3]} ask {x[4]}x{x[5]} oow={x[6]} u={x[7]} stale={x[8]}"
+        ),
     )
     for i, (_, m) in enumerate(recs):
         bbo = book.apply(m)
         if bbo is not None:
             sb.expect(
                 (i, bbo.ts, bbo.bid_price, bbo.bid_size, bbo.ask_price, bbo.ask_size,
-                 int(bbo.out_of_window), user_bit(i))
+                 int(bbo.out_of_window), user_bit(i), int(book.stale))
             )  # fmt: skip
     counts = dict.fromkeys(STATUS, 0)
 
@@ -110,6 +113,7 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
                         int(dut.m_ask_sz_o.value),
                         int(dut.m_oow_o.value),
                         int(dut.m_user_o.value),
+                        int(dut.m_stale_o.value),
                     )
                 )
             dut.m_ready_i.value = int(rng.random() < p_ready)

@@ -14,7 +14,9 @@
 //           K_OOW    one out-of-window order of side m_sell_o past edge m_better_o
 //                    appears (m_dec_o = 0) or goes (m_dec_o = 1); ADR 0002's counters
 //         m_seq_o / m_ts_o / m_user_o are the message's, on every beat. s_user_i is an
-//         opaque per-message sideband (the feed's stale bit; T1 in Phase E).
+//         opaque per-message sideband (the feed's stale bit; T1 in Phase E). m_stale_o
+//         is stale_o including this message's own errors so far, so the last beat's
+//         value is the book's stale state after the message, whatever the stall.
 //
 // Table: 2 banks x 2^SET_BITS sets x WAYS ways (ADR 0001). Bank b looks at set
 // prod_b[31 -: SET_BITS] and tag prod_b[TAG_W-1:0], prod_b = ref[31:0] * M_b mod 2^32.
@@ -82,6 +84,7 @@ module order_table #(
     output logic [63:0]              m_seq_o,
     output logic [47:0]              m_ts_o,
     output logic [USER_W-1:0]        m_user_o,
+    output logic                     m_stale_o,
     // status
     output logic                     ref_overflow_o,
     output logic                     duplicate_ref_o,
@@ -430,6 +433,9 @@ module order_table #(
     end
 
     assign s_ready_o         = state_q == S_IDLE;
+    // The error pulses are visible in the first S_EMIT cycle; stale_o follows a cycle later.
+    assign m_stale_o         = stale_o || ref_ovf_q || dup_q || shares_ovf_q || table_ovf_q
+                               || unknown_q || over_q || psub_q;
     assign m_valid_o         = state_q == S_EMIT;
     assign busy_o            = state_q != S_IDLE;
     assign ref_overflow_o    = ref_ovf_q;

@@ -44,6 +44,7 @@ module book_engine #(
     output logic [63:0]        m_seq_o,
     output logic [47:0]        m_ts_o,
     output logic [USER_W-1:0]  m_user_o,
+    output logic               m_stale_o,  // book stale after this update's cause message
     // status
     output logic               ref_overflow_o,
     output logic               duplicate_ref_o,
@@ -65,6 +66,7 @@ module book_engine #(
     logic [63:0]         d_seq;
     logic [47:0]         d_ts;
     logic [USER_W-1:0]   d_user;
+    logic                d_stale;
     logic                table_busy, levels_busy;
 
     order_table #(
@@ -77,7 +79,7 @@ module book_engine #(
         .s_sell_i(s_sell_i), .s_shares_i(s_shares_i), .s_price_i(s_price_i),
         .m_valid_o(d_valid), .m_ready_i(d_ready), .m_kind_o(d_kind), .m_sell_o(d_sell),
         .m_idx_o(d_idx), .m_better_o(d_better), .m_dec_o(d_dec), .m_shares_o(d_shares),
-        .m_last_o(d_last), .m_seq_o(d_seq), .m_ts_o(d_ts), .m_user_o(d_user),
+        .m_last_o(d_last), .m_seq_o(d_seq), .m_ts_o(d_ts), .m_user_o(d_user), .m_stale_o(d_stale),
         .ref_overflow_o(ref_overflow_o), .duplicate_ref_o(duplicate_ref_o),
         .shares_overflow_o(shares_overflow_o), .table_overflow_o(table_overflow_o),
         .unknown_ref_o(unknown_ref_o), .over_reduce_o(over_reduce_o),
@@ -87,15 +89,15 @@ module book_engine #(
 
     book_levels #(
         .WIN_BITS(WIN_BITS), .SHARES_W(SHARES_W), .LEVEL_W(LEVEL_W), .CNT_W(CNT_W),
-        .USER_W(USER_W)
+        .USER_W(USER_W + 1)
     ) u_levels (
         .clk_i(clk_i), .rst_i(rst_i), .cfg_lo_price_i(cfg_lo_price_i),
         .s_valid_i(d_valid), .s_ready_o(d_ready), .s_kind_i(d_kind), .s_sell_i(d_sell),
         .s_idx_i(d_idx), .s_better_i(d_better), .s_dec_i(d_dec), .s_shares_i(d_shares),
-        .s_last_i(d_last), .s_seq_i(d_seq), .s_ts_i(d_ts), .s_user_i(d_user),
+        .s_last_i(d_last), .s_seq_i(d_seq), .s_ts_i(d_ts), .s_user_i({d_user, d_stale}),
         .m_valid_o(m_valid_o), .m_ready_i(m_ready_i), .m_bid_px_o(m_bid_px_o),
         .m_bid_sz_o(m_bid_sz_o), .m_ask_px_o(m_ask_px_o), .m_ask_sz_o(m_ask_sz_o),
-        .m_oow_o(m_oow_o), .m_seq_o(m_seq_o), .m_ts_o(m_ts_o), .m_user_o(m_user_o),
+        .m_oow_o(m_oow_o), .m_seq_o(m_seq_o), .m_ts_o(m_ts_o), .m_user_o({m_user_o, m_stale_o}),
         .bbo_oow_o(bbo_oow_o), .busy_o(levels_busy)
     );
 
