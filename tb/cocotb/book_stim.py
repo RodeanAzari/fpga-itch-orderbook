@@ -111,6 +111,11 @@ def adversarial(
     return records(msgs[:k] + block + msgs[k:] + directed(base))
 
 
+def user_bit(i: int) -> int:
+    """The s_user_i sideband for record i: pseudo-random, so it is not seq's low bit."""
+    return (i * 0x9E3779B1 >> 13) & 1
+
+
 async def send_records(dut, recs: list[tuple[int, Message]], rng, p_valid: float) -> None:
     """Drive each record (seq = its index) through the valid/ready handshake."""
     for i, (kind, m) in enumerate(recs):
@@ -120,6 +125,7 @@ async def send_records(dut, recs: list[tuple[int, Message]], rng, p_valid: float
         f = dut_fields(kind, m)
         dut.s_type_i.value = f["type"]
         dut.s_seq_i.value = i
+        dut.s_user_i.value = user_bit(i)
         dut.s_ts_i.value = f["ts"]
         dut.s_ref_i.value = f["ref"]
         dut.s_new_ref_i.value = f["new_ref"]

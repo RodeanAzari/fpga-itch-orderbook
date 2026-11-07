@@ -34,7 +34,8 @@ module book_levels #(
     parameter int WIN_BITS = 12,
     parameter int SHARES_W = 20,
     parameter int LEVEL_W  = 36,
-    parameter int CNT_W    = 17
+    parameter int CNT_W    = 17,
+    parameter int USER_W   = 1
 ) (
     input  wire logic                clk_i,
     input  wire logic                rst_i,
@@ -52,6 +53,7 @@ module book_levels #(
     input  wire logic                s_last_i,
     input  wire logic [63:0]         s_seq_i,
     input  wire logic [47:0]         s_ts_i,
+    input  wire logic [USER_W-1:0]   s_user_i,
     // BBO updates out
     output logic                     m_valid_o,
     input  wire logic                m_ready_i,
@@ -62,6 +64,7 @@ module book_levels #(
     output logic                     m_oow_o,
     output logic [63:0]              m_seq_o,
     output logic [47:0]              m_ts_o,
+    output logic [USER_W-1:0]        m_user_o,
     // status
     output logic                     bbo_oow_o,
     output logic                     busy_o
@@ -86,6 +89,7 @@ module book_levels #(
     logic [SHARES_W-1:0] n_q;
     logic [63:0]         seq_q;
     logic [47:0]         ts_q;
+    logic [USER_W-1:0]   user_q;
 
 
     // ---------------------------------------------------------------- level RAMs
@@ -183,7 +187,7 @@ module book_levels #(
                 if (s_valid_i) begin
                     sell_q <= s_sell_i; better_q <= s_better_i; dec_q <= s_dec_i;
                     last_q <= s_last_i; idx_q <= s_idx_i; n_q <= s_shares_i;
-                    seq_q  <= s_seq_i;  ts_q <= s_ts_i;
+                    seq_q  <= s_seq_i;  ts_q <= s_ts_i;  user_q <= s_user_i;
                     rd_addr_q <= s_idx_i;
                     l2_ra_q   <= {s_sell_i, s_idx_i[WIN_BITS-1 -: HI_BITS]};
                     unique case (s_kind_i)
@@ -267,6 +271,7 @@ module book_levels #(
                     m_bid_px_o <= nbpx_q; m_bid_sz_o <= nbsz_q;
                     m_ask_px_o <= napx_q; m_ask_sz_o <= nasz_q;
                     m_oow_o <= nflag_q; m_seq_o <= seq_q; m_ts_o <= ts_q;
+                    m_user_o <= user_q;
                     bbo_oow_o <= nflag_q;
                     state_q <= S_EMIT;
                 end else begin

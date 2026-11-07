@@ -32,6 +32,7 @@ from book_stim import (
     records,
     send_records,
     u_msg,
+    user_bit,
 )
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
@@ -118,6 +119,8 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
         history.append(f"#{i} {chr(kind)} {m}")
         if int(dut.m_seq_o.value) != i or int(dut.m_ts_o.value) != m.ts:
             fail(f"seq/ts {int(dut.m_seq_o.value)}/{int(dut.m_ts_o.value)} != {i}/{m.ts}")
+        if int(dut.m_user_o.value) != user_bit(i):
+            fail(f"user {int(dut.m_user_o.value)} != {user_bit(i)} for #{i}")
         book.apply(m)
         want_oow = {k: v for k, v in book._oow.items() if v}
         got_oow = {k: v for k, v in oow.items() if v}

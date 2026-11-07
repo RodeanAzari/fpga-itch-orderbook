@@ -33,6 +33,7 @@ from book_stim import (
     records,
     send_records,
     u_msg,
+    user_bit,
 )
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
@@ -82,14 +83,14 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
     book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=4)
     sb = InOrderScoreboard(
         name,
-        fmt=lambda x: f"#{x[0]} ts={x[1]} bid {x[2]}x{x[3]} ask {x[4]}x{x[5]} oow={x[6]}",
+        fmt=lambda x: f"#{x[0]} ts={x[1]} bid {x[2]}x{x[3]} ask {x[4]}x{x[5]} oow={x[6]} u={x[7]}",
     )
     for i, (_, m) in enumerate(recs):
         bbo = book.apply(m)
         if bbo is not None:
             sb.expect(
                 (i, bbo.ts, bbo.bid_price, bbo.bid_size, bbo.ask_price, bbo.ask_size,
-                 int(bbo.out_of_window))
+                 int(bbo.out_of_window), user_bit(i))
             )  # fmt: skip
     counts = dict.fromkeys(STATUS, 0)
 
@@ -108,6 +109,7 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
                         int(dut.m_ask_px_o.value),
                         int(dut.m_ask_sz_o.value),
                         int(dut.m_oow_o.value),
+                        int(dut.m_user_o.value),
                     )
                 )
             dut.m_ready_i.value = int(rng.random() < p_ready)

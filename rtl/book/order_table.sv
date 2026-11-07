@@ -13,7 +13,8 @@
 //                    m_idx_o of side m_sell_o
 //           K_OOW    one out-of-window order of side m_sell_o past edge m_better_o
 //                    appears (m_dec_o = 0) or goes (m_dec_o = 1); ADR 0002's counters
-//         m_seq_o / m_ts_o are the message's, on every beat.
+//         m_seq_o / m_ts_o / m_user_o are the message's, on every beat. s_user_i is an
+//         opaque per-message sideband (the feed's stale bit; T1 in Phase E).
 //
 // Table: 2 banks x 2^SET_BITS sets x WAYS ways (ADR 0001). Bank b looks at set
 // prod_b[31 -: SET_BITS] and tag prod_b[TAG_W-1:0], prod_b = ref[31:0] * M_b mod 2^32.
@@ -49,7 +50,8 @@ module order_table #(
     parameter int SET_BITS = 13,
     parameter int WAYS     = 4,
     parameter int SHARES_W = 20,
-    parameter int WIN_BITS = 12
+    parameter int WIN_BITS = 12,
+    parameter int USER_W   = 1
 ) (
     input  wire logic                clk_i,
     input  wire logic                rst_i,
@@ -61,6 +63,7 @@ module order_table #(
     input  wire logic [7:0]          s_type_i,
     input  wire logic [63:0]         s_seq_i,
     input  wire logic [47:0]         s_ts_i,
+    input  wire logic [USER_W-1:0]   s_user_i,
     input  wire logic [63:0]         s_ref_i,
     input  wire logic [63:0]         s_new_ref_i,
     input  wire logic                s_sell_i,
@@ -78,6 +81,7 @@ module order_table #(
     output logic                     m_last_o,
     output logic [63:0]              m_seq_o,
     output logic [47:0]              m_ts_o,
+    output logic [USER_W-1:0]        m_user_o,
     // status
     output logic                     ref_overflow_o,
     output logic                     duplicate_ref_o,
@@ -135,6 +139,7 @@ module order_table #(
     // Message registers (datapath, not reset)
     logic [63:0] new_ref_q, seq_q;
     logic [47:0] ts_q;
+    logic [USER_W-1:0] user_q;
     logic        sell_q;
     logic [31:0] shares_q, price_q;
 
@@ -296,7 +301,7 @@ module order_table #(
             S_IDLE: begin
                 if (s_valid_i) begin
                     key_q <= s_ref_i; new_ref_q <= s_new_ref_i; seq_q <= s_seq_i;
-                    ts_q <= s_ts_i; sell_q <= s_sell_i; shares_q <= s_shares_i;
+                    ts_q <= s_ts_i; user_q <= s_user_i; sell_q <= s_sell_i; shares_q <= s_shares_i;
                     price_q <= s_price_i;
                     unique case (s_type_i)
                         T_A, T_F:      begin op_q <= OP_ADD;     ins_q <= 1'b1; end
@@ -355,6 +360,7 @@ module order_table #(
                 m_last_o   <= 1'b1;
                 m_seq_o    <= seq_q;
                 m_ts_o     <= ts_q;
+                m_user_o   <= user_q;
                 state_q    <= S_EMIT;
                 if (ins_q) begin
                     m_sell_o   <= sell_q;
