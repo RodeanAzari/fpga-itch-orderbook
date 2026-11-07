@@ -408,3 +408,40 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   BBO updates identical to the golden model, `bbo_oow` 4, never stale. Wide stream:
   204,162 messages, 69,739 searches. Random: 970,835 records, 0 mismatches, but below 1M
   on its own and the table saturates (290,065 overflows), so it mostly exercises overflow.
+
+## 2026-11-07: random_1m closed, protocol v1 + golden encoder, host reordering sweep
+
+- **`random_1m` (Phase D "1M+ random events"):** 1,009,900 book records through
+  `book_engine`, 0 mismatches, 21.7 min (`data/results/2026-11-07_sim_random_1m.*`). The
+  generator gained `Config.max_live` (default off; `generate(1, 50000)` SHA-256 identical
+  before/after); capped at 30,000 live, the table stays ≤ 46 % full. Sizing note: even
+  without colliding refs, ~1M inserts of churn at 30k live overflow a bucket pair twice
+  (model, 200k messages). The real day (27,814 peak) has 0, but this is the margin to
+  check on a busier day.
+- **Bug (generator): table saturation.** Symptom: random_1m had 290,065 overflows.
+  Root cause: adds outnumber removals (~41 % adds vs ~11 % deletes), so live orders grow
+  without bound; `rng.choice(list(live))` also made generation O(live) per message.
+  Fix: the `max_live` cap; a model test catches "cap ignored" and an off-by-one.
+- **ADR 0007 + `docs/protocol.md` v1** (user chose all three): batched output with
+  flush on idle, a decode-trace mode for the Phase C full-day check, and a UDP config
+  packet with an ack that resets the pipeline. A 12-byte header with `pkt_seq` makes lost
+  output datagrams visible.
+- **Golden encoder `model/protocol.py`** (+13 tests, offsets taken from the doc's tables;
+  6 injected encoder bugs each caught). `Record` now carries its ITCH type byte and the
+  decoder's stale bit at decode time.
+- **Bug (spec): stale flag timing.** Symptom (on paper): flagging a BBO stale from the
+  feed's *current* state would flag updates whose cause preceded a gap, depending on
+  pipeline timing. Fix: the feed's stale bit rides with each record (model done; the RTL
+  needs a 1-bit sideband through `book_engine`).
+- **Mistake of mine: test too weak twice.** My first stale test passed with the feed's bit
+  dropped, because the gap also made the book stale. The second version failed on correct
+  code, because the default generator makes the book stale early (unknown refs). The final
+  version separates the sources: a malformed `D` makes only the feed stale, and the
+  default stream makes only the book stale.
+- **Host reordering sweep (hardware, `data/results/2026-11-07_host_reorder_sweep.*`).**
+  12 × 60 s runs, 0 loss. Reordering does not grow with load (0.024 % at 98 % of line
+  rate, up to 0.145 % at 49 %; ±25 % run to run). Packet Priority & VLAN off halves it at
+  4,000 pps; Interrupt Moderation off helps at 8,000 but hurts at 4,000. No setting
+  reaches zero, so the Windows I225 driver path is a dead end; next is a USB 3 NIC in WSL.
+- **Mistake of mine:** a 3 s `cat /dev/ttyUSB1` peek before setting `-hupcl` reset the
+  design (the §12 trap). It was harmless before the run, but configure the TTY first, always.

@@ -9,7 +9,7 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 | A — Python golden model + data | COMPLETE (`v0.1-model`) | Peak 27,814 live orders; d-left table 0 overflows over the day |
 | B — MAC + IPv4/UDP on hardware | IN PROGRESS: only the user's physical captures left | `eth-core-v0.1`/`v0.2` tagged: RX 4.88 M datagrams zero drops; TX 9 M echoes intact; submodule at v0.2 |
 | C — MoldUDP64 + ITCH decoder | IN PROGRESS (sim) | RTL matches the model record for record; OOC WNS +0.896 ns at 125 MHz |
-| D — Order book engine | IN PROGRESS (sim) | Whole real day in sim: 831,842 BBO updates = model, 0 mismatches; search formally proven; OOC WNS +0.069 ns, 104 BRAM36 |
+| D — Order book engine | IN PROGRESS (sim) | Real day in sim: 831,842 BBO updates = model; 1,009,900 random records, 0 mismatches; search formally proven; OOC WNS +0.069 ns, 104 BRAM36 |
 | E — Timestamping + latency measurement | NOT STARTED | — |
 | F — Stress, coverage closure, portfolio | NOT STARTED | — |
 
@@ -30,12 +30,13 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
    The 64-bit message aligner is deferred to Phase E (ADR 0005), so "every alignment"
    coverage waits for it.
 3. Phase D (sim) is nearly complete (`make sim`, `make formal`, `make sim-full`). Left:
-   - A clean "1M+ random events" run: `random_1m` drove only 970,835 records and the
-     generator saturates the 8,192-set table (290,065 overflows). Use a generator config
-     that keeps the table below capacity and >= 1,000,000 book records in one run.
-   - Phase C/D top level (MAC -> feed -> book_engine -> BBO packet out, `docs/protocol.md`
-     first). Its first full-chip synthesis settles timing: book_engine's OOC margin is
-     < 1 %; if it fails, another stage or a lower core clock (write the core-clock ADR).
+   - Phase C/D top level, contract in `docs/protocol.md` v1 (ADR 0007); golden encoder
+     `model/protocol.py` done (`expected()` gives the record stream). RTL left, in order:
+     1-bit feed-stale sideband through `book_engine` (record → BBO); `rtl/out/` builder
+     (record FIFO, flush-on-idle batching, stats snapshot, config parser + ack); second
+     `udp_rx` for the control port; top level; frames-in → datagrams-out cocotb test vs
+     `expected()`; `host/capture`. First full-chip synthesis settles timing: book_engine's
+     OOC margin is < 1 %; if it fails, another stage or a lower core clock (core-clock ADR).
    - Before Phase D on hardware: fix host-side reordering (below). Before RTL is tagged
      in Phase D: check the table sizing on a second, busier day.
 
@@ -49,14 +50,15 @@ Current state only. History belongs in `docs/log.md`, full design rationale in `
 - Driver is Intel `e2fn.sys` 2.1.4.3 (Lenovo OEM): no RSS, VMQ or queue-count setting exists
   (checked 2026-11-06). Likely cause (unproven): sends reach the miniport from different
   CPUs and land in different hardware TX queues.
-- **Agreed plan, next time the user is home with the board** (rig: `rx_stats` bitstream +
-  `udp_seq_send`, count `seq_err`/`seq_lost`; claim the board first):
-  1. Rate sweep: 60 s each at several rates (e.g. 100/85/70/50% of line rate), current settings.
-  2. User disables "Packet Priority & VLAN" (Windows adapter settings, admin), repeat at the
-     worst rate; optionally Interrupt Moderation off too.
-- Fallbacks if neither gives zero: USB 3 Ethernet adapter (RTL8153/AX88179) to WSL via usbipd
-  (in order by construction; verify 100 Mbps through usbipd with a 10-min sustained run);
-  newer Intel driver; Windows-native pinned sender; native Linux / separate Linux host.
+- **Adapter settings ruled out (2026-11-07 sweep, `data/results/2026-11-07_host_reorder_sweep.md`):**
+  0 loss; reordering 0.02–0.15 %, not load-driven; Packet Priority & VLAN off halves it at
+  4,000 pps, Interrupt Moderation off trades rates; nothing reaches zero. Host state:
+  Packet Priority & VLAN left Disabled; Interrupt Moderation should be back to Enabled
+  (asked the user; confirm).
+- **Next: USB 3 Ethernet adapter (RTL8153/AX88179) to WSL via usbipd** (Linux drives it
+  directly; verify 100 Mb/s in order with a 10-min `scripts/reorder_sweep.sh` run).
+  Then: newer Intel driver; Windows-native pinned sender; native Linux host.
+  Rig: `rx_stats` bitstream (`~/fpga-eth-core/build/rx_stats/`), `stty -hupcl` BEFORE any read.
   Rejected: a reorder buffer in the FPGA (changes ADR 0003, hides a host defect).
 
 ## Important decisions
