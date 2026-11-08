@@ -25,7 +25,12 @@ TICK = int(os.environ.get("TICK_CYCLES", "50"))
 MASK = (1 << 64) - 1
 VALUES = {"locate", "stale"}
 KEEP = {"ctrl_ok", "ctrl_bad"}  # not cleared by a config
-AMOUNT = {"mold_gap_messages": 64, "itch_malformed_messages": 2, "out_records": 6}
+AMOUNT = {
+    "mold_gap_messages": 64,
+    "rx_fifo_overflow": 8,
+    "itch_malformed_messages": 2,
+    "out_records": 6,
+}
 PULSES = [n for n in STATS_NAMES if n not in VALUES | {"uptime_cycles"} | set(AMOUNT)]
 
 
@@ -71,6 +76,7 @@ async def run(dut, name: str, cycles: int, p_event: float, p_clear: float) -> No
         gap = rng.choice([1, rng.getrandbits(16), rng.getrandbits(64), MASK])
         mal = rng.randrange(4) if rng.random() < p_event else 0
         recs = rng.randrange(64) if rng.random() < p_event else 0
+        ovf = rng.choice([1, 255, rng.randrange(256)]) if rng.random() < p_event else 0
         lv, loc = rng.getrandbits(1), rng.getrandbits(16)
         fs, bs = rng.getrandbits(1), rng.getrandbits(1)
         for n, v in ev.items():
@@ -78,6 +84,7 @@ async def run(dut, name: str, cycles: int, p_event: float, p_clear: float) -> No
         ins["mold_gap_messages"].value = gap
         ins["itch_malformed_messages"].value = mal
         ins["out_records"].value = recs
+        ins["rx_fifo_overflow"].value = ovf
         ins["locate_valid_i"].value, ins["locate_i"].value = lv, loc
         ins["feed_stale_i"].value, ins["book_stale_i"].value = fs, bs
         ins["clear_i"].value = int(clear)
@@ -96,6 +103,8 @@ async def run(dut, name: str, cycles: int, p_event: float, p_clear: float) -> No
                 model[n] += mal
             elif n == "out_records":
                 model[n] += recs
+            elif n == "rx_fifo_overflow":
+                model[n] += ovf
             else:
                 model[n] += ev[n]
             model[n] &= MASK

@@ -3,8 +3,9 @@
 //
 // Ports are named after the counters (docs/protocol.md table, model.protocol.STATS_NAMES).
 // Each *_i pulse adds 1 to its counter, except the amount inputs: mold_gap_messages_i is
-// added when mold_gaps_i pulses; itch_malformed_messages_i and out_records_i are counts
-// this cycle. locate and stale are values, not counts: locate = {known, locate[15:0]},
+// added when mold_gaps_i pulses; rx_fifo_overflow_i (frames lost, eth_rx ovf_frames_o
+// gated by ovf_o), itch_malformed_messages_i and out_records_i are counts this cycle.
+// locate and stale are values, not counts: locate = {known, locate[15:0]},
 // stale = {book, feed}. uptime_cycles counts cycles since the last clear.
 // clear_i (a config) zeroes every counter except ctrl_ok and ctrl_bad, restarts the tick,
 // and an event in the same cycle is dropped (the pipeline is in reset then anyway).
@@ -26,7 +27,7 @@ module out_stats #(
     input  wire logic                  rx_err_i,
     input  wire logic                  rx_runt_i,
     input  wire logic                  rx_oversize_i,
-    input  wire logic                  rx_fifo_overflow_i,
+    input  wire logic [7:0]            rx_fifo_overflow_i,
     input  wire logic                  feed_datagrams_i,
     input  wire logic                  feed_filtered_i,
     input  wire logic                  ip_csum_err_i,
