@@ -495,3 +495,15 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   `trace_record` (empty sides, locked, equal prices with an empty side, max sizes) and
   every handshake combination in both modes; 10/10 injected bugs caught. No OOC run: no
   registers, so its timing is judged in the full-chip build.
+- **`out_ctrl`** (control-port parser + config sequence OFF → RST → CLEAR → ACK → RUN):
+  `test_ctrl` judges every payload with `parse_config` (9 malformed kinds, boundary
+  values: length 35, mode/locate_valid 2, count 2, truncated datagram) and checks the
+  sequence every cycle against a reference: load exactly when idle with a config pending,
+  the latest wins, ack only with the book idle, feed in reset until the flush, ack_rec
+  stable. 12/12 injected bugs caught after two test fixes: a new config accepted in the
+  very cycle a pending one loads (needs a directed, flush-aligned test), and mode = 2 /
+  length 35 were too rare at random (now chosen on purpose). OOC 8 ns: WNS +2.659 ns,
+  227 LUT, 785 FF, 0 BRAM/DSP (`docs/reports/ooc_out_ctrl/`).
+- `book_engine` now exports `busy_o` (the RAM clears end when it falls); `test_book`
+  checks it covers both clears (an injected table-only busy is caught at SET_BITS 9).
+- Protocol doc: a config arriving while one is applied waits; only the latest is acked.

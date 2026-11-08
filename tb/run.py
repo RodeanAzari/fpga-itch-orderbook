@@ -29,6 +29,7 @@ TESTS = {
     "test_out": ("out_builder", OUT, [{}]),
     "test_stats": ("out_stats", ["rtl/out/out_stats.sv"], [{"TICK_CYCLES": 50}]),
     "test_mux": ("out_mux", ["rtl/out/out_mux.sv"], [{"LEVEL_W": 36}]),
+    "test_ctrl": ("out_ctrl", ["rtl/out/out_ctrl.sv"], [{}]),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 13}]),
 }

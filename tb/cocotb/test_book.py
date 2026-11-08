@@ -75,6 +75,18 @@ async def reset(dut, base: int) -> None:
     dut.rst_i.value = 1
     await ClockCycles(dut.clk_i, 3)
     dut.rst_i.value = 0
+    cocotb.start_soon(check_clear_busy(dut))
+
+
+async def check_clear_busy(dut) -> None:
+    """busy_o (out_ctrl acks a config when it falls) must cover both RAM clears:
+    order_table's 2^SET_BITS sets and book_levels' 2^WIN_BITS indices."""
+    await RisingEdge(dut.clk_i)
+    n = 0
+    while int(dut.busy_o.value):
+        n += 1
+        await RisingEdge(dut.clk_i)
+    assert n >= max(1 << SET_BITS, WIN), f"busy_o low after {n} cycles of clear"
 
 
 async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_valid: float,

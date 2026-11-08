@@ -55,7 +55,8 @@ module book_engine #(
     output logic               price_oow_o,
     output logic               price_subpenny_o,
     output logic               bbo_oow_o,
-    output logic               stale_o
+    output logic               stale_o,
+    output logic               busy_o      // RAM clear after reset, or a message in flight
 );
     localparam int CNT_W = ENTRIES_BITS + 1;  // counts up to every entry
 
@@ -101,8 +102,7 @@ module book_engine #(
         .bbo_oow_o(bbo_oow_o), .busy_o(levels_busy)
     );
 
-    // busy outputs are for debug probes only
-    logic unused_busy;
-    assign unused_busy = table_busy ^ levels_busy;
+    // low only when idle: after a reset, low once both RAM clears are done (out_ctrl)
+    assign busy_o = table_busy || levels_busy;
 endmodule
 `default_nettype wire

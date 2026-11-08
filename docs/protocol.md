@@ -155,7 +155,10 @@ destination (the packet's source), resets the feed decoder, the book and every c
 except `ctrl_*`, clears the book's RAMs, sets `pkt_seq` to 0, and then sends the ack
 (`pkt_seq` 0) with the record echoed. **Start the replay only after the ack**: messages
 that arrive before it are dropped while the pipeline is in reset (counted as frames, not
-decoded). A rejected packet changes nothing and gets no ack.
+decoded). A rejected packet changes nothing and gets no ack. A config that arrives
+while an earlier one is still being applied waits and is applied (and acked) after it;
+if several arrive meanwhile, only the latest is applied and acked. A truncated control
+datagram is rejected.
 
 | Offset | Size | Field | Meaning |
 |---|---|---|---|
