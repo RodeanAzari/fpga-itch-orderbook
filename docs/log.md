@@ -507,3 +507,35 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
 - `book_engine` now exports `busy_o` (the RAM clears end when it falls); `test_book`
   checks it covers both clears (an injected table-only busy is caught at SET_BITS 9).
 - Protocol doc: a config arriving while one is applied waits; only the latest is acked.
+- **`ob_core`** (whole pipeline, MII to MII) and **`test_core`** (frames in → datagrams
+  out): BBO mode at line rate, then trace mode with a configured locate after a reconfig
+  from another host. Every record is compared with `model.protocol.expected()`, and 38 of
+  the 40 stats counters are compared exactly (uptime only checked to be monotonic and ≥
+  each tick; `rx_fifo_overflow` 0). Checks: ack first with `pkt_seq` 0, consecutive
+  `pkt_seq`, every frame FCS/IPv4-checked and addressed to the config's sender. 12/12
+  injected wiring bugs caught after three test fixes:
+  - feed stale not carried to the BBO: undetectable while the book went stale at the
+    same moment (losses → unknown refs; the generator's 1 % unknown refs). Phase 1 now
+    has a malformed message mid-run, no unknown refs, losses only in the last quarter.
+  - `pkt_gate` bypassed: no feed payload ever spanned the feed's release. A straddle
+    frame, timed from a measurement (release 65.4 µs after the config's last wire byte;
+    a 730-byte payload's burst covers it), now does in both phases, and the test asserts
+    it; expected packets follow the spec rule (feed reset low over the whole payload).
+  - broadcast not gating the control `udp_rx` by the feed's ready: now an SVA in
+    `ob_core` (a beat either side takes is a beat taken from `eth_rx`).
+- `pkt_gate` (new, `rtl/lib`): passes or drains whole packets while the decoder is in
+  reset; 6/6 injected bugs caught by `test_pkt_gate`.
+- Spec/RTL mismatch fixed: `rx_fifo_overflow` counts lost frames (`ovf_frames_o`), as
+  `docs/protocol.md` says; `out_stats` took a 1-bit pulse. Now 8 bits; `test_stats`
+  catches the old behaviour.
+- **Mistake of mine: an injected bug survived on disk.** A background injection run was
+  killed (system low on memory) mid-mutation; its `finally` restore never ran, and my
+  integrity grep matched the out_builder's `.mode_i (cfg_mode)` instead of the mux's.
+  Symptom: phase 2 (trace) produced 36 of 269 records with book counters non-zero.
+  Root cause: `out_mux.mode_i` still tied to 0. Fix: restored; injection scripts now
+  keep an on-disk backup that the next run restores first. The end-to-end test caught it.
+- Board top `arty_top` (MMCM `clk_gen` in `rtl/lib/xilinx`, `cdc_reset_sync`, MAC start
+  sequencing as eth-core's examples), `constr/arty_timing.xdc`, `syn/build_top.tcl`, and
+  the CDC list in `docs/design.md`. Not yet built in Vivado.
+- Sim note: a Python wake-up on every core cycle doubled `test_core`'s run time; the
+  release monitor now runs only around each config. `test_core` takes ~100 s.

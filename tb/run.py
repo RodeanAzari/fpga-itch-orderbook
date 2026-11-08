@@ -17,6 +17,33 @@ FEED = ["rtl/feed/mold_deframer.sv", "rtl/feed/itch_decoder.sv", "rtl/feed/feed_
 BOOK = ["rtl/lib/sdp_ram.sv", "rtl/book/order_table.sv"]
 ENGINE = [*BOOK, "rtl/book/prio_enc.sv", "rtl/book/book_levels.sv", "rtl/book/book_engine.sv"]
 OUT = ["rtl/lib/sdp_ram.sv", "rtl/lib/sync_fifo.sv", "rtl/out/out_builder.sv"]
+ETH = [
+    f"rtl/eth/rtl/{m}.sv"
+    for m in (
+        "crc32_d8",
+        "async_fifo",
+        "mii_rx",
+        "rx_ovf_guard",
+        "eth_fcs_check",
+        "frame_buffer",
+        "eth_rx",
+        "udp_rx",
+        "udp_tx",
+        "mii_tx",
+        "eth_tx",
+    )
+]
+CORE = [
+    *ETH,
+    *FEED,
+    *ENGINE,
+    *OUT[1:],
+    "rtl/lib/pkt_gate.sv",
+    "rtl/out/out_mux.sv",
+    "rtl/out/out_stats.sv",
+    "rtl/out/out_ctrl.sv",
+    "rtl/top/ob_core.sv",
+]
 
 # test module -> (toplevel, sources, parameter sets)
 TESTS = {
@@ -30,6 +57,9 @@ TESTS = {
     "test_stats": ("out_stats", ["rtl/out/out_stats.sv"], [{"TICK_CYCLES": 50}]),
     "test_mux": ("out_mux", ["rtl/out/out_mux.sv"], [{"LEVEL_W": 36}]),
     "test_ctrl": ("out_ctrl", ["rtl/out/out_ctrl.sv"], [{}]),
+    "test_pkt_gate": ("pkt_gate", ["rtl/lib/pkt_gate.sv"], [{}]),
+    # 30,000-cycle stats tick: stats datagrams interleave with the records.
+    "test_core": ("ob_core", CORE, [{"TICK_CYCLES": 30_000}]),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 13}]),
 }

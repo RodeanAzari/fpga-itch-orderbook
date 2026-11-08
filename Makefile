@@ -7,6 +7,9 @@ ITCH_DAY ?= /mnt/d/itch/S101819-v50.txt.gz
 OSS := $(HOME)/.local/opt/oss-cad-suite/bin
 export PATH := $(PATH):$(OSS)
 RTL := $(wildcard rtl/*/*.sv)
+ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, not linted as tops
+# Vendor wrappers, with eth-core's simulation models of the primitives they use
+XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
 .PHONY: setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
 
@@ -18,7 +21,7 @@ setup:
 # Verilator -Wall on every module as its own top, zero warnings.
 lint:
 	@for f in $(RTL); do \
-	  verilator --lint-only -Wall --assert $(RTL) --top-module $$(basename $$f .sv) || exit 1; \
+	  verilator --lint-only -Wall --assert $(RTL) $(ETH_RTL) $(XIL_RTL) --top-module $$(basename $$f .sv) || exit 1; \
 	done
 	@echo "lint: $(words $(RTL)) modules clean"
 
