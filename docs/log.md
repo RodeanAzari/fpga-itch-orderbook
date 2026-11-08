@@ -490,3 +490,8 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   615 CARRY4 (`docs/reports/ooc_out_stats/`). `itch_malformed_messages` takes a 2-bit
   count: the feed's malformed and empty-message pulses can coincide.
 - Host: Interrupt Moderation confirmed back to Enabled; USB adapter not yet arrived.
+- **`out_mux`** (mode routing + BBO/trace record packing, combinational): `test_mux`
+  compares 3,000 BBO and 3,000 trace records byte for byte with `bbo_record` /
+  `trace_record` (empty sides, locked, equal prices with an empty side, max sizes) and
+  every handshake combination in both modes; 10/10 injected bugs caught. No OOC run: no
+  registers, so its timing is judged in the full-chip build.
