@@ -483,3 +483,10 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   +0.998 ns, 3,245 LUT, 3,513 FF, 0.5 BRAM36, 0 DSP (`docs/reports/ooc_out_builder/`).
 - Spec fix: `docs/protocol.md` said the host's `pkt_seq` is echoed in the ack and also
   that the ack's `pkt_seq` is 0. Kept 0 (stated twice; the echoed record identifies it).
+- **`out_stats`** (the 40 protocol counters + 1 s tick): `test_stats` compares all 40
+  with a reference every cycle under random events on every input, clears, and 64-bit gap
+  amounts; 9/9 injected bugs caught (cleared ctrl counters, gap counted as 1, swapped
+  slots or stale bits, tick off by one, ...). OOC 8 ns: WNS +4.068 ns, 116 LUT, 2,479 FF,
+  615 CARRY4 (`docs/reports/ooc_out_stats/`). `itch_malformed_messages` takes a 2-bit
+  count: the feed's malformed and empty-message pulses can coincide.
+- Host: Interrupt Moderation confirmed back to Enabled; USB adapter not yet arrived.

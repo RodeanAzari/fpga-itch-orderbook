@@ -1,0 +1,3 @@
+vivado 2025.2  part xc7a100tcsg324-1  top out_stats  (out of context)
+clock period 8.000 ns
+WNS 4.068 ns  WHS 0.204 ns

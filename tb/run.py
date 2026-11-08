@@ -27,6 +27,7 @@ TESTS = {
     # ADDR_W 4: full and wrap every few dozen cycles.
     "test_sync_fifo": ("sync_fifo", OUT[:2], [{"ADDR_W": 4}]),
     "test_out": ("out_builder", OUT, [{}]),
+    "test_stats": ("out_stats", ["rtl/out/out_stats.sv"], [{"TICK_CYCLES": 50}]),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 13}]),
 }
