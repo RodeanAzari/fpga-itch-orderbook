@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FEED = ["rtl/feed/mold_deframer.sv", "rtl/feed/itch_decoder.sv", "rtl/feed/feed_frontend.sv"]
 BOOK = ["rtl/lib/sdp_ram.sv", "rtl/book/order_table.sv"]
 ENGINE = [*BOOK, "rtl/book/prio_enc.sv", "rtl/book/book_levels.sv", "rtl/book/book_engine.sv"]
+OUT = ["rtl/lib/sdp_ram.sv", "rtl/lib/sync_fifo.sv", "rtl/out/out_builder.sv"]
 
 # test module -> (toplevel, sources, parameter sets)
 TESTS = {
@@ -23,6 +24,9 @@ TESTS = {
     # 512 sets: the generator's bucket collisions overflow it; 8,192: ADR 0001's geometry.
     "test_order_table": ("order_table", BOOK, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
     "test_book": ("book_engine", ENGINE, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
+    # ADDR_W 4: full and wrap every few dozen cycles.
+    "test_sync_fifo": ("sync_fifo", OUT[:2], [{"ADDR_W": 4}]),
+    "test_out": ("out_builder", OUT, [{}]),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 13}]),
 }

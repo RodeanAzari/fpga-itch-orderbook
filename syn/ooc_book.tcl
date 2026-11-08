@@ -1,6 +1,6 @@
-# Out-of-context Vivado build of a rtl/book top (default book_engine) for timing and
-# utilization:
-#   vivado -mode batch -source syn/ooc_book.tcl [-tclargs <period_ns> [<top>]]
+# Out-of-context Vivado build of a rtl/<dir> top (default rtl/book, book_engine) for
+# timing and utilization; rtl/lib is always read:
+#   vivado -mode batch -source syn/ooc_book.tcl [-tclargs <period_ns> [<top> [<dir>]]]
 # Non-project flow; writes only build/ooc_<top>/ and docs/reports/ooc_<top>/.
 # I/O is unconstrained (OOC): only the internal register-to-register paths are judged.
 
@@ -14,13 +14,15 @@ if {$period eq ""} { set period 8.000 }
 set part    xc7a100tcsg324-1
 set top     [lindex $argv 1]
 if {$top eq ""} { set top book_engine }
+set dir     [lindex $argv 2]
+if {$dir eq ""} { set dir book }
 set repo    [file normalize [file join [file dirname [info script]] ..]]
 set rundir  [file join $repo build ooc_$top]
 set reports [file join $repo docs reports ooc_$top]
 file mkdir $rundir $reports
 cd $rundir
 
-read_verilog -sv [lsort [concat [glob [file join $repo rtl lib *.sv]] [glob [file join $repo rtl book *.sv]]]]
+read_verilog -sv [lsort [concat [glob [file join $repo rtl lib *.sv]] [glob [file join $repo rtl $dir *.sv]]]]
 synth_design -top $top -part $part -mode out_of_context
 create_clock -name clk -period $period [get_ports clk_i]
 opt_design

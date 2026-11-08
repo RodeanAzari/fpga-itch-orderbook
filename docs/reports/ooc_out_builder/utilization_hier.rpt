@@ -1,0 +1,32 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Sun Nov  8 11:32:15 2026
+| Host         : RodeanStation running 64-bit Ubuntu 26.04 LTS
+| Command      : report_utilization -hierarchical -file /home/rodea/OrderBook/docs/reports/ooc_out_builder/utilization_hier.rpt
+| Design       : out_builder
+| Device       : xc7a100tcsg324-1
+| Speed File   : -1
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------+-----------+------------+------------+---------+------+------+--------+--------+------------+
+|     Instance    |   Module  | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++-----------------+-----------+------------+------------+---------+------+------+--------+--------+------------+
+| out_builder     |     (top) |       3245 |       3243 |       0 |    2 | 3513 |      0 |      1 |          0 |
+|   (out_builder) |     (top) |       3121 |       3119 |       0 |    2 | 3477 |      0 |      0 |          0 |
+|   u_fifo        | sync_fifo |        128 |        128 |       0 |    0 |   36 |      0 |      1 |          0 |
+|     (u_fifo)    | sync_fifo |         93 |         93 |       0 |    0 |   36 |      0 |      0 |          0 |
++-----------------+-----------+------------+------------+---------+------+------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+

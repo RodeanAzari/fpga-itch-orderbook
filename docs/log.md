@@ -456,3 +456,30 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   fail, but only at 512 sets: at 8,192 the stimulus rarely goes stale mid-run.
 - **USB NIC choice:** this WSL kernel has `ax88179_178a` (+ `cdc_ncm`, `lan78xx`) but no
   `r8152`, so the adapter must be ASIX AX88179, not the more common Realtek RTL8153.
+
+## 2026-11-08: Phase D, output builder (`rtl/out/out_builder`)
+
+- Inbox: request 0008 done (tb-common "Used by" lists fpga-rs-core). 0005 (eth_rx link-up)
+  still waits on P3's raw stats dump of a bad case.
+- **`sync_fifo`** (FWFT, block RAM, `rtl/lib/`) and **`out_builder`**: records → byte FIFO;
+  each datagram's `count` = complete records waiting (flush on idle); ack > stats > records;
+  the ack flushes at a datagram boundary. ADR 0008.
+- Tests: `test_out` (7) and `test_sync_fifo` (3), scored with `model.protocol.parse`.
+  Latency record → first header byte = REC_LEN + 2 cycles, as predicted in the header.
+- **Bug (design, before the test ran): mode race.** Symptom (on paper): old-run BBO
+  records sent as trace datagrams. Root cause: the control block sets the new mode at
+  config time, but the ack goes out only after the book's RAMs are clear, thousands of
+  cycles later. Fix: the builder latches the mode when the ack starts.
+- **Mistakes of mine: tests too weak, found by bug injection.** "Flush leaves the writer"
+  and "mode from the live input" passed at first: the ack waited behind a datagram, so no
+  record was half written at the flush, and the mode changed on the ack's own cycle. A
+  FIFO visibility bug was invisible through the builder (it never reads near a write).
+  Fixes: a directed half-record test, an early mode change, a sync_fifo unit test. Now
+  all 9 behaviour-changing injections are caught; 2 more are equivalent mutants.
+- Test bugs: records pushed on the flush cycle (breaks the documented contract); stats
+  requests closer together than a datagram merge by design.
+- **Timing: DSP multiply on the critical path.** Symptom: OOC WNS +0.080 ns at 8 ns.
+  Root cause: `cnt × {40, 64}` mapped to a DSP48 after the `min`. Fix: shifts. WNS
+  +0.998 ns, 3,245 LUT, 3,513 FF, 0.5 BRAM36, 0 DSP (`docs/reports/ooc_out_builder/`).
+- Spec fix: `docs/protocol.md` said the host's `pkt_seq` is echoed in the ack and also
+  that the ack's `pkt_seq` is 0. Kept 0 (stated twice; the echoed record identifies it).

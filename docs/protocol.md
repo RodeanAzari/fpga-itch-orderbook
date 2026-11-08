@@ -24,7 +24,7 @@ Offsets are in bytes from the start of the UDP payload.
 | 0 | 2 | `magic` | `0x4F42` ("OB") |
 | 2 | 1 | `version` | `1` |
 | 3 | 1 | `type` | see below |
-| 4 | 4 | `pkt_seq` | FPGA → host: datagram number since the last config ack (the ack is 0), +1 per datagram of any type. A jump means the host lost output datagrams. Host → FPGA: any value, echoed in the ack. |
+| 4 | 4 | `pkt_seq` | FPGA → host: datagram number since the last config ack (the ack is 0), +1 per datagram of any type. A jump means the host lost output datagrams. Host → FPGA: any value, ignored (the ack echoes the config record, not this field). |
 | 8 | 2 | `count` | number of records that follow |
 | 10 | 2 | `record_len` | bytes per record (fixed per type; lets a reader check the length) |
 

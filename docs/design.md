@@ -13,6 +13,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0005](decisions/0005-data-width.md) | `DATA_W = 8` default; 64-bit (message aligner) in Phase E for the capacity measurement | Accepted |
 | [0006](decisions/0006-price-level-storage.md) | Price levels: 4,096 × 36-bit arrays per side + 64 × 64 two-level bitmap; BBO once per message; in-window sub-penny → stale | Accepted |
 | [0007](decisions/0007-output-and-control.md) | Output: batched datagrams (flush on idle), decode-trace mode, UDP config packet with ack; `docs/protocol.md` | Accepted |
+| [0008](decisions/0008-output-builder-buffering.md) | Output builder: byte FIFO + complete-record count; ack flushes at a datagram boundary and latches the mode | Accepted |
 
 Still to write: cut-through vs. store-and-forward, core clock, timestamp design.
 
