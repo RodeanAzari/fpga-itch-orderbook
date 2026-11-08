@@ -539,3 +539,9 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   the CDC list in `docs/design.md`. Not yet built in Vivado.
 - Sim note: a Python wake-up on every core cycle doubled `test_core`'s run time; the
   release monitor now runs only around each config. `test_core` takes ~100 s.
+- **First full-chip build** (`arty_top`, Vivado 2025.2): core 8 ns, WNS +0.059 ns,
+  WHS +0.010 ns; worst path `order_table` price-index multiply (7.806 ns, 7 CARRY4);
+  8,445 LUT, 13,259 FF, 107.5 BRAM36, 10 DSP; no critical warnings, CDC report only the
+  expected Gray-pointer warnings. Bitstream built, not run on the board. ADR 0009 keeps
+  125 MHz (`docs/reports/arty_top/`).
+- Open: `make sim` ~9 min (target 5); host/capture; first board run.
