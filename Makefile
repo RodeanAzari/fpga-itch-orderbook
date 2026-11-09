@@ -60,12 +60,13 @@ host:
 host-test: host
 	ctest --test-dir build/host-Debug --output-on-failure
 	REPLAY=build/host-Release/replay $(PY) -m pytest -q host/test_replay.py
+	CAPTURE=build/host-Release/capture $(PY) -m pytest -q host/test_capture.py
 
 # clang-format + clang-tidy, zero findings. Tests skip bugprone-unchecked-optional-access:
 # it does not recognize gtest's ASSERT_TRUE(opt) as a guard.
 host-lint: host
 	$(VENV)/bin/clang-format --dry-run -Werror $(HOST_SRC)
-	$(VENV)/bin/clang-tidy -p build/host-Release --quiet host/mold.cpp host/replay.cpp
+	$(VENV)/bin/clang-tidy -p build/host-Release --quiet host/mold.cpp host/replay.cpp host/capture.cpp
 	$(VENV)/bin/clang-tidy -p build/host-Release --quiet \
 	  --checks=-bugprone-unchecked-optional-access host/test_mold.cpp
 

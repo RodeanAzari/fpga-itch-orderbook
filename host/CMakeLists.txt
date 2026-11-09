@@ -24,6 +24,9 @@ add_executable(replay replay.cpp)
 target_link_libraries(replay PRIVATE mold)
 target_compile_options(replay PRIVATE -Wall -Wextra -Werror)
 
+add_executable(capture capture.cpp)
+target_compile_options(capture PRIVATE -Wall -Wextra -Werror)
+
 # GoogleTest, pinned by tag and hash (docs/toolchain.md).
 include(FetchContent)
 FetchContent_Declare(googletest
