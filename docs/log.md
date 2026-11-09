@@ -545,3 +545,24 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   expected Gray-pointer warnings. Bitstream built, not run on the board. ADR 0009 keeps
   125 MHz (`docs/reports/arty_top/`).
 - Open: `make sim` ~9 min (target 5); host/capture; first board run.
+
+## 2026-11-09: host/capture and analysis/compare
+
+- **`host/capture`** (C++): sends the config to the FPGA's control port, resends every
+  `--retry-ms` until the ack (type 0x11, `pkt_seq` 0, our record echoed), creates
+  `--ready-file`, then logs every well-formed FPGA datagram (u16 BE length + payload, the
+  same framing as `replay --out`). Counted, never logged: pre-ack datagrams, other sources,
+  malformed ones. Counts `pkt_seq` gaps / datagrams lost / backwards steps and other hosts'
+  acks; stops on `--idle` (after the last record), `--duration` or Ctrl-C; prints the last
+  stats snapshot by counter name. `host/test_capture.py` (22 tests) runs it against a fake
+  FPGA on loopback, judging the config with `model.protocol.parse_config`. 12/12 injected
+  bugs caught after two test fixes: no datagram had only a wrong `record_len` (my first
+  case was also the wrong length, so the length check hid it), and none was one byte too
+  long.
+- **`analysis/compare.py`**: the capture log vs `model.protocol.expected()` over the
+  `replay --out` packets; the config (mode, window, locate) comes from the ack at the
+  head of the log. Undoes host reordering and byte-identical duplicates by `pkt_seq`; a
+  lost datagram fails the run. `analysis/test_compare.py` (12 tests, now in pytest's
+  `testpaths`); 7/7 injected bugs caught. Two test assumptions of mine were wrong: 2,000
+  generated messages give only 120 BBO changes, and a window edge 100 ticks above the
+  base moves no generator price out of it.
