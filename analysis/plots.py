@@ -89,10 +89,80 @@ def bbo_day(prefix: str, out: Path) -> None:
     print(f"wrote {out}")
 
 
+def board_vs_model(csv_path: Path, runs_csv: Path, run_name: str, out: Path) -> None:
+    """The board's last BBO per minute drawn over the golden model's, and their difference.
+    Minutes with an empty side on either source are left out (no bid/ask pair to draw).
+    The record-level totals come from run `run_name` in `runs_csv`."""
+    with open(runs_csv) as f:
+        run = next(r for r in csv.DictReader(f) if r["run"] == run_name)
+    if run["match"] != "1":
+        raise ValueError(f"{run_name}: not a matching run")
+    hours, mb, ma, bb, ba, db, da = [], [], [], [], [], [], []
+    with open(csv_path) as f:
+        for row in csv.DictReader(f):
+            v = {k: int(x) for k, x in row.items()}
+            if not all(v[f"{s}_{k}_size"] for s in ("board", "model") for k in ("bid", "ask")):
+                continue
+            hours.append(v["minute"] / 60)
+            mb.append(v["model_bid_price"] / PRICE_SCALE)
+            ma.append(v["model_ask_price"] / PRICE_SCALE)
+            bb.append(v["board_bid_price"] / PRICE_SCALE)
+            ba.append(v["board_ask_price"] / PRICE_SCALE)
+            db.append((v["board_bid_price"] - v["model_bid_price"]) / 100)  # cents
+            da.append((v["board_ask_price"] - v["model_ask_price"]) / 100)
+
+    fig, (top, bottom) = plt.subplots(
+        2, 1, figsize=(10, 6.2), sharex=True, gridspec_kw={"height_ratios": [3, 1.1]}
+    )
+    fig.patch.set_facecolor(SURFACE)
+    for ax in (top, bottom):
+        _style(ax)
+        for t in (9.5, 16):
+            ax.axvline(t, color=MUTED, linewidth=0.8, linestyle=(0, (2, 3)))
+    # golden model: wide, pale; the board on top: thin, full colour. Where they agree the
+    # thin line sits inside the wide one.
+    top.step(hours, mb, where="post", color=BID, alpha=0.25, linewidth=5, label="Bid, golden model")
+    top.step(hours, ma, where="post", color=ASK, alpha=0.25, linewidth=5, label="Ask, golden model")
+    top.step(hours, bb, where="post", color=BID, linewidth=1.2, label="Bid, FPGA")
+    top.step(hours, ba, where="post", color=ASK, linewidth=1.2, label="Ask, FPGA")
+    top.set_ylabel("Price (USD)", color=INK)
+    top.legend(loc="upper left", frameon=False, labelcolor=INK, ncol=2, fontsize=9)
+    top.set_title(
+        "AAPL best bid / ask, 2019-10-18: FPGA on the board vs golden model (last BBO per minute)",
+        color=INK,
+        loc="left",
+        fontsize=11,
+    )
+    bottom.step(hours, db, where="post", color=BID, linewidth=1.2)
+    bottom.step(hours, da, where="post", color=ASK, linewidth=1.2, linestyle=(0, (4, 2)))
+    worst = max(map(abs, db + da))
+    bottom.set_ylim(-1, 1)
+    bottom.set_ylabel("FPGA − model (¢)", color=INK)
+    bottom.text(
+        0.99, 0.75, f"max |difference| = {worst:g}¢ over {len(hours)} minutes; record "
+        f"level: {int(run['fpga_records']):,} / {int(run['expected_records']):,} BBOs identical",
+        transform=bottom.transAxes, ha="right", color=MUTED, fontsize=8,
+    )  # fmt: skip
+    bottom.set_xlabel("Time of day (ET, hours)", color=INK)
+    bottom.set_xlim(4, 20)
+    bottom.set_xticks(range(4, 21, 2))
+    bottom.set_xticklabels([f"{h:02d}:00" for h in range(4, 21, 2)])
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main() -> None:
     bbo_day(
         str(RESULTS / "2019-10-18_AAPL"),
         MEDIA / "2026-11-02_phase-a_aapl-bbo-day.png",
+    )
+    board_vs_model(
+        RESULTS / "2026-11-09_board_vs_model_bbo_1min.csv",
+        RESULTS / "2026-11-09_full_day_board.csv",
+        "day500c",
+        MEDIA / "2026-11-09_phase-d_board-vs-model-bbo-day.png",
     )
 
 
