@@ -71,7 +71,8 @@ async def run(dut, name: str, cycles: int, p_event: float, p_clear: float) -> No
         assert tick == (since_clear > 0 and since_clear % TICK == 0), f"cycle {cyc}: tick {tick}"
         ticks += tick
         # drive this cycle's inputs; the model applies them at the next rising edge
-        clear = rng.random() < p_clear
+        # one forced clear mid-run: a sparse p_clear can draw none (e^-3 at 6,000 x 0.0005)
+        clear = rng.random() < p_clear or cyc == cycles // 2
         ev = {n: int(rng.random() < p_event) for n in PULSES}
         gap = rng.choice([1, rng.getrandbits(16), rng.getrandbits(64), MASK])
         mal = rng.randrange(4) if rng.random() < p_event else 0
