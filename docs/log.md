@@ -622,3 +622,11 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   Two more zero-mismatch full days on the board (shoot and demo runs).
   Bugs in my GIF code: glyph ink width used as cell width (segments overlapped);
   chart width one column over the line limit (rightmost column and "20" label cut).
+- Phase D checklist: on the board's full day `table_overflow`, `ref_overflow`,
+  `shares_overflow`, `unknown_ref` 0; `bbo_oow` 4 = bounded model, 4 records flagged;
+  `price_oow` 16,099 = model (ADR 0002 explains it). Media: `analysis/board_bbo.py` +
+  `plots.py` board-vs-model day plot (650 minutes, 0 differ); demo GIF re-rendered from
+  `day500c` after the `demo` log it came from was overwritten by a later run (the GIF was
+  also rewritten mid-run from a half-written log; restored). README updated.
+- Second day chosen by the user: 2025-12-12 (12.55 GB, the largest listed). Download
+  started (3 MB/s); analysis left for the next session.
