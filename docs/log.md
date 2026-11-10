@@ -583,3 +583,23 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   loss open (see progress.md).
 - Bug (mine, procedural): `sudo` through the session's `!` prefix cannot prompt for a
   password; host network commands go in the user's own terminal.
+
+## 2026-11-09 (later): where the 2,000 pps losses come from
+
+Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
+- Symptom: MII FIFO overflow at 2,000 pps (not at 500), in clusters at the same packets
+  every run, trace mode much worse than BBO. Root cause (measured): `replay` falls behind
+  when the host stalls (18 ms reading `/mnt/d`, 5 ms from the Linux disk; load average
+  33–44 on 16 CPUs from other sessions), then sends the late packets back to back; in a
+  burst the board's output needs more wire time than its input, so backpressure fills the
+  2 KB FIFO. Fix tried: a pacing rule that never catches up. It made things worse (the
+  host loses ~35 % of the sender's time; 1,290 pps achieved). Reverted. Kept: `replay`
+  reports `max_lag_ms` in `--pps` mode.
+- NCM aggregation (`tx_timer_usecs` 400 → 0) cut trace-mode loss 54 → 4 but did not
+  change the BBO-mode loss: the same 2 frames at the same place.
+- Full AAPL day at 500 pps: ended after 8,477 packets. All losses were host-side:
+  `fq_codel` drops (21), a > 3 s USB/IP stall, 91 output datagrams lost on receive.
+- New: `compare` reports `unflagged_wrong` (BBO wrong without the stale flag, matched by
+  mold_seq so it stays exact after a loss); 0 on all six BBO runs (436,778 BBOs); 3/3
+  injected bugs caught. Test trap: the generator's default 1 % unknown refs leave almost
+  every record stale, so a test of the flag needs `p_unknown_ref=0`.

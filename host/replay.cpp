@@ -10,7 +10,10 @@
 //   --pps N              packet k is due at t0 + k / N
 //   --realtime [--speed X]  a packet is due at t0 + (its first message's ITCH timestamp -
 //                        the first packet's) / X. Late packets go out at once, so bursts
-//                        follow; the summary reports how far behind sends fell (max_lag_ms).
+//                        follow.
+// With --pps or --realtime the summary reports how far behind schedule sends fell
+// (max_lag_ms). Late packets go out at once, so a lag is a back-to-back burst on the
+// wire (on a loaded host this overflowed the board's MII FIFO, docs/log.md 2026-11-09).
 // A send that fails with ENOBUFS/EAGAIN/EINTR is retried (send_retries); any other error
 // aborts. --out FILE writes the packets as u16 BE length + bytes instead of sending (the
 // same framing as an ITCH file, so model.itch.iter_raw reads it back).
@@ -357,7 +360,8 @@ int run(const Args& a) {
     std::printf("achieved_msgs_per_s=%.1f\n", static_cast<double>(st.messages) / secs);
     std::printf("payload_mbps=%.3f\n", static_cast<double>(st.payload_bytes) * 8 / secs / 1e6);
     std::printf("wire_mbps=%.3f\n", static_cast<double>(st.wire) * 8 / secs / 1e6);
-    if (a.realtime) std::printf("max_lag_ms=%.3f\n", static_cast<double>(st.max_lag_ns) / 1e6);
+    if (a.realtime || a.pps > 0)
+        std::printf("max_lag_ms=%.3f\n", static_cast<double>(st.max_lag_ns) / 1e6);
     std::printf("interrupted=%d\n", g_stop ? 1 : 0);
     return 0;
 }

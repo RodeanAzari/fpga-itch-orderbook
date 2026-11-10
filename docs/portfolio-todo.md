@@ -11,7 +11,7 @@ None. The only media is a generated plot: `docs/media/2026-11-02_phase-a_aapl-bb
 - Board photo cabled to the host, link LEDs visible.
 - ILA screenshot: one frame through MII → FIFO → parser.
 
-## Phase D: first correct BBO on hardware (2026-11-09)
+## Phase D: first correct BBO on hardware (2026-11-09) — deferred by the user to a later, more visual checkpoint
 
 Result: `data/results/2026-11-09_first_board_run.md` (91,021/91,021 BBO updates match).
 - Photo: the Arty cabled to the USB Ethernet adapter, during a replay

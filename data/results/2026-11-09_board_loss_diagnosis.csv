@@ -1,0 +1,13 @@
+run,mode,target_pps,messages,itch_source,ncm_tx_timer_us,pacing,achieved_pps,replay_max_lag_ms,packets_sent,board_rx_frames_ok,board_rx_fifo_overflow,feed_gaps,feed_gap_messages,out_datagrams,host_rx_datagrams,host_seq_lost,expected_records,fpga_records,match,unflagged_wrong
+trace1,trace,2000,200000,/mnt/d,400,absolute,2000.9,,4391,4337,54,33,2502,23745,23746,3,198084,195607,0,
+trace500,trace,500,200000,/mnt/d,400,absolute,500.2,,4391,4391,0,0,0,30032,30033,3,198084,198084,1,
+bbo500,bbo,500,200000,/mnt/d,400,absolute,500.2,,4391,4391,0,0,0,24392,24393,0,91021,91021,1,0
+bbo2000,bbo,2000,200000,/mnt/d,400,absolute,2000.9,,4391,4389,2,1,95,23279,23280,0,91021,62568,0,0
+check500,bbo,500,200000,/mnt/d,400,absolute,500.2,,4391,4391,0,0,0,24454,24455,0,91021,91021,1,0
+bbo2000_t0,bbo,2000,200000,/mnt/d,0,absolute,1999.5,,4391,4388,2,2,141,23764,23091,674,91021,60762,0,0
+trace2000_t0,trace,2000,200000,/mnt/d,0,absolute,2000.8,,4391,4387,4,2,190,28956,28957,0,198084,197895,0,
+trace2000_mntd,trace,2000,200000,/mnt/d,0,absolute,2000.9,18.125,4391,4368,23,14,1069,28222,28223,0,198084,197029,0,
+trace2000_linux,trace,2000,200000,linux,0,absolute,2000.9,5.317,4391,4387,4,2,182,29112,29113,0,198084,197903,0,
+bbo2000_paced,bbo,2000,200000,linux,0,min-spacing (reverted),1276.3,1245.909,4391,4385,4,5,280,21519,19303,2217,91021,50520,0,0
+trace2000_paced,trace,2000,200000,linux,0,min-spacing (reverted),1306.4,1166.624,4391,4338,51,39,2479,19874,19760,115,198084,194005,0,
+day500,bbo,500,1669592,linux,0,absolute,500.0,185.220,35313,8477,0,15,777,26796,26706,91,831842,55438,0,0

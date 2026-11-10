@@ -173,6 +173,13 @@ def test_pps_pacing_lower_bound(tmp_path: Path) -> None:
     # Packet k is due at k / pps; the end-of-session packet is the last one sent.
     assert float(s["elapsed_s"]) >= (built - 1) / 2000
     assert s["mode"] == "pps"
+    assert float(s["max_lag_ms"]) >= 0  # reported in pps mode too: a lag is a burst
+
+
+def test_flat_out_reports_no_lag(tmp_path: Path) -> None:
+    src = itch_file(tmp_path / "in.itch", messages(100))
+    s = run("--in", str(src), "--out", str(tmp_path / "o"))
+    assert "max_lag_ms" not in s  # no schedule, so no lag to report
 
 
 @pytest.mark.parametrize("speed", [1.0, 4.0])

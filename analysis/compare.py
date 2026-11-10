@@ -9,6 +9,9 @@ input and flags as the hardware run (replay's packets do not depend on pacing). 
 runs model.protocol.expected() over PKTS with the RTL's book geometry, and the FPGA's
 BBO/trace records, in pkt_seq order, are compared with it record by record.
 
+In BBO mode `unflagged_wrong` counts BBOs that are wrong without the stale flag (CLAUDE.md:
+never silently produce a wrong book); it must be 0 even when a run lost data.
+
 Output: a key=value summary on stdout for the results sidecar; the first mismatch with the
 N records before it, decoded, on stderr. Exit 0 on a full match, 1 otherwise. A run with
 lost output datagrams (pkt_seq gaps) cannot match and says so; datagrams the host reordered
@@ -64,6 +67,21 @@ def base_ticks(cfg: P.Config) -> int:
     return cfg.lo_price // 100 + 2048
 
 
+def _mold_seq(bbo: bytes) -> int:
+    return int.from_bytes(bbo[32:40])  # docs/protocol.md BBO record, offset 32
+
+
+def unflagged_wrong(got: list[bytes], want: list[bytes]) -> int:
+    """FPGA BBOs that differ from the model's BBO for the same cause message (or that the
+    model did not produce at all) and do not carry the stale flag: a silently wrong book.
+    Matching by mold_seq (one BBO per message at most) keeps this exact after a loss,
+    where positions no longer line up. Must be 0 on every run, lossy or not."""
+    by_seq = {_mold_seq(w): w for w in want}
+    return sum(
+        1 for g in got if g != by_seq.get(_mold_seq(g)) and not int.from_bytes(g[2:4]) & P.STALE
+    )
+
+
 def compare(log: Path, packets: Path, context: int = 5) -> tuple[dict[str, int], list[str]]:
     """Summary counters, and report lines for the first mismatch (empty on a match)."""
     cfg, dgs = read_log(log)
@@ -94,6 +112,8 @@ def compare(log: Path, packets: Path, context: int = 5) -> tuple[dict[str, int],
         "first_mismatch": -1 if first is None else first,
         "match": int(first is None and lost == 0),
     }
+    if kind == P.BBO:
+        summary["unflagged_wrong"] = unflagged_wrong(got, want)
     report: list[str] = []
     if first is not None:
         report.append(f"first mismatch at record {first}:")

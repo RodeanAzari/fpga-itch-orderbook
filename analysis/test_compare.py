@@ -31,8 +31,10 @@ def write_framed(path: Path, items: list[bytes]) -> Path:
     return path
 
 
-def setup(tmp_path: Path, mode: int = 0) -> tuple[Path, P.Config, list[bytes]]:
-    msgs = generator.generate(seed=11, count=2000)
+def setup(
+    tmp_path: Path, mode: int = 0, gen: generator.Config = generator.DEFAULT
+) -> tuple[Path, P.Config, list[bytes]]:
+    msgs = generator.generate(seed=11, count=2000, cfg=gen)
     pkts = list(packetize(msgs, b"TESTSESS01", max_payload=600))
     cfg = P.Config(
         mode=mode,
@@ -145,3 +147,33 @@ def test_window_comes_from_the_ack(tmp_path: Path) -> None:
     assert recs2 != recs
     assert run(tmp_path, pkts, datagrams(shifted, recs2))["match"] == 1
     assert run(tmp_path, pkts, datagrams(shifted, recs))["match"] == 0
+
+
+def test_unflagged_wrong(tmp_path: Path) -> None:
+    """A wrong BBO is acceptable only with the stale flag; positions shifted by a loss
+    must not make correct records count as wrong."""
+    # No unknown refs, so the book is never stale and no record is flagged to begin with.
+    pkts, cfg, recs = setup(tmp_path, gen=generator.Config(p_unknown_ref=0.0))
+    assert not any(int.from_bytes(r[2:4]) & P.STALE for r in recs)
+    k = len(recs) // 2
+
+    def stale(r: bytes) -> bytes:
+        return r[:2] + (int.from_bytes(r[2:4]) | P.STALE).to_bytes(2) + r[4:]
+
+    def wrong(r: bytes) -> bytes:
+        return r[:4] + (int.from_bytes(r[4:8]) + 100).to_bytes(4) + r[8:]  # bid_px + 1 c
+
+    # A record lost mid-run, everything after it wrong and flagged: 0.
+    lossy = recs[:k] + [stale(wrong(r)) for r in recs[k + 1 :]]
+    assert run(tmp_path, pkts, datagrams(cfg, lossy))["unflagged_wrong"] == 0
+    # Records merely missing (output loss): still 0, positions do not matter.
+    assert run(tmp_path, pkts, datagrams(cfg, recs[:k] + recs[k + 5 :]))["unflagged_wrong"] == 0
+    # One wrong record without the flag, and one BBO the model never produced: 2.
+    extra = wrong(recs[k])[:32] + (10**12).to_bytes(8) + recs[k][40:]
+    bad = [*recs[:k], wrong(recs[k]), *recs[k + 1 :], extra]
+    assert run(tmp_path, pkts, datagrams(cfg, bad))["unflagged_wrong"] == 2
+
+
+def test_trace_mode_has_no_unflagged_count(tmp_path: Path) -> None:
+    pkts, cfg, recs = setup(tmp_path, mode=1)
+    assert "unflagged_wrong" not in run(tmp_path, pkts, datagrams(cfg, recs))
