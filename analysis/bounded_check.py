@@ -1,7 +1,9 @@
 """Replay a one-symbol extract through the bounded (RTL-configuration) and unbounded books.
 
 Checks the ADR 0002 contract on every message: the out-of-window flag is set exactly when
-the bounded BBO differs from the true one. Usage: bounded_check.py <symbol.itch> <base> <out>
+the bounded BBO differs from the true one, and counts wrong BBOs carrying neither that flag nor
+stale (`unflagged_wrong`: must be 0, CLAUDE.md "never silently produce a wrong book").
+Usage: bounded_check.py <symbol.itch> <base> <out> [sets_per_bank ways]
 """
 
 from __future__ import annotations
@@ -14,10 +16,14 @@ from model.bounded import BoundedBook
 from model.itch import decode, iter_raw
 
 
-def main(path: str, base_ticks: str, out_csv: str) -> None:
+def main(path: str, base_ticks: str, out_csv: str, *shape: str) -> None:
     truth = OrderBook()
-    book = BoundedBook(base_ticks=int(base_ticks))
-    contract_violations = 0
+    if shape:
+        sets, ways = (int(v) for v in shape)
+        book = BoundedBook(base_ticks=int(base_ticks), sets_per_bank=sets, ways=ways)
+    else:
+        book = BoundedBook(base_ticks=int(base_ticks))
+    contract_violations = unflagged_wrong = 0
     bbo_updates = 0
     with open(path, "rb") as f:
         for raw in iter_raw(f):
@@ -27,7 +33,9 @@ def main(path: str, base_ticks: str, out_csv: str) -> None:
             truth.apply(msg)
             bbo_updates += book.apply(msg) is not None
             *shown, flag = book._state()
-            contract_violations += bool(flag) != (tuple(shown) != truth._state())
+            wrong = tuple(shown) != truth._state()
+            contract_violations += bool(flag) != wrong
+            unflagged_wrong += wrong and not flag and not book.stale
 
     row = {
         "sets_per_bank": book.sets_per_bank,
@@ -46,6 +54,7 @@ def main(path: str, base_ticks: str, out_csv: str) -> None:
         "book_stale": int(book.stale),
         "bbo_oow": book.bbo_oow,
         "flag_contract_violations": contract_violations,
+        "unflagged_wrong": unflagged_wrong,
     }
     with open(out_csv, "w", newline="") as f:
         writer = csv.writer(f)
@@ -56,4 +65,4 @@ def main(path: str, base_ticks: str, out_csv: str) -> None:
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    main(*sys.argv[1:])
