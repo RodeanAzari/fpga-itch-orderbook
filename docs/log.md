@@ -603,3 +603,8 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   mold_seq so it stays exact after a loss); 0 on all six BBO runs (436,778 BBOs); 3/3
   injected bugs caught. Test trap: the generator's default 1 % unknown refs leave almost
   every record stale, so a test of the flag needs `p_unknown_ref=0`.
+- Full day again with `pfifo` instead of `fq_codel` (user ran `tc qdisc replace`): every
+  frame reached the board, no output loss; first 408,158 BBOs exact, then one MII FIFO
+  overflow from a 139 ms replay stall at load ~30
+  (`data/results/2026-11-09_full_day_board.md`). Board had lost its bitstream again before
+  the run (no carrier; reprogrammed).
