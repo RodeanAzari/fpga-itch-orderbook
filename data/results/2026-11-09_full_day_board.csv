@@ -1,3 +1,5 @@
 run,mode,target_pps,messages,packets_sent,qdisc,achieved_pps,replay_max_lag_ms,board_rx_frames_ok,board_rx_fifo_overflow,feed_gaps,feed_end_of_session,out_datagrams,host_rx_datagrams,host_seq_lost,expected_records,fpga_records,records_matching_before_first_loss,match,unflagged_wrong
 day500b,bbo,500,1669592,35313,pfifo,500.0,139.424,35314,1,1,1,214382,214383,0,831842,619150,408158,0,0
 day500c,bbo,500,1669592,35313,pfifo,500.0,1.359,35313,0,0,1,226235,226236,0,831842,831842,831842,1,0
+shoot500,bbo,500,1669592,35313,pfifo,500.0,7.192,35313,0,0,1,226234,226235,0,831842,831842,831842,1,0
+demo,bbo,500,1669592,35313,pfifo,500.0,41.278,35313,0,0,1,226147,226148,0,831842,831842,831842,1,0

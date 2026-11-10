@@ -19,6 +19,12 @@ never stale, 0 capacity counters (`table_overflow`, `unknown_ref` 0), 226,235 ou
 datagrams all received. `replay` lag max 1.4 ms. Fixed 500 pps (70.6 s), not real-time
 pacing; the out-of-window BBOs are flagged as the model flags them (ADR 0002).
 
+**Reproduced** in `shoot500` and `demo` (same command, quiet host, replay lag max 7.2 and
+41.3 ms): 831,842/831,842 each, 0 frames lost. Three zero-mismatch days in a row.
+`docs/media/2026-11-09_phase-d_board-full-day-bbo.gif` is rendered from the `demo` run's
+capture log (`make demo-gif`: `analysis/bbo_view.py --gif`, 200 frames spaced by BBO count;
+the log is local, `data/runs/demo.log`).
+
 `day500b` (the earlier run, loaded host):
 
 - The whole day reached the board: `rx_frames_ok` 35,314 + `rx_fifo_overflow` 1 = 35,313

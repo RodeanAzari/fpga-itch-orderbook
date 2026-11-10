@@ -11,7 +11,7 @@ ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, 
 # Vendor wrappers, with eth-core's simulation models of the primitives they use
 XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
-.PHONY: prog setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: demo-gif prog setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -81,6 +81,13 @@ day-stats:
 prog:
 	bash -c 'eval "$$(sed -n "/^vivado-env()/,/^}/p" ~/.bashrc)" && vivado-env && \
 	  vivado -mode batch -nojournal -nolog -source syn/prog.tcl -tclargs $(BIT)'
+
+# README demo GIF from a recorded board run (data/runs/ is local; see
+# data/results/2026-11-09_full_day_board.md for the run).
+DEMO_LOG ?= data/runs/demo.log
+demo-gif:
+	$(PY) -m analysis.bbo_view --log $(DEMO_LOG) --packets data/runs/slice0.pkts --fps 10 \
+	  --gif docs/media/2026-11-09_phase-d_board-full-day-bbo.gif
 
 plots:
 	$(PY) -m analysis.plots

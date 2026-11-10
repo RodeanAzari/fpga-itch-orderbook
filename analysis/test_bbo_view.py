@@ -90,15 +90,58 @@ def test_new_config_resets_the_view() -> None:
 
 def test_chart_geometry() -> None:
     hist = [(100, 200), (150, 250), (100, 0)]  # last update: ask side empty
-    rows = V.chart(hist, rows=5, cols=8)
-    assert len(rows) == 5 and all(len(r) == 8 for r in rows)
+    rows, lo, hi = V.chart(hist, rows=5, cols=8)
+    assert len(rows) == 5 and all(len(r) == 8 for r in rows) and (lo, hi) == (100, 250)
     # fewer updates than columns: right-aligned, oldest first
     assert rows[0][6] == "a" and rows[4][5] == "b"  # top = highest price, bottom = lowest
     assert "a" not in "".join(r[7] for r in rows)  # empty side not drawn
-    assert V.chart([], 3, 4) == ["    "] * 3
+    assert V.chart([], 3, 4) == (["    "] * 3, 0, 0)
     many = [(1000 + i, 2000 + i) for i in range(1000)]
-    rows = V.chart(many, rows=10, cols=20)
+    rows, _, _ = V.chart(many, rows=10, cols=20)
     assert rows[0][19] == "a" and rows[-1][0] == "b"  # newest right, rising prices
+
+
+def test_plot_marks_bid_and_ask_in_one_cell() -> None:
+    rows, _, _ = V.plot([(100, 101), (100, 300)], rows=3)  # 1-tick spread on a 200 range
+    assert rows[2][0] == "x" and rows[0][1] == "a" and rows[2][1] == "b"
+
+
+def m(h: int, mi: int) -> int:
+    return h * 60 + mi
+
+
+def test_day_chart_puts_prices_at_their_time() -> None:
+    cols = 160  # 16 h axis: one column per 6 minutes
+    minutes = {m(4, 0): (100, 200), m(12, 0): (300, 310), m(19, 59): (200, 210)}
+    rows, lo, hi = V.day_chart(minutes, rows=11, cols=cols)
+    assert (lo, hi) == (100, 310) and all(len(r) == cols for r in rows)
+    drawn = {c for c in range(cols) for r in rows if r[c] in "abx"}
+    assert drawn == {0, 80, 159}  # 04:00, 12:00, 19:59
+    assert rows[0][80] == "a" and rows[10][0] == "b"  # noon is the high, 04:00 the low
+    # the open (09:30) and close (16:00) columns are marked where nothing is drawn
+    assert rows[5][(m(9, 30) - m(4, 0)) // 6] == "|" and rows[5][(m(16, 0) - m(4, 0)) // 6] == "|"
+    # the last BBO in a column's span wins
+    rows, _, hi = V.day_chart({m(12, 0): (300, 310), m(12, 5): (500, 510)}, 11, cols)
+    assert hi == 510 and rows[0][80] == "a"
+
+
+def test_view_keeps_each_minutes_last_prices() -> None:
+    v = view()
+    t = 12 * 3600 * 10**9  # noon
+
+    def rec(ns: int, bid: int, ask: int) -> bytes:
+        return P.bbo_record(Bbo(ts=ns, bid_price=bid, bid_size=1 if bid else 0,
+                                ask_price=ask, ask_size=1 if ask else 0), 1, False)  # fmt: skip
+
+    v.apply(
+        P.packet(P.BBO, 1, [rec(t, 100, 200), rec(t + 10**9, 0, 210), rec(t + 61 * 10**9, 90, 0)])
+    )
+    assert v.minutes == {720: (100, 210), 721: (90, 0)}  # an empty side keeps the minute's last
+
+
+def test_time_axis_labels() -> None:
+    ax = V.time_axis(160)
+    assert len(ax) == 160 and ax[0:2] == "04" and ax[80:82] == "12" and "20" in ax[-3:]
 
 
 def test_render_fits_the_terminal() -> None:
@@ -142,3 +185,24 @@ def test_expected_is_cached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     first = V.expected_cached(pk)(cfg)
     second = V.expected_cached(pk)(cfg)
     assert first == second and len(first) > 0 and len(calls) == 1
+
+
+def test_empty_side_reads_empty() -> None:
+    v = view()
+    v.apply(P.packet(P.BBO, 1, [bbo(1, 0, 2_341_000, bsz=0)]))
+    quote_line = "".join(t for t, _ in V.render(v, None, 100, 30)[1])
+    assert "BID    empty" in quote_line and "234.10 x 200" in quote_line
+    assert "spread -" in quote_line
+    assert len(V.quote(0, 0)) == len(V.quote(2_341_000, 200))  # the layout does not jump
+
+
+def test_charts_use_the_full_width() -> None:
+    """Every chart row and the time axis end exactly one column short of the terminal
+    width (the last column is never written), so nothing is cut at the right edge."""
+    v = view()
+    v.apply(P.packet(P.BBO, 1, EXPECTED[:22]))
+    lines = V.render(v, None, 120, 40)
+    chart_rows = [ln for ln in lines if ln and ln[0][0].endswith("|")]
+    assert chart_rows and all(sum(len(t) for t, _ in ln) == 119 for ln in chart_rows)
+    axis = next("".join(t for t, _ in ln) for ln in lines if ln and "04" in ln[0][0])
+    assert len(axis) == 119 and axis.rstrip().endswith("20")

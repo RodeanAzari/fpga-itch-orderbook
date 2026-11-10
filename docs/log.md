@@ -613,3 +613,12 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   golden model; 0 frames lost anywhere; replay lag max 1.4 ms (vs 139 ms under load).
   Mistake of mine: a `pgrep -f` "is the run going" check matched my own watcher's command
   line, so I told the user the run had started when it had not.
+- **Demo:** `analysis/bbo_view.py`, a live terminal view that follows capture's log
+  (now flushed per datagram): ITCH clock, bid/ask, the whole day on a 04:00-20:00 axis,
+  the last 4,000 updates, and every BBO checked against the model by cause message.
+  `--gif` renders a recorded log; `make demo-gif` →
+  `docs/media/2026-11-09_phase-d_board-full-day-bbo.gif` (2.7 MB, 20 s). The user found
+  the first version (recent updates only) too fast to follow; the day chart was the fix.
+  Two more zero-mismatch full days on the board (shoot and demo runs).
+  Bugs in my GIF code: glyph ink width used as cell width (segments overlapped);
+  chart width one column over the line limit (rightmost column and "20" label cut).
