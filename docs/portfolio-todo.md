@@ -20,3 +20,15 @@ Result: `data/results/2026-11-09_first_board_run.md` (91,021/91,021 BBO updates 
 - Phone video, 10–15 s, same shot during a replay (GIF ≤ 8 MB for the README; the video
   itself is not committed).
 - Screenshot of the terminal showing `match=1` with `expected_records=fpga_records=91021`.
+
+## Phase D: zero-mismatch full AAPL day on the board (2026-11-09)
+
+Result: `data/results/2026-11-09_full_day_board.md` (831,842/831,842 BBOs). Better shot
+than the 200k-message one above, which this replaces when taken.
+- Photo of the board during a full-day replay (LD4, LD5, LD7 lit, LD6 off, RJ45 link LEDs),
+  with the USB Ethernet adapter in frame.
+- Phone video 10-15 s of the same, or a screen + board shot with `capture`'s per-second
+  progress line scrolling (GIF ≤ 8 MB).
+- Terminal screenshot of `compare`: `expected_records=831842 fpga_records=831842 match=1`.
+Before the shoot: pause other sessions' heavy jobs; `scripts/board_run.sh` with
+`ITCH=data/runs/2019-10-18_AAPL.itch ... bbo 500 0 --idle 30` (about 70 s).

@@ -608,3 +608,8 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   overflow from a 139 ms replay stall at load ~30
   (`data/results/2026-11-09_full_day_board.md`). Board had lost its bitstream again before
   the run (no carrier; reprogrammed).
+- **Zero-mismatch full day on the board.** With the polytopia-engine jobs paused (load
+  2.6), the whole AAPL day at 500 pps: 831,842/831,842 BBO updates byte-identical to the
+  golden model; 0 frames lost anywhere; replay lag max 1.4 ms (vs 139 ms under load).
+  Mistake of mine: a `pgrep -f` "is the run going" check matched my own watcher's command
+  line, so I told the user the run had started when it had not.
