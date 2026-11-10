@@ -21,9 +21,11 @@ pacing; the out-of-window BBOs are flagged as the model flags them (ADR 0002).
 
 **Reproduced** in `shoot500` and `demo` (same command, quiet host, replay lag max 7.2 and
 41.3 ms): 831,842/831,842 each, 0 frames lost. Three zero-mismatch days in a row.
-`docs/media/2026-11-09_phase-d_board-full-day-bbo.gif` is rendered from the `demo` run's
+`docs/media/2026-11-09_phase-d_board-full-day-bbo.gif` is rendered from the `day500c` run's
 capture log (`make demo-gif`: `analysis/bbo_view.py --gif`, 200 frames spaced by BBO count;
-the log is local, `data/runs/demo.log`).
+the log is local, `data/runs/day500c.log`, SHA-256 prefix `b184e8fd0d7da6a8`). A fifth full
+day at 200 pps for the live viewer (`demo` log overwritten) also matched 831,842/831,842
+with 0 frames lost (replay lag max 2.9 ms); not in the CSV, its log was reused.
 
 `day500b` (the earlier run, loaded host):
 

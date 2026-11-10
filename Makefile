@@ -82,9 +82,9 @@ prog:
 	bash -c 'eval "$$(sed -n "/^vivado-env()/,/^}/p" ~/.bashrc)" && vivado-env && \
 	  vivado -mode batch -nojournal -nolog -source syn/prog.tcl -tclargs $(BIT)'
 
-# README demo GIF from a recorded board run (data/runs/ is local; see
+# README demo GIF from the zero-mismatch run day500c (data/runs/ is local; see
 # data/results/2026-11-09_full_day_board.md for the run).
-DEMO_LOG ?= data/runs/demo.log
+DEMO_LOG ?= data/runs/day500c.log
 demo-gif:
 	$(PY) -m analysis.bbo_view --log $(DEMO_LOG) --packets data/runs/slice0.pkts --fps 10 \
 	  --gif docs/media/2026-11-09_phase-d_board-full-day-bbo.gif
