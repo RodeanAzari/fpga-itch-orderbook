@@ -6,7 +6,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 
 | ADR | Topic | Status |
 |---|---|---|
-| [0001](decisions/0001-order-table.md) | Order table: 2-bank d-left, 2 × 8,192 × 4 | Accepted |
+| [0001](decisions/0001-order-table.md) | Order table: 2-bank d-left (geometry superseded by 0010) | Accepted |
 | [0002](decisions/0002-price-window-base.md) | Window base: opening mid, ±2,048 ticks; out-of-window BBO flagged | Accepted |
 | [0003](decisions/0003-gap-stale-semantics.md) | MoldUDP64 gaps: stale is sticky until reset; overlaps dropped whole; malformed packets deliver what they carry | Accepted |
 | [0004](decisions/0004-locate-filter.md) | Locate learned from `R` for the configured symbol, optional host override | Accepted |
@@ -15,6 +15,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0007](decisions/0007-output-and-control.md) | Output: batched datagrams (flush on idle), decode-trace mode, UDP config packet with ack; `docs/protocol.md` | Accepted |
 | [0008](decisions/0008-output-builder-buffering.md) | Output builder: byte FIFO + complete-record count; ack flushes at a datagram boundary and latches the mode | Accepted |
 | [0009](decisions/0009-core-clock.md) | Core clock 125 MHz (full chip WNS +0.059 ns); fallback: one more stage at the price-index multiply | Accepted |
+| [0010](decisions/0010-order-table-16-way.md) | Order table 2 × 2,048 × 16 (same 65,536 entries): 0 overflows on the busier 2025-12-12 day | Accepted |
 
 Still to write: cut-through vs. store-and-forward, timestamp design.
 
@@ -34,13 +35,13 @@ From AAPL on 2019-10-18 (`data/results/2019-10-18_AAPL.md`):
 
 | Block | Arithmetic | BRAM36 |
 |---|---|---|
-| Order table | 2 banks × (8,192 sets / 512 deep) × 3 lanes of 72 bits (4 × 54-bit entries) | 96 |
+| Order table | 2 banks × 2,048 sets × 896-bit rows (16 × 56-bit entries); measured OOC (ADR 0010) | 100 |
 | Price levels | 2 sides × 4,096 levels × 36-bit aggregate shares (4K × 9 mode → 4 BRAM36 per side) | 8 |
 | Occupancy bitmaps | 2 × (64-bit L1 registers + 64 × 64 L2 LUTRAM) | 0 |
 | MII async FIFO, frame buffer, TX buffer | estimate, confirm at synthesis | ~4 |
 | Latency histogram | estimate, confirm at synthesis | ~2 |
-| **Committed so far** | | **~110** |
-| Left for the injector and margin | | ~25 |
+| **Committed so far** | | **~114** |
+| Left for the injector and margin | | ~21 |
 
 Rows marked "estimate" become measured utilization at Phase B/E synthesis.
 

@@ -30,8 +30,8 @@ module ob_core #(
     parameter logic [31:0] OWN_IP      = 32'hC0_A8_0A_02,  // 192.168.10.2
     parameter logic [15:0] CTRL_PORT   = 16'd7000,
     parameter int          TICK_CYCLES = 125_000_000,      // stats period: 1 s of core clock
-    parameter int          SET_BITS    = 13,               // book geometry (ADR 0001)
-    parameter int          WAYS        = 4,
+    parameter int          SET_BITS    = 11,               // book geometry (ADR 0001, 0010)
+    parameter int          WAYS        = 16,
     parameter int          SHARES_W    = 20,
     parameter int          WIN_BITS    = 12                // price window (ADR 0002)
 ) (

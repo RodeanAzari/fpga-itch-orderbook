@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
-| Date         : Fri Nov  6 18:43:19 2026
+| Date         : Tue Nov 10 13:00:04 2026
 | Host         : RodeanStation running 64-bit Ubuntu 26.04 LTS
 | Command      : report_utilization -hierarchical -file /home/rodea/OrderBook/docs/reports/ooc_book_engine/utilization_hier.rpt
 | Design       : book_engine
@@ -19,20 +19,19 @@ Table of Contents
 1. Utilization by Hierarchy
 ---------------------------
 
-+-----------------------+---------------------------+------------+------------+---------+------+------+--------+--------+------------+
-|        Instance       |           Module          | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
-+-----------------------+---------------------------+------------+------------+---------+------+------+--------+--------+------------+
-| book_engine           |                     (top) |       3172 |       3000 |     172 |    0 | 3528 |    104 |      0 |         10 |
-|   u_levels            |               book_levels |       1073 |        901 |     172 |    0 | 1165 |      8 |      0 |          2 |
-|     (u_levels)        |               book_levels |        985 |        813 |     172 |    0 | 1162 |      0 |      0 |          2 |
-|     g_side[1].u_level | sdp_ram__parameterized0_3 |         75 |         75 |       0 |    0 |    1 |      4 |      0 |          0 |
-|   u_table             |               order_table |       2099 |       2099 |       0 |    0 | 2363 |     96 |      0 |          8 |
-|     (u_table)         |               order_table |       1299 |       1299 |       0 |    0 | 2350 |      0 |      0 |          8 |
-|     g_half[0].u_bank0 |                   sdp_ram |        102 |        102 |       0 |    0 |    4 |     24 |      0 |          0 |
-|     g_half[0].u_bank1 |                 sdp_ram_0 |        100 |        100 |       0 |    0 |    3 |     24 |      0 |          0 |
-|     g_half[1].u_bank0 |                 sdp_ram_1 |        379 |        379 |       0 |    0 |    3 |     24 |      0 |          0 |
-|     g_half[1].u_bank1 |                 sdp_ram_2 |        377 |        377 |       0 |    0 |    3 |     24 |      0 |          0 |
-+-----------------------+---------------------------+------------+------------+---------+------+------+--------+--------+------------+
++-----------------------+-------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+|        Instance       |          Module         | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | DSP Blocks |
++-----------------------+-------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+| book_engine           |                   (top) |       7975 |       7803 |     172 |    0 | 10450 |    108 |      0 |         10 |
+|   u_levels            |             book_levels |       1103 |        931 |     172 |    0 |  1168 |      8 |      0 |          2 |
+|     (u_levels)        |             book_levels |       1039 |        867 |     172 |    0 |  1165 |      0 |      0 |          2 |
+|     g_side[0].u_level | sdp_ram__parameterized0 |         80 |         80 |       0 |    0 |     2 |      4 |      0 |          0 |
+|   u_table             |             order_table |       6872 |       6872 |       0 |    0 |  9282 |    100 |      0 |          8 |
+|     (u_table)         |             order_table |       3374 |       3374 |       0 |    0 |  5789 |      0 |      0 |          8 |
+|     g_half[0].u_bank0 |                 sdp_ram |        347 |        347 |       0 |    0 |    10 |     25 |      0 |          0 |
+|     g_half[1].u_bank0 |               sdp_ram_1 |       1639 |       1639 |       0 |    0 |  1721 |     25 |      0 |          0 |
+|     g_half[1].u_bank1 |               sdp_ram_2 |       1802 |       1802 |       0 |    0 |  1759 |     25 |      0 |          0 |
++-----------------------+-------------------------+------------+------------+---------+------+-------+--------+--------+------------+
 * Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
 
 

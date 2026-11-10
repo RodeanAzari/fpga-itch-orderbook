@@ -1,6 +1,6 @@
 # 0001: Order-table structure and sizing
 
-**Status: Accepted 2026-11-03.** Supersedes the original CLAUDE.md §6.3 design (low-bits
+**Status: Accepted 2026-11-03; geometry superseded by [ADR 0010](0010-order-table-16-way.md) (2 × 2,048 × 16) on 2026-11-10.** Supersedes the original CLAUDE.md §6.3 design (low-bits
 hash, one table), which is now updated to match.
 
 ## Context

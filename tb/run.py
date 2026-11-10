@@ -48,9 +48,9 @@ CORE = [
 # test module -> (toplevel, sources, parameter sets)
 TESTS = {
     "test_feed": ("feed_frontend", FEED, [{"DATA_W": 8}]),
-    # 512 sets: the generator's bucket collisions overflow it; 8,192: ADR 0001's geometry.
-    "test_order_table": ("order_table", BOOK, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
-    "test_book": ("book_engine", ENGINE, [{"SET_BITS": 9}, {"SET_BITS": 13}]),
+    # 512 sets: the generator's bucket collisions overflow it; 2,048: ADR 0010's geometry.
+    "test_order_table": ("order_table", BOOK, [{"SET_BITS": 9}, {"SET_BITS": 11}]),
+    "test_book": ("book_engine", ENGINE, [{"SET_BITS": 9}, {"SET_BITS": 11}]),
     # ADDR_W 4: full and wrap every few dozen cycles.
     "test_sync_fifo": ("sync_fifo", OUT[:2], [{"ADDR_W": 4}]),
     "test_out": ("out_builder", OUT, [{}]),
@@ -61,7 +61,7 @@ TESTS = {
     # 30,000-cycle stats tick: stats datagrams interleave with the records.
     "test_core": ("ob_core", CORE, [{"TICK_CYCLES": 30_000}]),
     # make sim-full only: minutes per run, real geometry.
-    "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 13}]),
+    "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 11}]),
 }
 FULL_ONLY = {"test_book_full"}
 

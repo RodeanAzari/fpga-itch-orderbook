@@ -52,8 +52,8 @@ def colliding_refs(set_bits: int, count: int) -> list[int]:
 class BoundedBook(OrderBook):
     base_ticks: int = 0
     half_window: int = 2048
-    sets_per_bank: int = 8192  # power of two
-    ways: int = 4
+    sets_per_bank: int = 2048  # power of two; 2 x 2,048 x 16 is ADR 0010's geometry
+    ways: int = 16
     table_overflow: int = 0
     ref_overflow: int = 0
     shares_overflow: int = 0

@@ -44,7 +44,8 @@ from model import generator
 from model.bounded import TICK, BoundedBook
 from model.itch import Message, iter_raw
 
-SET_BITS = int(os.environ.get("SET_BITS", "13"))
+SET_BITS = int(os.environ.get("SET_BITS", "11"))
+WAYS = int(os.environ.get("WAYS", "16"))
 WIN = 2 * HALF
 STATUS = {  # DUT pulse -> model counter (attribute path)
     "ref_overflow_o": "ref_overflow",
@@ -93,7 +94,7 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
               p_ready: float, stats: dict[str, int] | None = None) -> BoundedBook:  # fmt: skip
     rng = get_rng(name)
     await reset(dut, base)
-    book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=4)
+    book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=WAYS)
     sb = InOrderScoreboard(
         name,
         fmt=lambda x: (
@@ -197,7 +198,7 @@ def wide(seed: int, n: int, base: int) -> tuple[list[tuple[int, Message]], dict[
                 del live[k]
     recs = records(raws)
     # Search statistics from the model, to prove the stimulus did what it is for.
-    probe = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << 13, ways=4)
+    probe = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=WAYS)
     stats = {"searches": 0, "max_ticks": 0, "over_64": 0}
     for _, m in recs:
         before = probe._state()[:4]
@@ -237,7 +238,7 @@ async def wide_window_bitmap_search(dut):
     await run(dut, "book_wide", recs, base, 1.0, 0.8)
 
 
-@cocotb.test(skip=SET_BITS != 13)
+@cocotb.test(skip=SET_BITS != 11)
 async def real_day_head(dut):
     """First 50,000 messages of 2019-10-18 AAPL at the real geometry."""
     with FIXTURE.open("rb") as f:

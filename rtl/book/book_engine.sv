@@ -9,8 +9,8 @@
 // Latency: order_table's plus book_levels'; measured by test_book.py latency_matches_header.
 // Reset: synchronous, active-high; both blocks clear their RAMs before taking input.
 module book_engine #(
-    parameter int SET_BITS = 13,
-    parameter int WAYS     = 4,
+    parameter int SET_BITS = 11,
+    parameter int WAYS     = 16,
     parameter int SHARES_W = 20,
     parameter int WIN_BITS = 12,
     parameter int USER_W   = 1,  // per-message sideband, carried to the BBO (see order_table)

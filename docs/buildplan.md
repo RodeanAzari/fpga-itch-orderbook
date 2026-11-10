@@ -144,9 +144,9 @@ The FCS arrives at the **end** of the frame.
 
 Decided by ADR 0001 from Phase A data. The original single-table, low-bits-hash design was measured and rejected: the low bits of real refs cluster, and no single-hash 4-way table that fits the device reaches zero overflow.
 
-- **Structure:** a **2-bank d-left** hash table in BRAM: 2 banks × 8,192 sets × 4 ways = 65,536 entries. One bucket is read from each bank in the same cycle through a wide BRAM word, and an insert goes to the emptier bucket, with ties going to bank 0.
-- **Hash:** bank *b* index = top 13 bits of `(ref[31:0] × M_b) mod 2^32`, with odd multipliers `M_0 = 0x9E3779B1` and `M_1 = 0x85EBCA6B` (one DSP48 per bank). Odd multipliers make the hash a bijection, so the remaining 19 product bits are a complete tag and refs never alias.
-- **Entry (54 bits):** four of them make 216 bits per set, which is three 72-bit BRAM36 lanes.
+- **Structure:** a **2-bank d-left** hash table in BRAM: 2 banks × 2,048 sets × 16 ways = 65,536 entries (ADR 0010; was 8,192 × 4 in ADR 0001). One bucket is read from each bank in the same cycle through a wide BRAM word, and an insert goes to the emptier bucket, with ties going to bank 0.
+- **Hash:** bank *b* index = top 11 bits of `(ref[31:0] × M_b) mod 2^32`, with odd multipliers `M_0 = 0x9E3779B1` and `M_1 = 0x85EBCA6B` (one DSP48 per bank). Odd multipliers make the hash a bijection, so the remaining 21 product bits are a complete tag and refs never alias.
+- **Entry (56 bits):** sixteen of them make 896 bits per set; 100 BRAM36 for both banks (ADR 0010).
 
   | Field | Bits | Notes |
   |---|---|---|

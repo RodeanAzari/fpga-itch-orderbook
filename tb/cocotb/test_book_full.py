@@ -23,7 +23,8 @@ from model import generator
 from model.bounded import TICK, BoundedBook
 from model.itch import iter_raw
 
-SET_BITS = int(os.environ.get("SET_BITS", "13"))
+SET_BITS = int(os.environ.get("SET_BITS", "11"))
+WAYS = int(os.environ.get("WAYS", "16"))
 EXTRACT = Path(os.environ.get("ITCH_EXTRACT", "/mnt/d/itch/derived/2019-10-18_AAPL.itch"))
 
 
@@ -51,7 +52,7 @@ def record(test: str, n: int, book: BoundedBook, stats: dict[str, int], t0: floa
         w.writerow(row)
 
 
-@cocotb.test(skip=SET_BITS != 13)
+@cocotb.test(skip=SET_BITS != 11)
 async def random_1m(dut):
     """1M+ adversarial book records plus the directed limit blocks.
 
@@ -67,7 +68,7 @@ async def random_1m(dut):
     record("random_1m", len(recs), book, stats, t0)
 
 
-@cocotb.test(skip=SET_BITS != 13)
+@cocotb.test(skip=SET_BITS != 11)
 async def wide_200k(dut):
     """200,000 whole-window messages: bitmap search at scale."""
     t0 = time.monotonic()
@@ -78,7 +79,7 @@ async def wide_200k(dut):
     record("wide_200k", len(recs), book, stats, t0)
 
 
-@cocotb.test(skip=SET_BITS != 13 or not EXTRACT.exists())
+@cocotb.test(skip=SET_BITS != 11 or not EXTRACT.exists())
 async def real_full_day(dut):
     """Every book message of 2019-10-18 AAPL (needs the off-repo extract)."""
     t0 = time.monotonic()

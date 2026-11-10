@@ -48,7 +48,8 @@ from model.protocol import (  # noqa: E402
     window_lo_price,
 )
 
-SET_BITS = int(os.environ.get("SET_BITS", "13"))
+SET_BITS = int(os.environ.get("SET_BITS", "11"))
+WAYS = int(os.environ.get("WAYS", "16"))
 TICK_CYCLES = int(os.environ.get("TICK_CYCLES", "30000"))
 OWN_MAC, OWN_IP, CTRL_PORT = bytes.fromhex("02000a0b0c0d"), 0xC0A80A02, 7000
 GROUP, PORT = 0xEF010101, 26400
@@ -56,10 +57,11 @@ GOOD_RESIDUE = 0x2144DF1C  # zlib.crc32 over data + a correct FCS
 BASE_TICKS = generator.DEFAULT.base_price // 100
 CORE_NS = 8
 # Feed payload sent right after a config: its burst out of eth_rx's store-and-forward
-# buffer spans the feed's release. Measured: release 65.4 us after the config's last
-# wire byte (the book clear, 2^13 cycles, dominates); a 730-byte payload's frame ends
-# ~62.8 us after it and its ~6 us burst covers the release. The test asserts it did.
-STRADDLE_BYTES = int(os.environ.get("STRADDLE_BYTES", "730"))
+# buffer spans the feed's release. Measured: release ~32.7 us after the config's last
+# wire byte (the book clear, 2^12 cycles of levels, dominates); a 325-byte payload's frame
+# ends 31.3 us after it and its ~2.6 us burst covers the release (311-342 B work). The
+# test asserts it did.
+STRADDLE_BYTES = int(os.environ.get("STRADDLE_BYTES", "325"))
 
 
 def parse_frame(data: bytes) -> tuple[bytes, int, int, int, bytes]:
@@ -294,7 +296,9 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     assert len(flags) <= len(sent), f"{len(flags)} payloads at the gate, {len(sent)} sent"
     flags += [True] * (len(sent) - len(flags))
     pkts = [p for p, ok in zip(sent, flags, strict=True) if ok]
-    book = BoundedBook(base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS)
+    book = BoundedBook(
+        base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS, ways=WAYS
+    )
     recs, _ = expected(pkts, cfg, book)
     n_book, dec = book_records(cfg, pkts)
     kind = TRACE if cfg.mode else BBO

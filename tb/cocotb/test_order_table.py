@@ -42,7 +42,8 @@ from model import generator
 from model.bounded import TICK, BoundedBook
 from model.itch import Message, iter_raw
 
-SET_BITS = int(os.environ.get("SET_BITS", "13"))
+SET_BITS = int(os.environ.get("SET_BITS", "11"))
+WAYS = int(os.environ.get("WAYS", "16"))
 K_NONE, K_LEVEL, K_OOW = 0, 1, 2
 STATUS = {  # DUT pulse -> model counter (attribute path)
     "ref_overflow_o": "ref_overflow",
@@ -78,7 +79,7 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
     await ClockCycles(dut.clk_i, 3)
     dut.rst_i.value = 0
 
-    book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=4)
+    book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=WAYS)
     pending = deque(enumerate(recs))
     history: deque[str] = deque(maxlen=8)
     bids: dict[int, int] = {}
@@ -180,7 +181,7 @@ async def adversarial_backpressure(dut):
     await run(dut, "ot_adv_bp", adversarial(2, 8_000), base, 0.6, 0.4)
 
 
-@cocotb.test(skip=SET_BITS != 13)
+@cocotb.test(skip=SET_BITS != 11)
 async def real_day_head(dut):
     """First 50,000 messages of 2019-10-18 AAPL at the real geometry (ADR 0001/0002)."""
     with FIXTURE.open("rb") as f:

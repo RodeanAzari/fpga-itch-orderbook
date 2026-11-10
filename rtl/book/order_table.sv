@@ -18,11 +18,11 @@
 //         is stale_o including this message's own errors so far, so the last beat's
 //         value is the book's stale state after the message, whatever the stall.
 //
-// Table: 2 banks x 2^SET_BITS sets x WAYS ways (ADR 0001). Bank b looks at set
+// Table: 2 banks x 2^SET_BITS sets x WAYS ways (ADR 0001; 2 x 2,048 x 16 per ADR 0010). Bank b looks at set
 // prod_b[31 -: SET_BITS] and tag prod_b[TAG_W-1:0], prod_b = ref[31:0] * M_b mod 2^32.
 // M_b is odd, so (set, tag) is a bijection of the ref within a bank: no aliasing. Insert
 // goes to the bank with fewer valid ways, ties to bank 0, lowest free way.
-// Entry (ENTRY_W = 54 at the defaults), MSB first: valid, sell, shares, nolevel, idx, tag.
+// Entry (ENTRY_W = 56 at the defaults), MSB first: valid, sell, shares, nolevel, idx, tag.
 // For a nolevel entry the idx field is reused: idx[WIN_BITS-1] = past the better edge,
 // idx[WIN_BITS-2] = sub-penny inside the window (not out of window).
 //
@@ -49,8 +49,8 @@
 // (2^SET_BITS cycles), with s_ready_o low.
 // Reset: synchronous, active-high.
 module order_table #(
-    parameter int SET_BITS = 13,
-    parameter int WAYS     = 4,
+    parameter int SET_BITS = 11,
+    parameter int WAYS     = 16,
     parameter int SHARES_W = 20,
     parameter int WIN_BITS = 12,
     parameter int USER_W   = 1
@@ -184,9 +184,9 @@ module order_table #(
     (* max_fanout = 16 *) logic [SET_BITS-1:0] waddr0, waddr1;
     logic [SET_W-1:0]    wdata0, wdata1, rdata0, rdata1;
 
-    // Each bank is two half-depth RAMs selected by the set's top bit: 2^(SET_BITS-1) x
-    // SET_W maps to 4K x 9 BRAM tiles (24 per half at the defaults, 48 per bank), where
-    // one 8K-deep RAM was mapped as 8K x 4 tiles (54 per bank). ADR 0001's budget is 96.
+    // Each bank is two half-depth RAMs selected by the set's top bit. At 8,192 sets this
+    // gave 4K x 9 tiles (48 per bank) where one 8K-deep RAM took 8K x 4 tiles (54). At the
+    // defaults (1,024 x 896 per half) it is 50 BRAM36 per bank, 100 in all (ADR 0010).
     localparam int HALF_W = SET_BITS - 1;
     logic [SET_W-1:0] rd0 [2], rd1 [2];
     for (genvar h = 0; h < 2; h++) begin : g_half
