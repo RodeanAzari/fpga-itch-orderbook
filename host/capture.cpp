@@ -8,7 +8,8 @@
 //
 // Log (--log FILE): every well-formed datagram from the FPGA from the ack on, as u16 BE
 // length + payload (the framing of an ITCH file, so model.itch.iter_raw reads it back and
-// model.protocol.parse splits it). Not logged, only counted: datagrams before the ack,
+// model.protocol.parse splits it), flushed per datagram so it can be followed live. Not
+// logged, only counted: datagrams before the ack,
 // datagrams from any other source, and malformed ones (header, type, record_len or length
 // wrong; a config type; stats without all 40 counters).
 //
@@ -297,7 +298,9 @@ class Log {
     void write(std::span<const uint8_t> b) {
         const uint8_t len[2] = {static_cast<uint8_t>(b.size() >> 8),
                                 static_cast<uint8_t>(b.size())};
-        if (std::fwrite(len, 1, 2, f_) != 2 || std::fwrite(b.data(), 1, b.size(), f_) != b.size())
+        // Flushed per datagram so a live reader (analysis/bbo_view.py) sees it at once.
+        if (std::fwrite(len, 1, 2, f_) != 2 || std::fwrite(b.data(), 1, b.size(), f_) != b.size() ||
+            std::fflush(f_) != 0)
             throw std::runtime_error("log write failed");
     }
     void finish() {
