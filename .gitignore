@@ -20,3 +20,4 @@ tb/formal/bitmap_search/
 # Agent working docs: kept local, not published
 CLAUDE.md
 progress.md
+data/runs/

@@ -11,7 +11,7 @@ ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, 
 # Vendor wrappers, with eth-core's simulation models of the primitives they use
 XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
-.PHONY: setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: prog setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -76,6 +76,11 @@ ci: lint sim formal model-test host-test host-lint
 # Full-day replay of one symbol through the golden model (~minutes; needs the day file).
 day-stats:
 	$(PY) -m analysis.itch_stats $(ITCH_DAY) AAPL data/results/2019-10-18_AAPL
+
+# Program the board over JTAG (claim it first: coord.py board claim P2). BIT= overrides.
+prog:
+	bash -c 'eval "$$(sed -n "/^vivado-env()/,/^}/p" ~/.bashrc)" && vivado-env && \
+	  vivado -mode batch -nojournal -nolog -source syn/prog.tcl -tclargs $(BIT)'
 
 plots:
 	$(PY) -m analysis.plots

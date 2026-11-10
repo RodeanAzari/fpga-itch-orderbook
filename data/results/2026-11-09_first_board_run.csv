@@ -1,0 +1,5 @@
+run,mode,target_pps,achieved_pps,messages,packets_sent,expected_records,fpga_records,mismatched_positions,first_mismatch,match,rx_frames_ok,rx_fifo_overflow,rx_crc_err,mold_gaps,mold_gap_messages,stale,out_datagrams,host_seq_lost,host_seq_backwards
+trace1,trace,2000,2000.9,200000,4391,198084,195607,194658,949,0,4337,54,0,33,2502,1,23745,3,3
+trace500,trace,500,500.2,200000,4391,198084,198084,0,-1,1,4391,0,0,0,0,0,30032,3,3
+bbo500,bbo,500,500.2,200000,4391,91021,91021,0,-1,1,4391,0,0,0,0,0,24392,0,0
+bbo2000,bbo,2000,2000.9,200000,4391,91021,62568,29188,33380,0,4389,2,0,1,95,3,23279,0,0

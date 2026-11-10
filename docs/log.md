@@ -566,3 +566,20 @@ needs `PY=~/OrderBook/.venv/bin/python` (it has no venv of its own). tcpdump ins
   `testpaths`); 7/7 injected bugs caught. Two test assumptions of mine were wrong: 2,000
   generated messages give only 120 BBO changes, and a window edge 100 ticks above the
   base moves no generator price out of it.
+
+## 2026-11-09 (later): first full-pipeline runs on the board
+
+- `make prog` added (`syn/prog.tcl`: JTAG program + DONE check); `scripts/board_run.sh`
+  (capture → replay after the ack → compare).
+- Host now on the **ASIX AX88179 USB adapter** in WSL (usbipd, `cdc_ncm`), 192.168.10.1/24,
+  static neighbour for the FPGA. The I225-LM link had dropped mid-session: the Arty had
+  fallen off usbipd (no `/dev/ttyUSB*`), so presumably it lost power and with it the
+  bitstream and the PHY's reference clock.
+- **First hardware result** (`data/results/2026-11-09_first_board_run.md`): 200,000 AAPL
+  messages at 500 pps: trace mode 198,084/198,084 records and BBO mode 91,021/91,021
+  updates match the golden model byte for byte (BBO reproduced in a fifth run).
+- At 2,000 pps: frames lost at the MII FIFO (trace 54, BBO 2), all counted; after the
+  loss every BBO is flagged stale, starting exactly at the first wrong one. Cause of the
+  loss open (see progress.md).
+- Bug (mine, procedural): `sudo` through the session's `!` prefix cannot prompt for a
+  password; host network commands go in the user's own terminal.
