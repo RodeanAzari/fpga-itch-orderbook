@@ -49,7 +49,7 @@ price index 12, out-of-window 1, shares 20, side 1, valid 1.
 ## Consequences
 
 - **BRAM:** 100 BRAM36 for the table (was 96); `book_engine` 108. The full chip goes from
-  107.5 to about 111.5 of 135 (to be confirmed by the full-chip build).
+  107.5 to 111.5 of 135 (measured, `docs/reports/arty_top/`).
 - **Logic:** `order_table` grows from 2,099 to 6,872 LUTs and 2,363 to 9,282 FFs (OOC).
 - **Headroom is thin:** 84 % load at the busiest peak measured so far. A day with roughly 20 %
   more live AAPL orders may overflow again. If it does, the book is flagged stale, not wrong.
@@ -67,6 +67,13 @@ price index 12, out-of-window 1, shares 20, side 1, valid 1.
   same counters as ADR 0001's run.
 - `docs/reports/ooc_book_engine/`: out-of-context `book_engine` at 8.000 ns, WNS +0.128 ns,
   WHS +0.081 ns, 108 BRAM36 (table 100), Vivado 2025.2.
+- `data/results/2026-11-10_sim_full_book.csv`: the RTL matches the model on both full days
+  (916,429 and 831,842 BBO updates) and on 1,009,900 random messages.
+- `data/results/2026-11-10_full_day_board_16way.md`: on the board, both full days byte for
+  byte (916,429 / 916,429 and 831,842 / 831,842). Full chip at 125 MHz: WNS +0.004 ns, 111.5
+  BRAM36. The worst path is the 16-way match (half-select bit → tag compare → hit way).
+  Removing the half-depth split, which only the 8,192-set mapping needed, would take its
+  output mux off that path if margin is needed later.
 - Bug injection on `test_order_table` (2026-11-10): ties to bank 1, an off-by-one full check,
   and an insert that overwrites a valid way each made the tests fail (5, 2 and 6 failing
   tests). All reverted.

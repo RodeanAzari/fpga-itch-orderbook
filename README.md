@@ -39,15 +39,15 @@ are identical ([CSV](data/results/2026-11-09_board_vs_model_bbo_1min.csv)). Gene
 | **Pipeline latency T2−T1** | p50 / p99 / p99.9 / max: `[TBD]` |
 | **Pipeline capacity** | `[TBD]` msg/s (on-chip injector, `DATA_W` 8 and 64) |
 | **Line-rate throughput** | `[TBD]` msg/s at 100 Mbps |
-| **Hardware full-day replay** | **0 mismatches**: 831,842 / 831,842 BBO updates, AAPL 2019-10-18, 4 runs; 0 frames lost, `table_overflow`/`unknown_ref` 0, `bbo_oow` 4 = model ([CSV](data/results/2026-11-09_full_day_board.csv)) |
+| **Hardware full-day replay** | **0 mismatches on two days**: AAPL 2025-12-12, 916,429 / 916,429 BBO updates; AAPL 2019-10-18, 831,842 / 831,842; 0 frames lost, `table_overflow`/`unknown_ref` 0, never stale ([CSV](data/results/2026-11-10_full_day_board_16way.csv)) |
 | **Golden model, full day** | AAPL 2019-10-18: 1,669,591 messages, 0 unknown refs, 0 negative shares; peak 27,814 live orders ([CSV](data/results/2019-10-18_AAPL_summary.csv)) |
-| **Order table** | 2-bank d-left, 65,536 entries, 96 BRAM36; **0 overflows** over the day where a single-hash table of the same size had 36,545 ([CSV](data/results/2019-10-18_AAPL_table_dleft.csv)) |
-| **Events verified in sim** | 1,009,900 random ITCH records through the RTL book, 0 mismatches ([CSV](data/results/2026-11-07_sim_random_1m.csv)) |
+| **Order table** | 2-bank d-left, 2 × 2,048 × 16 = 65,536 entries, 100 BRAM36; **0 overflows** on both days, including a 54,981-live-order peak that overflowed a 4-way table of the same size 14,717 times ([CSV](data/results/2025-12-12_AAPL_bounded.csv)) |
+| **Events verified in sim** | 1,009,900 random ITCH records plus both full days through the RTL book, 0 mismatches ([CSV](data/results/2026-11-10_sim_full_book.csv)) |
 | **Functional coverage** | `[TBD]` |
 | **Formal proofs** | Async FIFO (in fpga-eth-core) and the price-level bitmap search (`tb/formal/bitmap_search.sby`), SymbiYosys |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
-| **Timing** | Full chip meets 125 MHz: WNS +0.059 ns, WHS +0.010 ns, Vivado 2025.2 ([report](docs/reports/arty_top/summary.txt)) |
-| **Utilization** | 8,445 LUT (13 %), 13,259 FF (10 %), 107.5 / 135 BRAM36 (80 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
+| **Timing** | Full chip meets 125 MHz: WNS +0.004 ns, WHS +0.015 ns, Vivado 2025.2 ([report](docs/reports/arty_top/summary.txt)) |
+| **Utilization** | 13,064 LUT (21 %), 20,142 FF (16 %), 111.5 / 135 BRAM36 (83 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
 | **CI** | `make ci` locally: Verilator lint, cocotb regression, formal, model tests, host build + tests (ASan/UBSan), clang-tidy, ruff; hosted CI `[TBD]` |
 
 ## Status
@@ -57,7 +57,7 @@ are identical ([CSV](data/results/2026-11-09_board_vs_model_bbo_1min.csv)). Gene
 | A — Python golden model + data | **Complete** (`v0.1-model`) | Full-day replay; table and window sized from data |
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; photo/ILA captures outstanding |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode: 198,084 / 198,084 decoded records match the model ([CSV](data/results/2026-11-09_first_board_run.csv)) |
-| D — Order book engine | Working on the board | Full day 0 mismatches; second, busier day for table sizing in progress |
+| D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
 | E — Timestamping + latency measurement | Not started | |
 | F — Stress, coverage closure, portfolio | Not started | |
 
@@ -148,20 +148,31 @@ largest order 82,045 shares.
 | 1 × 16,384 × 4, low-bits hash | 65,536 | 18 | not run | 96 |
 | 1 × 16,384 × 4, multiplicative hash | 65,536 | 8 | 36,545 | 96 |
 | 2 × 4,096 × 4, d-left | 32,768 | n/a | 55,626 | 48 |
-| **2 × 8,192 × 4, d-left (chosen)** | **65,536** | **≤ 4** | **0** | **96** |
+| 2 × 8,192 × 4, d-left (first choice, ADR 0001) | 65,536 | ≤ 4 | 0 | 96 |
+| **2 × 2,048 × 16, d-left (chosen, ADR 0010)** | **65,536** | **≤ 16** | **0, and 0 on day 2** | **100** |
 
 Sources: [`_table_fill.csv`](data/results/2019-10-18_AAPL_table_fill.csv),
 [`_table_dleft.csv`](data/results/2019-10-18_AAPL_table_dleft.csv).
 
+**A second, busier day changed the shape.** AAPL on 2025-12-12 peaks at 54,981 live orders,
+84 % of the table. The 4-way table overflowed 14,717 times there, and the book was flagged
+stale from pre-market on. The same 65,536 entries arranged as 16 ways (2 × 2,048 × 16) have
+0 overflows on both days: a wider bucket tolerates a fuller table. It costs 4 BRAM36 and
+about 4,800 LUTs, and timing still closes ([ADR 0010](docs/decisions/0010-order-table-16-way.md),
+[`2025-12-12_AAPL.md`](data/results/2025-12-12_AAPL.md)).
+
 **Chosen:** two banks, each indexed by a multiplicative hash with its own odd multiplier,
 both read in the same cycle. An insert goes to the emptier bucket. Because an odd multiplier
-is a bijection, the low 19 product bits are a complete tag, which keeps the entry to 54
-bits: four entries fill exactly three 72-bit BRAM lanes. Width limits (`ref_overflow`,
-`shares_overflow`) are counted, never truncated.
+is a bijection, the remaining product bits are a complete tag (21 bits at 2,048 sets), so an
+entry is 56 bits. Width limits (`ref_overflow`, `shares_overflow`) are counted, never
+truncated.
 
 **Verified:** in this exact configuration, the bounded golden model had zero table, ref,
-shares and unknown-ref errors over the day
-([`_bounded.csv`](data/results/2019-10-18_AAPL_bounded.csv)). The RTL is `[TBD]`.
+shares and unknown-ref errors on both days
+([day 1](data/results/2019-10-18_AAPL_bounded_2x2048x16.csv),
+[day 2](data/results/2025-12-12_AAPL_bounded_2x2048x16.csv)), and so did the RTL, in
+simulation ([`sim_full`](data/results/2026-11-10_sim_full_book.csv)) and on the board
+([board](data/results/2026-11-10_full_day_board_16way.csv)).
 
 ## Price levels and the price window
 
@@ -212,14 +223,16 @@ pacing) and configures the board and logs its output with `host/capture`;
 | AAPL messages | 1,669,591 | locate 14 | [summary](data/results/2019-10-18_AAPL_summary.csv) |
 | Peak concurrent live orders | 27,814 | AAPL, unbounded model | [summary](data/results/2019-10-18_AAPL_summary.csv) |
 | Two-sided BBOs inside window | 831,837 / 831,839 | base 23,455 ticks, ±2,048 | [summary](data/results/2019-10-18_AAPL_summary.csv) |
-| Table overflow, chosen table | 0 | 2 × 8,192 × 4 d-left | [bounded](data/results/2019-10-18_AAPL_bounded.csv) |
+| Table overflow, chosen table | 0 / 0 | 2 × 2,048 × 16 d-left, day 1 / day 2 | [day 1](data/results/2019-10-18_AAPL_bounded_2x2048x16.csv), [day 2](data/results/2025-12-12_AAPL_bounded_2x2048x16.csv) |
 | `bbo_oow` (flagged updates) | 4 | same | [bounded](data/results/2019-10-18_AAPL_bounded.csv) |
 | Golden-model full-day run time | 4 min 08 s | Python 3.14, WSL2 | [sidecar](data/results/2019-10-18_AAPL.md) |
 | **Hardware full day: BBO updates identical to the model** | **831,842 / 831,842** | AAPL 2019-10-18, 500 and 200 pps, 4 runs | [full day](data/results/2026-11-09_full_day_board.csv) |
 | Hardware: frames lost / feed gaps / stale | 0 / 0 / never | quiet host | [full day](data/results/2026-11-09_full_day_board.csv) |
 | Hardware: `bbo_oow` / `price_oow` | 4 / 16,099 (= model) | ADR 0002 window | [full day](data/results/2026-11-09_full_day_board.md) |
 | RTL sim, random records vs model | 1,009,900, 0 mismatches | seeded generator | [sim](data/results/2026-11-07_sim_random_1m.csv) |
-| Full-chip timing | 125 MHz met, WNS +0.059 ns | Vivado 2025.2 | [report](docs/reports/arty_top/summary.txt) |
+| **Hardware day 2: BBO updates identical to the model** | **916,429 / 916,429** | AAPL 2025-12-12 (3.5 M AAPL messages), 500 pps | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
+| Hardware runs at host load 15 to 22 | 2 of 4 clean; failures were host receive loss and an MII FIFO overflow, both detected (0 unflagged wrong BBOs) | 16-way bitstream | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
+| Full-chip timing | 125 MHz met, WNS +0.004 ns | Vivado 2025.2 | [report](docs/reports/arty_top/summary.txt) |
 | Pipeline latency, capacity | `[TBD]` (Phase E) | | |
 
 ## Limitations

@@ -630,3 +630,33 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   also rewritten mid-run from a half-written log; restored). README updated.
 - Second day chosen by the user: 2025-12-12 (12.55 GB, the largest listed). Download
   started (3 MB/s); analysis left for the next session.
+
+## 2026-11-10: second day overflows the table; 16-way table; both days exact on the board
+
+- fpga-coord: request 0011 (P4, serdes-lab in fpga-eth-core "Used by") done (`06a9a6d`).
+- Day file `S121225-v50.txt.gz` checked (`gzip -t`, SHA-256 into MANIFEST, size = server
+  Content-Length). 923,744,247 messages; AAPL 3,542,448, base 27,801, max ref 1.02e9.
+- **AAPL peaks at 54,981 live orders (day 1: 27,814).** The 2 × 8,192 × 4 table overflowed
+  14,717 times in the model: 1.34 M unknown refs, stale from pre-market. 0 unflagged wrong
+  BBOs (new `bounded_check` column). Same entries as 2 × 2,048 × 16: 0 overflows on both
+  days; 2 × 4,096 × 8: 529. User chose 16 ways → ADR 0010. The RTL was generic, so only the
+  defaults changed. OOC WNS +0.128 ns; table 96 → 100 BRAM36, 2,099 → 6,872 LUTs.
+  Full chip WNS +0.004 ns (worst path: the 16-way match), 111.5 BRAM36.
+- Bug injection (ties to bank 1, full off-by-one, overwrite a valid way): all caught.
+- sim-full at the new shape: day 2 916,429 BBOs = model, day 1 unchanged, random 1M 0
+  mismatches. Day 2 alone is 87 min of sim.
+- **Board: both days byte for byte** (day 2 916,429/916,429; day 1 831,842/831,842) at
+  load 15 to 22. Two failed day-1 attempts, both detected: host receive lost 138 output
+  datagrams; replay bursts (44 ms lag) overflowed the MII FIFO 3 times.
+- Bugs (symptom → root cause → fix):
+  - Python reads of the 12.5 GB file and even `cp` failed with ENOMEM after 1 to 33 min →
+    drvfs (`/mnt/d`) reads fail under memory pressure (other sessions filled swap) → copy
+    in 256 MB chunks to `~/itch-cache/` (ext4) with retries, SHA-256 checked.
+  - `make ci` failed in `test_stats.sparse` → p_clear 0.0005 over 6,000 cycles draws no
+    clear ~5 % of seeds → one forced clear mid-run (`c17dec9`).
+  - `test_core` straddle assertion failed after the reshape → the shorter clear moved the
+    feed release from 69 to 33 us → payload retuned 730 → 325 B from the measured window.
+  - `board_run.sh` would have replayed day 1's packets for day 2 → packet cache keyed by
+    count only → keyed by day too (`8318c33`).
+  - Mine: a backgrounded `&&` chain lost its variables, `>( )` ran under `sh`, and
+    `pkill -f chunkcopy.sh` killed my own shell (the `pgrep -f` trap again).
