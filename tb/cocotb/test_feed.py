@@ -18,7 +18,7 @@ from dataclasses import astuple
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, RisingEdge
+from cocotb.triggers import ClockCycles, FallingEdge, RisingEdge
 from tb_common import InOrderScoreboard, get_rng
 from tb_common.axis import AxisBeat, AxisSource
 
@@ -142,15 +142,48 @@ async def run(
 
     model = FeedDecoder(SYMBOL, locate=locate)
     sb = InOrderScoreboard(name, fmt=lambda x: f"{x[0].__name__} seq={x[1]} ref={x[3]}")
-    for p in pkts:
-        if p:
-            for rec in model.feed(p):
-                sb.expect(model_fields(rec))
+    rec_pkt: list[int] = []  # packet index of each expected record (for its T0)
+    for k, p in enumerate(q for q in pkts if q):
+        for rec in model.feed(p):
+            sb.expect(model_fields(rec))
+            rec_pkt.append(k)
+    # ADR 0011: s_t0_i changes every cycle, so T0 is right only if sampled at the
+    # packet's first byte; T1 is now_i on the cycle the decoder took the message's last
+    # byte (seen on its input, by sequence number).
+    pkt_t0: list[int] = []
+    last_bytes: list[tuple[int, int]] = []  # (seq, now) per message, in order
+    got_t: list[tuple[int, int, int]] = []  # (t0, t1, seq) per record
+
+    async def clocks():
+        n = 0
+        while True:
+            await FallingEdge(dut.clk_i)
+            n += 1
+            dut.now_i.value = n
+            dut.s_t0_i.value = rng.getrandbits(64)
+
+    dut.now_i.value = 0
+    dut.s_t0_i.value = 0
+    cocotb.start_soon(clocks())
+    first = True
+    dec = dut.u_decoder
     counts = dict.fromkeys(STATUS, 0) | {"gap_msgs": 0, "t1": 0, "empty": 0, "mal_msg": 0}
 
     async def monitor():
         while True:
             await RisingEdge(dut.clk_i)
+            nonlocal first
+            if int(dut.s_tvalid_i.value) and int(dut.s_tready_o.value):
+                if first:
+                    pkt_t0.append(int(dut.s_t0_i.value))
+                first = bool(int(dut.s_tlast_i.value))
+            if (
+                int(dec.s_tvalid_i.value)
+                and int(dec.s_tready_o.value)
+                and int(dec.s_tlast_i.value)
+                and not int(dec.s_tuser_i.value)
+            ):
+                last_bytes.append((int(dec.s_seq_i.value), int(dut.now_i.value)))
             for s in STATUS:
                 counts[s] += int(getattr(dut, s).value)
             if int(dut.gap_o.value):
@@ -159,6 +192,7 @@ async def run(
             counts["empty"] += int(dut.empty_msg_o.value)
             counts["mal_msg"] += int(dut.malformed_msg_o.value)
             if int(dut.m_valid_o.value) and int(dut.m_ready_i.value):
+                got_t.append((int(dut.m_t0_o.value), int(dut.m_t1_o.value), int(dut.m_seq_o.value)))
                 sb.observe(
                     (
                         TYPE_CLASS[int(dut.m_type_o.value)],
@@ -198,6 +232,14 @@ async def run(
     assert counts["mal_msg"] + counts["empty"] == f.malformed_messages
     assert counts["t1"] + counts["empty"] == f.messages
     assert int(dut.stale_o.value) == int(model.stale)
+    assert len(got_t) == len(rec_pkt)
+    j = 0  # records are in message order: each takes the next message with its seq
+    for i, ((t0, t1, seq), k) in enumerate(zip(got_t, rec_pkt, strict=True)):
+        assert t0 == pkt_t0[k], f"record {i} (seq {seq}): t0 {t0:#x} != packet {k}'s"
+        while last_bytes[j][0] != seq:
+            j += 1
+        assert t1 == last_bytes[j][1], f"record {i} (seq {seq}): t1 {t1} != {last_bytes[j][1]}"
+        j += 1
     assert int(dut.locate_valid_o.value) == int(model.locate is not None)
     if model.locate is not None:
         assert int(dut.locate_o.value) == model.locate

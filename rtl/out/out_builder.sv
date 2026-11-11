@@ -28,7 +28,7 @@
 // Memory: one 2**FIFO_ADDR_W x 8 sync_fifo (one BRAM18 at the default).
 // Reset: synchronous, active-high.
 module out_builder #(
-    parameter int N_STATS     = 40,
+    parameter int N_STATS     = 41,
     parameter int FIFO_ADDR_W = 11,
     parameter int MAX_PAYLOAD = 1472  // udp_tx's limit
 ) (

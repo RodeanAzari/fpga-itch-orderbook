@@ -35,6 +35,9 @@ set_false_path -to [get_cells -hier -filter {NAME =~ *u_rst_*/sync_q_reg[0]}]
 # 3. eth_tx underrun toggle (tx_clk -> core): changes at most once per frame; bound skew.
 set_max_delay -datapath_only -from [get_cells -hier -filter {NAME =~ *u_eth_tx/underrun_tgl_q_reg}] \
     -to [get_cells -hier -filter {NAME =~ *u_eth_tx/underrun_sync_q_reg[0]}] 8.000
+# 5. T0: eth_rx's SFD toggle (rx_clk -> core, cdc_pulse, ADR 0011): flips once per frame.
+set_max_delay -datapath_only -from [get_cells -hier -filter {NAME =~ *u_sfd_sync/tgl_q_reg}] \
+    -to [get_cells -hier -filter {NAME =~ *u_sfd_sync/sync_q_reg[0]}] 8.000
 # --- Static or slow board I/O --------------------------------------------------------
 set_false_path -from [get_ports ck_rst]
 set_false_path -to [get_ports {led[*] uart_rxd_out eth_rstn eth_mdc}]

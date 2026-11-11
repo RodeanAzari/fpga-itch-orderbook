@@ -56,7 +56,7 @@ frame's bytes reach the feed parser, later SFDs have already happened.
 
 ## Decision
 
-- `rtl/meas/ts_counter`: a 64-bit free-running counter on the core clock, reset at the core's reset.
+- A 64-bit free-running counter on the core clock in `ob_core` (`now_q`), reset with the core.
 - T0: `sfd_o` through a toggle synchronizer (`rtl/lib/cdc_*`), the counter captured on
   the synchronized edge, then the two queues above. The synchronizer's constant delay is
   calibrated and documented in `docs/latency.md`. Precision ±40 ns (one nibble clock) plus

@@ -4,7 +4,7 @@ Why this test matters: it is the simulation twin of the Phase D hardware run. Ea
 has its own test; this one proves they are wired together as docs/protocol.md says: the
 config reaches the parser and resets the right blocks, the feed goes only to the decoder
 and only after the ack, every record leaves in a datagram addressed to the config's
-sender, and the 40 stats counters come from the right sources. Frames go in on the MII
+sender, and the 41 stats counters come from the right sources. Frames go in on the MII
 pins (eth-core's tagged tb helpers) and come out on the MII TX pins, where FCS, IPv4
 checksum, addresses and ports are checked independently.
 
@@ -24,7 +24,7 @@ from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, FallingEdge, Timer
+from cocotb.triggers import ClockCycles, Edge, FallingEdge, ReadOnly, RisingEdge, Timer
 from cocotb.utils import get_sim_time
 from tb_common import get_rng
 
@@ -46,6 +46,7 @@ from model.protocol import (  # noqa: E402
     packet,
     parse,
     window_lo_price,
+    without_times,
 )
 
 SET_BITS = int(os.environ.get("SET_BITS", "11"))
@@ -102,6 +103,11 @@ class Bench:
         self.mon = MiiTxMonitor(dut.mii_tx_clk_i, dut.mii_txd_o, dut.mii_tx_en_o)
         self.seen = 0  # TX frames already returned by datagrams()
         self.feed_sent: list[bytes] = []  # every feed-port payload sent, in order
+        self.frames_sent = 0
+        self.feed_frame: list[int] = []  # index of each feed payload's frame
+        self.sfd_now: list[int] = []  # now_q when each frame's sfd_o rose (one per frame)
+        self.t2_seen: list[int] = []  # ob_core's first-valid captures, one per BBO
+        self.t2_mark = 0
         self.straddles = 0  # payloads the feed's release fell inside
 
     async def start(self) -> None:
@@ -111,6 +117,8 @@ class Bench:
         await Timer(13, unit="ns")  # tx_clk: same frequency, unrelated phase
         cocotb.start_soon(Clock(dut.mii_tx_clk_i, 40, unit="ns").start())
         cocotb.start_soon(self.mon.run())
+        cocotb.start_soon(self.watch_sfd())
+        cocotb.start_soon(self.watch_t2())
         for r in (dut.rst_i, dut.mii_rx_rst_i, dut.mii_tx_rst_i):
             r.value = 1
         await ClockCycles(dut.mii_rx_clk_i, 4)
@@ -143,13 +151,30 @@ class Bench:
                 self.release_ns = get_sim_time(unit="ns")
                 return flags
 
+    async def watch_sfd(self) -> None:
+        """T0's reference (ADR 0011): the core counter when eth_rx's SFD pulse rises."""
+        while True:
+            await RisingEdge(self.dut.sfd_o)
+            await ReadOnly()
+            self.sfd_now.append(int(self.dut.now_q.value))
+
+    async def watch_t2(self) -> None:
+        """T2's reference: b_t2_q changes exactly when a new BBO first becomes valid (the
+        counter never repeats), so each change is one BBO's first valid cycle."""
+        while True:
+            await Edge(self.dut.b_t2_q)
+            await ReadOnly()
+            self.t2_seen.append(int(self.dut.b_t2_q.value))
+
     def feed(self, payload: bytes, src_mac: bytes = bytes.fromhex("0200deadbeef")) -> bytes:
         """A feed-port frame; its payload is recorded for the gate reference."""
         self.feed_sent.append(payload)
+        self.feed_frame.append(self.frames_sent)  # feed() is always sent next
         return with_fcs(UdpFrame(payload, GROUP, PORT, src_mac=src_mac).build())
 
     async def send(self, frame: bytes, slack: float = 0.0) -> None:
         """One frame; slack = extra idle as a fraction of the frame (output pacing)."""
+        self.frames_sent += 1
         await self.drv.send(MiiFrame(frame, ifg=24 + int(2 * len(frame) * slack)))
 
     def datagrams(self, host: Host) -> list:
@@ -226,6 +251,38 @@ def book_records(cfg: Config, pkts: list[bytes]) -> tuple[int, FeedDecoder]:
     return sum(len(dec.feed(p)) for p in pkts), dec
 
 
+def check_times(b: Bench, cfg: Config, pkts: list[bytes], frames: list[int],
+                got: list[bytes]) -> None:  # fmt: skip
+    """ADR 0011: every BBO's T0 is its cause frame's SFD plus the synchronizer's constant
+    delay (at most one cycle of jitter), and T0 < T1 < T2 with T2 rising."""
+    dec = FeedDecoder(cfg.symbol, locate=cfg.locate if cfg.locate_valid else None)
+    frame_of: dict[int, int] = {}  # cause message seq -> the frame that delivered it
+    kind_of: dict[int, str] = {}
+    for p, f in zip(pkts, frames, strict=True):
+        for rec in dec.feed(p):
+            frame_of.setdefault(rec.seq, f)
+            kind_of.setdefault(rec.seq, type(rec.msg).__name__)
+    assert len(b.sfd_now) == b.frames_sent, (len(b.sfd_now), b.frames_sent)
+    delays: dict[int, int] = {}
+    last_t2 = 0
+    for i, g in enumerate(got):
+        seq, t0, t1, t2 = struct.unpack(">QQQQ", g[32:64])
+        d = t0 - b.sfd_now[frame_of[seq]]
+        delays[d] = delays.get(d, 0) + 1
+        assert t0 < t1 < t2 and t2 > last_t2, f"BBO {i} (seq {seq}): t0 {t0} t1 {t1} t2 {t2}"
+        last_t2 = t2
+    lat: dict[int, dict[str, int]] = {}  # T2 - T1 -> message type -> count
+    for g in got:
+        seq, t1, t2 = struct.unpack(">Q8xQQ", g[32:64])
+        by = lat.setdefault(t2 - t1, {})
+        by[kind_of[seq]] = by.get(kind_of[seq], 0) + 1
+    t2s = [struct.unpack(">Q", g[56:64])[0] for g in got]
+    assert t2s == b.t2_seen[b.t2_mark :], "T2 is not each BBO's first valid cycle"
+    cocotb.log.info("T0 - SFD (cycles: count) %s; T2 - T1 (cycles: type: count) %s",
+                    dict(sorted(delays.items())), dict(sorted(lat.items())))  # fmt: skip
+    assert max(delays) - min(delays) <= 1 and 0 < min(delays) < 12, delays
+
+
 async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session: bytes,
                     ctrl_counts: list[int], slack: float,
                     gen: generator.Config = generator.DEFAULT) -> None:  # fmt: skip
@@ -238,6 +295,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     ctrl_counts[1] += 1
     pkts = feed_packets(rng, n_msgs, session, gen)
     first = len(b.feed_sent)
+    b.t2_mark = len(b.t2_seen)
     release = cocotb.start_soon(b.watch_release())
     await b.send(host.ctrl_frame(packet(CONFIG, rng.getrandbits(32), [cfg.record()])))
     ctrl_counts[0] += 1
@@ -296,6 +354,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     assert len(flags) <= len(sent), f"{len(flags)} payloads at the gate, {len(sent)} sent"
     flags += [True] * (len(sent) - len(flags))
     pkts = [p for p, ok in zip(sent, flags, strict=True) if ok]
+    frames = [f for f, ok in zip(b.feed_frame[first:], flags, strict=True) if ok]
     book = BoundedBook(
         base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS, ways=WAYS
     )
@@ -357,6 +416,9 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     bad_vals = {n: (vals[n], want[n]) for n in want if vals[n] != want[n]}
     assert not bad_vals, f"stats (got, want): {bad_vals}"
     assert not timed_out, f"timeout: {len(got)} of {len(recs)} records"
+    if kind == BBO:
+        check_times(b, cfg, pkts, frames, got)
+        got = [without_times(g) for g in got]
     if got != recs:
         diff = [i for i, (g, w) in enumerate(zip(got, recs, strict=False)) if g != w]
         k = diff[0] if diff else min(len(got), len(recs))

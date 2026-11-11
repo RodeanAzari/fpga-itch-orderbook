@@ -16,6 +16,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0008](decisions/0008-output-builder-buffering.md) | Output builder: byte FIFO + complete-record count; ack flushes at a datagram boundary and latches the mode | Accepted |
 | [0009](decisions/0009-core-clock.md) | Core clock 125 MHz (full chip WNS +0.059 ns); fallback: one more stage at the price-index multiply | Accepted |
 | [0010](decisions/0010-order-table-16-way.md) | Order table 2 × 2,048 × 16 (same 65,536 entries): 0 overflows on the busier 2025-12-12 day | Accepted |
+| [0011](decisions/0011-timestamps.md) | Timestamps: one 64-bit core-clock counter (no fast clock); T0 matched to frames by queues on eth_rx's per-frame status | Accepted |
 
 Still to write: cut-through vs. store-and-forward, timestamp design.
 
@@ -62,5 +63,6 @@ Constraints: `constr/arty_timing.xdc` and eth-core's `constr/async_fifo.xdc`.
 | 2 | MII transmit bytes (`eth_tx`) | core → tx_clk | eth-core `async_fifo`, Gray pointers | same |
 | 3 | `eth_tx` underrun flag | tx_clk → core | toggle into an ASYNC_REG chain (eth-core) | `set_max_delay -datapath_only` 8 ns |
 | 4 | Reset requests (button, MMCM lock, MAC start) | any → core / rx_clk / tx_clk | `rtl/lib/cdc_reset_sync` (ASYNC_REG chain) | false path to stage 0 |
+| 5 | `eth_rx.sfd_o` (T0, ADR 0011) | rx_clk → core | `rtl/lib/cdc_pulse` (toggle into a 2-flop ASYNC_REG chain) | `set_max_delay -datapath_only` 8 ns to stage 0 |
 
-Not yet crossed: `eth_rx.sfd_o` (T0, rx_clk), unused until Phase E's timestamps.
+The T0 constant (SFD on the pins → captured count) is in `docs/latency.md`.

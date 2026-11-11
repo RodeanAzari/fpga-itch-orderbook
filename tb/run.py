@@ -39,6 +39,8 @@ CORE = [
     *ENGINE,
     *OUT[1:],
     "rtl/lib/pkt_gate.sv",
+    "rtl/lib/cdc_pulse.sv",
+    "rtl/meas/t0_track.sv",
     "rtl/out/out_mux.sv",
     "rtl/out/out_stats.sv",
     "rtl/out/out_ctrl.sv",

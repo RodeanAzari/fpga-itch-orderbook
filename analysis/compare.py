@@ -96,6 +96,8 @@ def compare(log: Path, packets: Path, context: int = 5) -> tuple[dict[str, int],
     dgs = sorted(by_seq.values(), key=lambda d: d.pkt_seq)
     lost = dgs[-1].pkt_seq - len(dgs) if dgs else 0
     got = [r for d in dgs if d.kind == kind for r in d.records]
+    if kind == P.BBO:  # t0/t1/t2 are measured (ADR 0011); every other byte must match
+        got = [P.without_times(r) for r in got]
     want, _ = P.expected(iter_raw(packets.open("rb")), cfg, BoundedBook(base_ticks=base_ticks(cfg)))
 
     first = next((i for i, (g, w) in enumerate(zip(got, want, strict=False)) if g != w), None)

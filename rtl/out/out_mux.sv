@@ -8,7 +8,7 @@
 // in expected()) and trace_record. The decoder already zeroes the fields a type does
 // not use (itch_decoder header), so trace fields are placed as they come.
 // BBO flags: stale, crossed, locked (both sides non-empty: size != 0), out_of_window;
-// cut_through and t0/t1/t2 are 0 until Phase E.
+// t0/t1/t2 (ADR 0011) come from ob_core; cut_through is 0 until the cut-through build.
 // The record fields of the book's input are wired straight from the feed in the top
 // level; only the handshake passes through here. Purely combinational (0 cycles).
 // mode_i changes only while the pipeline is in reset (a config).
@@ -42,6 +42,9 @@ module out_mux #(
     input  wire logic [47:0]        b_ts_i,
     input  wire logic               b_feed_stale_i,  // book_engine m_user_o
     input  wire logic               b_book_stale_i,  // book_engine m_stale_o
+    input  wire logic [63:0]        b_t0_i,
+    input  wire logic [63:0]        b_t1_i,
+    input  wire logic [63:0]        b_t2_i,
     // records out (out_builder s_*)
     output logic                    o_valid_o,
     input  wire logic               o_ready_i,
@@ -66,7 +69,7 @@ module out_mux #(
     // BBO record: symbol(2) flags(2) bid_px(4) ask_px(4) bid_sz(6) ask_sz(6) itch_ts(6)
     //   pad(2) mold_seq(8) t0(8) t1(8) t2(8)
     assign bbo = {16'd0, flags, b_bid_px_i, b_ask_px_i, 48'(b_bid_sz_i), 48'(b_ask_sz_i),
-                  b_ts_i, 16'd0, b_seq_i, 64'd0, 64'd0, 64'd0};
+                  b_ts_i, 16'd0, b_seq_i, b_t0_i, b_t1_i, b_t2_i};
     // trace record: msg_type(1) flags(1) itch_ts(6) mold_seq(8) ref(8) new_ref(8)
     //   shares(4) price(4); then 24 bytes of 0
     assign trace = {f_type_i, 7'd0, f_sell_i, f_ts_i, f_seq_i, f_ref_i, f_new_ref_i,

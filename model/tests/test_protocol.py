@@ -107,10 +107,12 @@ def test_parse_round_trip_and_rejects() -> None:
 
 
 def test_stats() -> None:
-    assert N_STATS == 40 and len(set(STATS_NAMES)) == 40
+    assert N_STATS == 41 and len(set(STATS_NAMES)) == 41  # t0_lost added (ADR 0011)
     assert STATS_NAMES[0] == "uptime_cycles" and STATS_NAMES[39] == "ctrl_bad"
+    assert STATS_NAMES[40] == "t0_lost"
     p = packet(STATS, 3, stats_records(list(range(N_STATS))))
-    assert len(p) == 12 + 320 and be(p[12 + 8 * 39 : 12 + 8 * 40]) == 39
+    assert len(p) == 12 + 328 and be(p[12 + 8 * 39 : 12 + 8 * 40]) == 39
+    assert be(p[12 + 8 * 40 : 12 + 8 * 41]) == 40
 
 
 def test_config_round_trip_offsets_and_rejects() -> None:

@@ -89,8 +89,10 @@ async def bbo_records(dut):
         dut.b_ask_px_i.value, dut.b_ask_sz_i.value = bbo.ask_price, bbo.ask_size
         dut.b_oow_i.value, dut.b_seq_i.value, dut.b_ts_i.value = int(bbo.out_of_window), seq, bbo.ts
         dut.b_feed_stale_i.value, dut.b_book_stale_i.value = fs, bs
+        t = (rng.getrandbits(64), rng.getrandbits(64), rng.getrandbits(64))
+        dut.b_t0_i.value, dut.b_t1_i.value, dut.b_t2_i.value = t
         await settle()
-        want = bbo_record(bbo, seq, bool(fs or bs))
+        want = bbo_record(bbo, seq, bool(fs or bs), t)
         got = rec_bytes(dut)
         assert got == want, f"{bbo} seq {seq} stale {fs}{bs}\n got  {got.hex()}\n want {want.hex()}"
         flags_seen.add(int.from_bytes(want[2:4]))

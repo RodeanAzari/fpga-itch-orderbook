@@ -56,6 +56,8 @@ module itch_decoder #(
     input  wire logic              s_tlast_i,
     input  wire logic              s_tuser_i,
     input  wire logic [63:0]       s_seq_i,
+    input  wire logic [63:0]       s_t0_i,    // T0 of the message's frame (ADR 0011)
+    input  wire logic [63:0]       now_i,     // timestamp counter
     // records out
     output logic                   m_valid_o,
     input  wire logic              m_ready_i,
@@ -68,6 +70,8 @@ module itch_decoder #(
     output logic [31:0]            m_shares_o,
     output logic [31:0]            m_price_o,
     // status
+    output logic [63:0]            m_t0_o,
+    output logic [63:0]            m_t1_o,    // now_i when the last byte was accepted
     output logic                   t1_o,
     output logic                   unknown_o,
     output logic                   malformed_o,
@@ -153,7 +157,7 @@ module itch_decoder #(
     logic        pend_q;     // a finished message awaits stage 2
     logic [7:0]  d_kind_q;
     logic        d_known_q, d_len_ok_q;
-    logic [63:0] d_seq_q;
+    logic [63:0] d_seq_q, d_t0_q, d_t1_q;
 
     always_ff @(posedge clk_i) begin
         if (done) begin
@@ -161,6 +165,8 @@ module itch_decoder #(
             d_known_q  <= spec_len(kind) != '0;
             d_len_ok_q <= len_q + 16'd1 == spec_len(kind);
             d_seq_q    <= s_seq_i;
+            d_t0_q     <= s_t0_i;   // constant within a message (one packet)
+            d_t1_q     <= now_i;    // T1: the message's last byte accepted
         end
     end
 
@@ -185,6 +191,8 @@ module itch_decoder #(
         if (go && d_known_q && d_len_ok_q && is_book && loc_ok && side_ok) begin
             m_type_o    <= d_kind_q;
             m_seq_o     <= d_seq_q;
+            m_t0_o      <= d_t0_q;
+            m_t1_o      <= d_t1_q;
             m_ts_o      <= ts_q;
             m_ref_o     <= w11_q;
             m_new_ref_o <= is_u ? w19_q : '0;

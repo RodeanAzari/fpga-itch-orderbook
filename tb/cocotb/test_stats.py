@@ -1,11 +1,11 @@
-"""cocotb tests for rtl/out/out_stats: the 40 stats counters and the 1 s tick.
+"""cocotb tests for rtl/out/out_stats: the 41 stats counters and the 1 s tick.
 
 Why these tests matter: the stats packet is how every capacity limit and error is made
 visible on hardware ("never silently produce a wrong book"). A counter wired to the wrong
 slot, an amount input added as +1, a config clear that also wipes the control counters
 (the host could no longer tell its configs were accepted), or swapped stale bits would
 all mislead the host. A reference model built from docs/protocol.md's table
-(model.protocol.STATS_NAMES order) is compared with all 40 counters on every cycle under
+(model.protocol.STATS_NAMES order) is compared with all 41 counters on every cycle under
 random events on every input at once, random clears, and gap amounts up to 2^64 (wrap).
 The tick must fire exactly every TICK_CYCLES cycles after a clear.
 """

@@ -46,6 +46,7 @@ module mold_deframer #(
     output logic                   s_tready_o,
     input  wire logic              s_tlast_i,
     input  wire logic              s_tuser_i,
+    input  wire logic [63:0]       s_t0_i,    // T0 of this packet's frame (ADR 0011)
     // messages out
     output logic [DATA_W-1:0]      m_tdata_o,
     output logic                   m_tvalid_o,
@@ -53,6 +54,7 @@ module mold_deframer #(
     output logic                   m_tlast_o,
     output logic                   m_tuser_o,
     output logic [63:0]            m_seq_o,
+    output logic [63:0]            m_t0_o,    // s_t0_i at the packet's first byte
     // status
     output logic                   pkt_o,
     output logic                   heartbeat_o,
@@ -101,6 +103,7 @@ module mold_deframer #(
     logic [63:0] gap_q;         // byte 18: seq - expected
     logic        upd_exp_q;     // expected <= seq + count on the cycle after the header
 
+    logic [63:0] pkt_t0_q;
     logic        fire, emit, hdr_last, last_msg, is_dup, end_ok, drop_pkt;
     logic [15:0] count, len;
 
@@ -156,9 +159,12 @@ module mold_deframer #(
             end
             if (hdr_last && new_sess_q) session_q <= sess_in_q;
         end
+        // T0 is sampled at the packet's first byte, when it is the frame's (ADR 0011).
+        if (fire && state_q == S_HDR && hcnt_q == '0) pkt_t0_q <= s_t0_i;
         if (emit) begin
             m_tdata_o <= s_tdata_i;
             m_seq_o   <= msg_seq_q;
+            m_t0_o    <= pkt_t0_q;
         end
         gap_msgs_o <= gap_q;
     end

@@ -68,6 +68,7 @@ STATS_NAMES = (
     "out_datagrams",
     "ctrl_ok",
     "ctrl_bad",
+    "t0_lost",
 )
 N_STATS = len(STATS_NAMES)
 
@@ -102,6 +103,14 @@ def parse(payload: bytes) -> Datagram:
         raise ValueError(f"type {kind:#x}: count {count} vs {len(payload)} bytes")
     body = payload[HEADER.size :]
     return Datagram(kind, seq, tuple(body[i * n : (i + 1) * n] for i in range(count)))
+
+
+TIMES = slice(40, 64)  # BBO record t0, t1, t2: measurements, not model output (ADR 0011)
+
+
+def without_times(rec: bytes) -> bytes:
+    """A BBO record with t0/t1/t2 zeroed, for comparison with the model's records."""
+    return rec[: TIMES.start] + bytes(TIMES.stop - TIMES.start)
 
 
 def bbo_record(bbo: Bbo, mold_seq: int, stale: bool, t: tuple[int, int, int] = (0, 0, 0)) -> bytes:

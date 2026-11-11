@@ -27,6 +27,8 @@ module feed_frontend #(
     output logic                   s_tready_o,
     input  wire logic              s_tlast_i,
     input  wire logic              s_tuser_i,
+    input  wire logic [63:0]       s_t0_i,     // T0 of the current packet's frame (ADR 0011)
+    input  wire logic [63:0]       now_i,      // timestamp counter
     // records out
     output logic                   m_valid_o,
     input  wire logic              m_ready_i,
@@ -38,6 +40,8 @@ module feed_frontend #(
     output logic                   m_sell_o,
     output logic [31:0]            m_shares_o,
     output logic [31:0]            m_price_o,
+    output logic [63:0]            m_t0_o,
+    output logic [63:0]            m_t1_o,     // T1: now_i at the message's last byte
     // status
     output logic                   t1_o,
     output logic                   pkt_o,
@@ -60,7 +64,7 @@ module feed_frontend #(
 );
     logic [DATA_W-1:0] g_tdata;
     logic              g_tvalid, g_tready, g_tlast, g_tuser;
-    logic [63:0]       g_seq;
+    logic [63:0]       g_seq, g_t0;
     logic              seq_stale, msg_bad_q;
 
     mold_deframer #(
@@ -73,12 +77,14 @@ module feed_frontend #(
         .s_tready_o       (s_tready_o),
         .s_tlast_i        (s_tlast_i),
         .s_tuser_i        (s_tuser_i),
+        .s_t0_i           (s_t0_i),
         .m_tdata_o        (g_tdata),
         .m_tvalid_o       (g_tvalid),
         .m_tready_i       (g_tready),
         .m_tlast_o        (g_tlast),
         .m_tuser_o        (g_tuser),
         .m_seq_o          (g_seq),
+        .m_t0_o           (g_t0),
         .pkt_o            (pkt_o),
         .heartbeat_o      (heartbeat_o),
         .end_o            (end_o),
@@ -105,6 +111,8 @@ module feed_frontend #(
         .s_tlast_i          (g_tlast),
         .s_tuser_i          (g_tuser),
         .s_seq_i            (g_seq),
+        .s_t0_i             (g_t0),
+        .now_i              (now_i),
         .m_valid_o          (m_valid_o),
         .m_ready_i          (m_ready_i),
         .m_type_o           (m_type_o),
@@ -115,6 +123,8 @@ module feed_frontend #(
         .m_sell_o           (m_sell_o),
         .m_shares_o         (m_shares_o),
         .m_price_o          (m_price_o),
+        .m_t0_o             (m_t0_o),
+        .m_t1_o             (m_t1_o),
         .t1_o               (t1_o),
         .unknown_o          (unknown_o),
         .malformed_o        (malformed_msg_o),

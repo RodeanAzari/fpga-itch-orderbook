@@ -82,9 +82,24 @@ def test_one_record_wrong(tmp_path: Path, mode: int) -> None:
     pkts, cfg, recs = setup(tmp_path, mode)
     k = len(recs) // 2
     bad = list(recs)
-    bad[k] = bad[k][:-1] + bytes([bad[k][-1] ^ 1])  # a timestamp/price bit, not a flag
+    i = 7  # a price bit, not a flag: bid_px (BBO) or itch_ts (trace)
+    bad[k] = bad[k][:i] + bytes([bad[k][i] ^ 1]) + bad[k][i + 1 :]
     s = run(tmp_path, pkts, datagrams(cfg, bad))
     assert (s["match"], s["first_mismatch"], s["mismatched_positions"]) == (0, k, 1)
+
+
+def test_times_are_not_compared(tmp_path: Path) -> None:
+    """t0/t1/t2 are the FPGA's measurements (ADR 0011): any value matches the model's 0,
+    while the byte before them (mold_seq) still counts."""
+    pkts, cfg, recs = setup(tmp_path)
+    rng = random.Random(3)
+    timed = [r[:40] + rng.randbytes(24) for r in recs]
+    s = run(tmp_path, pkts, datagrams(cfg, timed))
+    assert s["match"] == 1 and s["unflagged_wrong"] == 0
+    k = len(recs) // 2
+    timed[k] = timed[k][:39] + bytes([timed[k][39] ^ 1]) + timed[k][40:]
+    s = run(tmp_path, pkts, datagrams(cfg, timed))
+    assert (s["match"], s["first_mismatch"]) == (0, k)
 
 
 @pytest.mark.parametrize("change", ["missing_last", "extra", "missing_middle"])

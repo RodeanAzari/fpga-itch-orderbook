@@ -147,6 +147,7 @@ last config, except where noted.
 | 37 | `out_datagrams` | datagrams sent, all types (= the next `pkt_seq`) |
 | 38 | `ctrl_ok` | config packets accepted (not cleared by a config) |
 | 39 | `ctrl_bad` | packets to `CTRL_PORT` rejected: wrong magic, version, type, count, `record_len` or length (not cleared by a config) |
+| 40 | `t0_lost` | frames whose T0 could not be matched to them (ADR 0011: an SFD missed, or a queue full); their updates carry `t0` = 0 |
 
 ## Config (type 0x10, host → FPGA) and config ack (type 0x11)
 

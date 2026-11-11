@@ -24,6 +24,10 @@
 // frame (control frames show up in feed_filtered).
 // Clocks: clk_i (core), mii_rx_clk_i, mii_tx_clk_i (PHY); resets synchronous, active-high,
 // one per domain from a common source (eth-core requirement).
+// Timestamps (ADR 0011): now_q counts core cycles from reset. T0 = now_q at the frame's
+// synchronized SFD, matched to the frame by t0_track; T1 = now_q when the decoder takes
+// the message's last byte; T2 = now_q on the first cycle a BBO is valid at the book's
+// output. T0 and T1 ride the book's per-record sideband with the feed stale bit.
 // Latency: the sum of the blocks' (docs/latency.md).
 module ob_core #(
     parameter logic [47:0] OWN_MAC     = 48'h02_00_0A_0B_0C_0D,
@@ -56,7 +60,14 @@ module ob_core #(
     output logic            error_o         // sticky: frame/FIFO/TX errors since reset
 );
     localparam int LEVEL_W  = SHARES_W + SET_BITS + 1 + $clog2(WAYS);  // book_engine's
-    localparam int N_STATS  = 40;
+    localparam int N_STATS  = 41;
+    localparam int USER_W   = 1 + 64 + 64;  // {feed stale, T0, T1} through the book
+
+    logic [63:0] now_q;
+    always_ff @(posedge clk_i) begin
+        if (rst_i) now_q <= '0;
+        else       now_q <= now_q + 64'd1;
+    end
 
     // --------------------------------------------------------------- receive
     logic [7:0] f_tdata;
@@ -86,6 +97,40 @@ module ob_core #(
         .ovf_o        (e_ovf),
         .ovf_frames_o (e_ovf_frames),
         .fifo_level_o (fifo_level_unused)
+    );
+
+    // T0 (ADR 0011): the SFD into the core domain, then matched to the frame as it
+    // leaves eth_rx. t0 is the frame's T0 (0 if lost) until the next frame starts.
+    logic        sfd_core, f_first_q, t0_lost, t0_valid_unused;
+    logic [63:0] t0;
+
+    cdc_pulse u_sfd_sync (
+        .src_clk_i   (mii_rx_clk_i),
+        .src_rst_i   (mii_rx_rst_i),
+        .src_pulse_i (sfd_o),
+        .dst_clk_i   (clk_i),
+        .dst_rst_i   (rst_i),
+        .dst_pulse_o (sfd_core)
+    );
+
+    always_ff @(posedge clk_i) begin
+        if (rst_i)                      f_first_q <= 1'b1;
+        else if (f_tvalid && f_tready) f_first_q <= f_tlast;
+    end
+
+    t0_track u_t0 (
+        .clk_i         (clk_i),
+        .rst_i         (rst_i),
+        .now_i         (now_q),
+        .sfd_i         (sfd_core),
+        .ok_i          (e_ok),
+        .drop_i        (e_crc || e_rxerr || e_runt || e_over),
+        .ovf_i         (e_ovf),
+        .ovf_frames_i  (e_ovf_frames),
+        .frame_start_i (f_tvalid && f_tready && f_first_q),
+        .t0_o          (t0),
+        .t0_valid_o    (t0_valid_unused),
+        .lost_o        (t0_lost)
     );
 
     // broadcast to both udp_rx: a beat moves when both take it. No combinational loop:
@@ -237,7 +282,7 @@ module ob_core #(
 
     logic        r_valid, r_ready, r_sell;
     logic [7:0]  r_type;
-    logic [63:0] r_seq, r_ref, r_new_ref, gap_msgs;
+    logic [63:0] r_seq, r_ref, r_new_ref, gap_msgs, r_t0, r_t1;
     logic [47:0] r_ts;
     logic [31:0] r_shares, r_price;
     logic        t1_unused;
@@ -258,6 +303,8 @@ module ob_core #(
         .s_tready_o         (g_tready),
         .s_tlast_i          (g_tlast),
         .s_tuser_i          (g_tuser),
+        .s_t0_i             (t0),  // the frame inside udp_rx: its payload's T0 (ADR 0011)
+        .now_i              (now_q),
         .m_valid_o          (r_valid),
         .m_ready_i          (r_ready),
         .m_type_o           (r_type),
@@ -268,6 +315,8 @@ module ob_core #(
         .m_sell_o           (r_sell),
         .m_shares_o         (r_shares),
         .m_price_o          (r_price),
+        .m_t0_o             (r_t0),
+        .m_t1_o             (r_t1),
         .t1_o               (t1_unused),
         .pkt_o              (m_pkt),
         .heartbeat_o        (m_hb),
@@ -289,7 +338,9 @@ module ob_core #(
     );
 
     // --------------------------------------------------------------- book
-    logic               b_s_valid, b_s_ready, b_m_valid, b_m_ready, b_oow, b_user, b_stale;
+    logic               b_s_valid, b_s_ready, b_m_valid, b_m_ready, b_oow, b_fstale, b_stale;
+    logic [63:0]        b_t0, b_t1, b_t2, b_t2_q;
+    logic               b_hold_q, b_new;
     logic [31:0]        b_bid_px, b_ask_px;
     logic [LEVEL_W-1:0] b_bid_sz, b_ask_sz;
     logic [63:0]        b_seq;
@@ -302,7 +353,7 @@ module ob_core #(
         .WAYS     (WAYS),
         .SHARES_W (SHARES_W),
         .WIN_BITS (WIN_BITS),
-        .USER_W   (1)
+        .USER_W   (USER_W)
     ) u_book (
         .clk_i             (clk_i),
         .rst_i             (book_rst),
@@ -312,7 +363,7 @@ module ob_core #(
         .s_type_i          (r_type),
         .s_seq_i           (r_seq),
         .s_ts_i            (r_ts),
-        .s_user_i          (feed_stale),  // the record's feed stale rides to its BBO
+        .s_user_i          ({feed_stale, r_t0, r_t1}),  // ride to the record's BBO
         .s_ref_i           (r_ref),
         .s_new_ref_i       (r_new_ref),
         .s_sell_i          (r_sell),
@@ -327,7 +378,7 @@ module ob_core #(
         .m_oow_o           (b_oow),
         .m_seq_o           (b_seq),
         .m_ts_o            (b_ts),
-        .m_user_o          (b_user),
+        .m_user_o          ({b_fstale, b_t0, b_t1}),
         .m_stale_o         (b_stale),
         .ref_overflow_o    (k_ref_ovf),
         .duplicate_ref_o   (k_dup),
@@ -341,6 +392,15 @@ module ob_core #(
         .stale_o           (book_stale),
         .busy_o            (book_busy)
     );
+
+    // T2: the first cycle a BBO is valid (held while out_builder stalls it).
+    always_ff @(posedge clk_i) begin
+        if (rst_i) b_hold_q <= 1'b0;
+        else       b_hold_q <= b_m_valid && !b_m_ready;
+        if (b_new) b_t2_q <= now_q;
+    end
+    assign b_new = b_m_valid && !b_hold_q;
+    assign b_t2  = b_new ? now_q : b_t2_q;
 
     // --------------------------------------------------------------- output
     logic           o_valid, o_ready;
@@ -371,8 +431,11 @@ module ob_core #(
         .b_oow_i        (b_oow),
         .b_seq_i        (b_seq),
         .b_ts_i         (b_ts),
-        .b_feed_stale_i (b_user),
+        .b_feed_stale_i (b_fstale),
         .b_book_stale_i (b_stale),
+        .b_t0_i         (b_t0),
+        .b_t1_i         (b_t1),
+        .b_t2_i         (b_t2),
         .o_valid_o      (o_valid),
         .o_ready_i      (o_ready),
         .o_rec_o        (o_rec)
@@ -429,6 +492,7 @@ module ob_core #(
         .out_datagrams_i           (dgram),
         .ctrl_ok_i                 (ctrl_ok),
         .ctrl_bad_i                (ctrl_bad),
+        .t0_lost_i                 (t0_lost),
         .stats_o                   (stats),
         .tick_o                    (tick)
     );
@@ -507,6 +571,6 @@ module ob_core #(
     logic unused;
     assign unused = ^{fifo_level_unused, c_dport_unused, c_ok_unused, c_filt_unused,
                       c_csum_unused, c_mal_unused, u_mac_unused, u_ip_unused,
-                      u_sport_unused, u_dport_unused, t1_unused};
+                      u_sport_unused, u_dport_unused, t1_unused, t0_valid_unused};
 endmodule
 `default_nettype wire
