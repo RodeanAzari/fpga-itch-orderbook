@@ -155,6 +155,72 @@ def board_vs_model(
     print(f"wrote {out}")
 
 
+def _hist(path: Path, metric: str) -> list[tuple[int, int]]:
+    with open(path) as f:
+        return [
+            (int(r["cycles"]), int(r["count"])) for r in csv.DictReader(f) if r["metric"] == metric
+        ]
+
+
+def latency(before: Path, after: Path, causes: Path, out: Path) -> None:
+    """T2-T1 on the board, day 1: CCDF before and after ADR 0012, and the after histogram
+    by cause (docs/latency.md budget cases)."""
+    ns = 8  # 125 MHz core clock
+    fig, (left, right) = plt.subplots(
+        1, 2, figsize=(11, 4.6), gridspec_kw={"width_ratios": [1.35, 1]}
+    )
+    fig.patch.set_facecolor(SURFACE)
+    for ax in (left, right):
+        _style(ax)
+    for path, color, name in ((before, ASK, "before (byte writer paces the book)"),
+                              (after, BID, "after ADR 0012 (record FIFO)")):  # fmt: skip
+        h = _hist(path, "T2-T1")
+        n = sum(c for _, c in h)
+        xs, ys, left_over = [], [], n
+        for cyc, c in h:
+            xs.append(cyc * ns)
+            ys.append(left_over / n)  # fraction of BBOs taking >= this value
+            left_over -= c
+        left.step(xs, ys, where="post", color=color, linewidth=2, label=name)
+        left.plot(xs[-1], ys[-1], "o", color=color, markersize=6)
+        left.annotate(f"max {xs[-1]:,} ns", (xs[-1], ys[-1]), xytext=(6, 6),
+                      textcoords="offset points", color=INK, fontsize=8)  # fmt: skip
+    left.set_xscale("log")
+    left.set_yscale("log")
+    left.set_ylim(5e-7, 2)
+    left.set_xlabel("T2 − T1, pipeline latency (ns, log)", color=INK)
+    left.set_ylabel("Fraction of BBOs at or above (log)", color=INK)
+    left.legend(loc="lower left", frameon=False, labelcolor=INK, fontsize=9)
+    left.set_title("Tail, 831,842 BBOs per run", color=INK, loc="left", fontsize=10)
+
+    with open(causes) as f:
+        rows = [
+            {k: int(v) if k != "msg_type" else v for k, v in r.items()} for r in csv.DictReader(f)
+        ]
+    label = {14: "out of\nwindow", 17: "best\nstays", 18: "side\nempties", 23: "best\nempties",
+             24: "Replace", 29: "Replace,\nbest\nempties"}  # fmt: skip
+    per: dict[int, int] = {}
+    for r in rows:
+        per[r["t2_minus_t1"]] = per.get(r["t2_minus_t1"], 0) + r["count"]
+    cyc = sorted(per)
+    xs = range(len(cyc))
+    right.bar(xs, [per[c] for c in cyc], color=BID, width=0.6, edgecolor=SURFACE, linewidth=2)
+    right.set_yscale("log")
+    right.set_ylim(1, 5e6)
+    for x, c in zip(xs, cyc, strict=True):
+        right.text(x, per[c] * 1.4, f"{per[c]:,}", ha="center", color=INK, fontsize=8)
+    right.set_xticks(list(xs))
+    right.set_xticklabels([f"{c * ns} ns\n{label.get(c, '')}" for c in cyc], fontsize=7.5)
+    right.set_ylabel("BBOs (log)", color=INK)
+    right.set_title("After: every BBO on its no-wait budget", color=INK, loc="left", fontsize=10)
+    title = "AAPL 2019-10-18 on the Arty A7: T2 − T1, message decoded → BBO at the book's output"
+    fig.suptitle(title, color=INK, x=0.01, ha="left", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main() -> None:
     bbo_day(
         str(RESULTS / "2019-10-18_AAPL"),
@@ -172,6 +238,12 @@ def main() -> None:
         "d2_16way",
         MEDIA / "2026-11-10_phase-d_board-vs-model-bbo-day2.png",
         day="2025-12-12",
+    )
+    latency(
+        RESULTS / "2026-11-11_first_latency_board_hist.csv",
+        RESULTS / "2026-11-11_record_fifo_board_hist.csv",
+        RESULTS / "2026-11-11_record_fifo_board_causes.csv",
+        MEDIA / "2026-11-11_phase-e_board-latency-t2-t1.png",
     )
 
 

@@ -40,3 +40,12 @@ Done by Claude from run `d2_shoot` (`make demo-gif-day2`, `make plots`): the day
 `compare` image (saved output, rendered) and the board-vs-model plot, all in the README.
 - Still optional, physical only: the board photo/video from the section above, during any
   full-day run.
+
+## Phase E: first latency histogram, and every BBO on its budget (2026-11-11)
+
+Result: `data/results/2026-11-11_record_fifo_board.md` (T2−T1 p50 136 ns, max 232 ns).
+Done by Claude: `docs/media/2026-11-11_phase-e_board-latency-t2-t1.png` (`make plots`):
+before/after tail and the per-cause histogram.
+- Physical (with the Pmod step, not yet built): scope capture of the T1 and T2 pulses on
+  two channels during a replay, cursors on one T1→T2 pair, to cross-check the in-band
+  timestamps (buildplan §6.5).
