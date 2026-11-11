@@ -673,3 +673,29 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   `overflow_block` (2 × WAYS + 1 colliding Adds, then Deletes) in the adversarial streams of
   `test_order_table` and `test_book`. Overflow is now reached and checked at 2,048 sets too,
   the board's geometry, which the old skip left untested.
+
+## 2026-11-11 — Phase E started: T0/T1/T2 end to end, first board distribution
+
+- ADR 0011: one 64-bit core-clock counter (no fast timestamp clock); T0 matched to frames
+  by two queues on eth_rx's one-status-per-frame contract (`rtl/meas/t0_track`, golden
+  model `model/timestamps.py`), SFD through a new toggle synchronizer (`rtl/lib/cdc_pulse`).
+  No fpga-eth-core change. T0/T1 ride the book's sideband (USER_W 129); T2 = first valid
+  cycle at the book output. New stats counter `t0_lost` (41 counters).
+- Simulation: T0 − SFD = 8 cycles on every BBO; T2 − T1 equals the budget in every
+  no-wait case (14 out of window, 17 normal, 21/24 Replace, 23 best empties).
+  `docs/latency.md` written. Injected bugs (8 across t0_track, feed and core) all caught
+  except one that turned out unobservable by construction (T0 at record time).
+- Timing: the sideband pushed the 16-way match path to −0.204 ns. Removed the half-depth
+  table RAM split (ADR 0010's named fix): WNS +0.038 ns, fewer LUTs/FFs than v0.4.
+- **Board, day 1, timestamped:** 831,842/831,842 still exact; T2−T1 min 14, p50 37, p99
+  125, max 13,348 cycles; T2−T0 p50 128 µs. Mode 17 = budget. Open: peaks at 102/119/125
+  cycles (fixed-length stall, suspected out_builder), not yet a headline.
+- Bugs (symptom → root cause → fix):
+  - `make ci`: test_out ValueError on stats_i width → out_builder's default N_STATS still
+    40 → 41.
+  - p99.9 reported the max in latency.py's test → float 99.9/100*1000 = 999.0000000000001
+    rounds up a rank → exact Fraction arithmetic.
+  - Full-chip build failed −0.204 ns → extra sideband FFs crowded the table's match path
+    → one RAM per bank (no output mux).
+  - Mine: syn/build_top.tcl lists RTL dirs by hand, rtl/meas was missing; a failed build
+    overwrote the committed reports (restored with git checkout before committing).
