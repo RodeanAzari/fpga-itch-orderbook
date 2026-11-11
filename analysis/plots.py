@@ -7,6 +7,8 @@ from pathlib import Path
 
 import matplotlib
 
+from analysis.latency import nearest_rank
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
@@ -206,9 +208,18 @@ def latency(before: Path, after: Path, causes: Path, out: Path) -> None:
     xs = range(len(cyc))
     right.bar(xs, [per[c] for c in cyc], color=BID, width=0.6, edgecolor=SURFACE, linewidth=2)
     right.set_yscale("log")
-    right.set_ylim(1, 5e6)
+    right.set_ylim(1, 3e7)
     for x, c in zip(xs, cyc, strict=True):
         right.text(x, per[c] * 1.4, f"{per[c]:,}", ha="center", color=INK, fontsize=8)
+    # percentile markers (nearest rank, as analysis/latency.py and the results CSV)
+    vals = sorted(c for c in cyc for _ in range(per[c]))
+    marks: dict[int, list[str]] = {}
+    for name, pct in (("p50", 50.0), ("p99", 99.0), ("p99.9", 99.9), ("max", 100.0)):
+        marks.setdefault(nearest_rank(vals, pct), []).append(name)
+    for c, names in marks.items():
+        x = cyc.index(c)
+        right.annotate(" = ".join(names), (x, per[c] * 4.5), ha="center", color=MUTED,
+                       fontsize=8, fontweight="bold")  # fmt: skip
     right.set_xticks(list(xs))
     right.set_xticklabels([f"{c * ns} ns\n{label.get(c, '')}" for c in cyc], fontsize=7.5)
     right.set_ylabel("BBOs (log)", color=INK)
