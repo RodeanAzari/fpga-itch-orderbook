@@ -726,3 +726,26 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   - Mine: `pkill -f "tb/run.py test_out"` killed my own shell again (the `pgrep -f` trap);
     the injected file had to be restored by hand. Don't pkill -f with a pattern that
     appears in the calling command.
+
+## 2026-11-11 (evening) — latency plot; eth-core 0005 hardware runs; cut-through proposal
+
+- `make plots`: `docs/media/2026-11-11_phase-e_board-latency-t2-t1.png` (before/after CCDF,
+  per-cause histogram with nearest-rank percentile markers).
+- fpga-eth-core request 0005 (link-up reset gating, `mdio_link_mon`, untagged since 11-07):
+  350 reprogram-then-stream cycles on the board (`fpga-eth-core`
+  `data/results/2026-11-11_0005_reprogram_cycles.md`). Gated 249 clean + 1 corrupted
+  (likely a design that was not reprogrammed); ungated control 0/100 corrupted. The fault
+  does not reproduce on demand here, so the fix is not demonstrated: no tag.
+- ADR 0013 (cut-through) drafted as Proposed; needs the user's go-ahead (eth-core interface
+  addition, t0_track change, stale on a delivered bad frame).
+- Bugs (symptom → root cause → fix):
+  - Harness exited silently with code 2 → `vivado-env`'s `ls` of an unmatched glob fails
+    under `set -o pipefail` → relax `-euo pipefail` around it.
+  - Harness exited after its first poll, leaving `cat /dev/ttyUSB1` orphaned and the
+    caller's pipe open → `grep` with no match yet exits 1 under pipefail → `|| true` and an
+    EXIT trap that kills the reader.
+  - UART fields failed bash hex arithmetic → CRLF line endings → `tr -d '\r'`.
+  - 100 cycles would have taken ~5 h → Vivado start-up ~2.5 min per program at load 13 →
+    openFPGALoader (SRAM, ~5 s).
+  - Run 1 kept no per-cycle logs, so its one corrupted cycle can't be diagnosed → the
+    harness now keeps UART/programmer/sender logs and a "fresh design" check.
