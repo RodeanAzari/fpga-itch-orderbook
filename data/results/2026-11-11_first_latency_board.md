@@ -1,6 +1,7 @@
 # First timestamped board run (2026-11-11): T2−T1 and T2−T0 over the whole 2019-10-18 AAPL day
 
-CSVs: `2026-11-11_first_latency_board.csv` (percentiles), `_hist.csv` (count per cycle value).
+CSVs: `2026-11-11_first_latency_board.csv` (percentiles), `_hist.csv` (count per cycle value),
+`_t2gaps.csv` (`python -m analysis.t2_gaps`), `_txmodel.csv` (`python -m analysis.tx_queue_model`).
 
 | | |
 |---|---|
@@ -38,3 +39,18 @@ t0/t1/t2; 0 datagrams lost; `t0_lost` 0; 0 MII FIFO overflows, 0 feed gaps, neve
 - T2−T0 includes the frame's 100 Mb/s serialization (up to 1,472 payload bytes ≈ 121 µs)
   and the store-and-forward wait for its FCS, as expected. T0 is uncorrected (the 18-cycle
   constant in `docs/latency.md` is negligible here).
+
+## Explained (2026-11-11, later): output backpressure, fixed by ADR 0012
+
+- **Peaks 102/119/125** (`_t2gaps.csv`): out_builder's byte writer accepted one record per 65 cycles. The
+  BBO before a 102 peak has its T2 exactly 65 cycles earlier in 65,323 of 83,814 cases
+  (119: 45,357 of 48,914; 125: 71 cycles in 15,363 of 15,917). Messages reach the book
+  every 22–82 cycles inside a packet, so the book backs up and T2−T1 settles at a few
+  steady-state values.
+- **The 19 outliers** (`_txmodel.csv`): each follows an output burst of 57–120 BBOs in
+  the 40k cycles before it; the TX path holds ~85 BBOs and the 100 Mb/s wire drains ~1 per
+  675 cycles. A datagram-level model of that path driven by this log's T2s predicts 12
+  stalls, all inside the same 5 bursts as the 19 observed (none on the exact record), and
+  2 more bursts that did not stall.
+- So this distribution measures output backpressure as much as the book. ADR 0012 adds a
+  512-record FIFO in front of the writer; this run stays as the "before" measurement.
