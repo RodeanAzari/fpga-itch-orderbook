@@ -1,0 +1,5 @@
+test,seed,set_bits,messages,bbo_updates_matched,mismatches,ref_overflow,duplicate_ref,shares_overflow,table_overflow,unknown_ref,over_reduce,price_oow,price_subpenny,bbo_oow,book_stale,wall_s
+random_1m,20261106,11,1009900,42831,0,2,6,2,0,7778,2,17288,17,42799,1,1725.7
+wide_200k,20261106,11,204162,103421,0,0,0,0,0,0,20786,0,0,0,1,579.0
+real_full_day 2019-10-18_AAPL,20261106,11,1658958,831842,0,0,0,0,0,0,0,16099,0,4,0,2007.2
+real_full_day 2025-12-12_AAPL,20261106,11,3511772,916429,0,0,0,0,0,0,0,69799,0,3,0,5208.9
