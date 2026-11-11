@@ -184,25 +184,17 @@ module order_table #(
     (* max_fanout = 16 *) logic [SET_BITS-1:0] waddr0, waddr1;
     logic [SET_W-1:0]    wdata0, wdata1, rdata0, rdata1;
 
-    // Each bank is two half-depth RAMs selected by the set's top bit. At 8,192 sets this
-    // gave 4K x 9 tiles (48 per bank) where one 8K-deep RAM took 8K x 4 tiles (54). At the
-    // defaults (1,024 x 896 per half) it is 50 BRAM36 per bank, 100 in all (ADR 0010).
-    localparam int HALF_W = SET_BITS - 1;
-    logic [SET_W-1:0] rd0 [2], rd1 [2];
-    for (genvar h = 0; h < 2; h++) begin : g_half
-        sdp_ram #(.ADDR_W(HALF_W), .DATA_W(SET_W), .OUT_REG(1'b1)) u_bank0 (
-            .clk_i(clk_i), .we_i(we0 && waddr0[HALF_W] == 1'(h)),
-            .waddr_i(waddr0[HALF_W-1:0]), .wdata_i(wdata0),
-            .raddr_i(set0_q[HALF_W-1:0]), .rdata_o(rd0[h])
-        );
-        sdp_ram #(.ADDR_W(HALF_W), .DATA_W(SET_W), .OUT_REG(1'b1)) u_bank1 (
-            .clk_i(clk_i), .we_i(we1 && waddr1[HALF_W] == 1'(h)),
-            .waddr_i(waddr1[HALF_W-1:0]), .wdata_i(wdata1),
-            .raddr_i(set1_q[HALF_W-1:0]), .rdata_o(rd1[h])
-        );
-    end
-    assign rdata0 = rd0[set0_q[HALF_W]];  // set*_q is held from S_READ through S_ACT
-    assign rdata1 = rd1[set1_q[HALF_W]];
+    // One RAM per bank: 2K x 896 maps to 2K x 18 tiles, 50 BRAM36 per bank, 100 in all
+    // (ADR 0010). (At 8,192 sets two half-depth RAMs packed better; their output mux was
+    // on the match path, the full chip's worst, so it went when the sets shrank.)
+    sdp_ram #(.ADDR_W(SET_BITS), .DATA_W(SET_W), .OUT_REG(1'b1)) u_bank0 (
+        .clk_i(clk_i), .we_i(we0), .waddr_i(waddr0), .wdata_i(wdata0),
+        .raddr_i(set0_q), .rdata_o(rdata0)
+    );
+    sdp_ram #(.ADDR_W(SET_BITS), .DATA_W(SET_W), .OUT_REG(1'b1)) u_bank1 (
+        .clk_i(clk_i), .we_i(we1), .waddr_i(waddr1), .wdata_i(wdata1),
+        .raddr_i(set1_q), .rdata_o(rdata1)
+    );
 
     // ---------------------------------------------------------------- match (S_EVAL)
     entry_t [WAYS-1:0] row0, row1;

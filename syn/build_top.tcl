@@ -22,7 +22,7 @@ file mkdir $rundir $reports
 cd $rundir
 
 set sv {}
-foreach d {lib lib/xilinx feed book out top} {
+foreach d {lib lib/xilinx feed book meas out top} {
     set sv [concat $sv [lsort [glob [file join $repo rtl $d *.sv]]]]
 }
 set sv [concat $sv [lsort [glob [file join $eth rtl *.sv]]]]
