@@ -660,3 +660,16 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
     count only → keyed by day too (`8318c33`).
   - Mine: a backgrounded `&&` chain lost its variables, `>( )` ran under `sh`, and
     `pkill -f chunkcopy.sh` killed my own shell (the `pgrep -f` trap again).
+- **Media run (23:01, load 5):** `d2_shoot`, day 2 exact again (916,429/916,429), 0 FIFO
+  overflows, 3 output datagrams reordered on the host (none lost). The user asked me to make
+  the captures: `make demo-gif-day2` renders the day-2 GIF (`bbo_view`) and the `compare`
+  output (new `analysis/term_shot.py`, drawn from the saved text). Board photo and video stay
+  with the user (optional). README: day-2 media section; the "sizing from one day"
+  limitation was stale and now says two days. Tagged `v0.4-book` on the user's go-ahead.
+- Bug (symptom → root cause → fix): `make ci` failed in `test_order_table.adversarial_full_rate`
+  at `SET_BITS=9` ("stimulus never produced table_overflow", SEED=4188399474) → since ADR
+  0010 an overflow needs 33 live refs in one bucket pair, and the generator's 64 aimed refs
+  rarely have that many live at once (the reshape's ci passed by luck) → a directed
+  `overflow_block` (2 × WAYS + 1 colliding Adds, then Deletes) in the adversarial streams of
+  `test_order_table` and `test_book`. Overflow is now reached and checked at 2,048 sets too,
+  the board's geometry, which the old skip left untested.

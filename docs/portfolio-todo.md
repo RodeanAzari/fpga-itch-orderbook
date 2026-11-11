@@ -36,9 +36,7 @@ Before the shoot: pause other sessions' heavy jobs; `scripts/board_run.sh` with
 ## Phase D: busier day (2025-12-12) exact on the board with the 16-way table (2026-11-10)
 
 Result: `data/results/2026-11-10_full_day_board_16way.md` (916,429/916,429 BBOs).
-Plot done: `docs/media/2026-11-10_phase-d_board-vs-model-bbo-day2.png` (`make plots`).
-- Terminal screenshot of `compare` for day 2: `expected_records=916429 fpga_records=916429
-  match=1`. The run takes about 3 min:
-  `ITCH=~/itch-cache/2025-12-12_AAPL.itch LO_PRICE=2575300 SESSION=20251212AA
-  scripts/board_run.sh <run> bbo 500 0` (board claimed, adapter set up as in progress.md).
-- Optional: the board photo/video from the section above, taken during this run instead.
+Done by Claude from run `d2_shoot` (`make demo-gif-day2`, `make plots`): the day-2 GIF, the
+`compare` image (saved output, rendered) and the board-vs-model plot, all in the README.
+- Still optional, physical only: the board photo/video from the section above, during any
+  full-day run.

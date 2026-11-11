@@ -11,7 +11,7 @@ ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, 
 # Vendor wrappers, with eth-core's simulation models of the primitives they use
 XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
-.PHONY: demo-gif prog setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: demo-gif demo-gif-day2 prog setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -88,6 +88,15 @@ DEMO_LOG ?= data/runs/day500c.log
 demo-gif:
 	$(PY) -m analysis.bbo_view --log $(DEMO_LOG) --packets data/runs/slice0.pkts --fps 10 \
 	  --gif docs/media/2026-11-09_phase-d_board-full-day-bbo.gif
+
+# Day-2 (2025-12-12) media from the clean run d2_shoot (data/results/2026-11-10_full_day_board_16way.md).
+demo-gif-day2:
+	$(PY) -m analysis.bbo_view --log data/runs/d2_shoot.log \
+	  --packets data/runs/2025-12-12_AAPL_slice0.pkts --lo-price 2575300 --fps 10 \
+	  --gif docs/media/2026-11-10_phase-d_board-full-day2-bbo.gif
+	$(PY) -m analysis.term_shot --text data/runs/d2_shoot.compare.txt --prompt '~/OrderBook$$ ' \
+	  --command 'ITCH=~/itch-cache/2025-12-12_AAPL.itch LO_PRICE=2575300 SESSION=20251212AA scripts/board_run.sh d2_shoot bbo 500 0' \
+	  --png docs/media/2026-11-10_phase-d_board-compare-day2.png
 
 plots:
 	$(PY) -m analysis.plots

@@ -8,7 +8,7 @@ CSV: `2026-11-10_full_day_board_16way.csv`. Every attempt is listed, failures in
 | Host | WSL2, ASIX AX88179 via usbipd (`cdc_ncm`, `tx_timer_usecs` 0), qdisc `pfifo limit 10000`; load average 15 to 22 on 16 CPUs (other sessions, not paused) |
 | Input | Day 1: `2019-10-18_AAPL.itch`, 1,669,592 messages → 35,313 packets. Day 2: `2025-12-12_AAPL.itch`, 3,542,449 messages → 82,066 packets. Both from `~/itch-cache/` (SHA-256 in `2025-12-12_AAPL.md`) |
 | Commands | `ITCH=~/itch-cache/2019-10-18_AAPL.itch LO_PRICE=2140700 SESSION=20191018AA scripts/board_run.sh <run> bbo 500 0` and `ITCH=~/itch-cache/2025-12-12_AAPL.itch LO_PRICE=2575300 SESSION=20251212AA scripts/board_run.sh d2_16way bbo 500 0` |
-| Logs | `data/runs/` (local): `d1c_16way.log` SHA-256 prefix `6b1441d6f72f47d1`, `d2_16way.log` `3bbc0d2ff710ef89` |
+| Logs | `data/runs/` (local): `d1c_16way.log` SHA-256 prefix `6b1441d6f72f47d1`, `d2_16way.log` `3bbc0d2ff710ef89`, `d2_shoot.log` `30563e986610e2a5` (its `compare` output saved as `d2_shoot.compare.txt`) |
 
 ## Interpretation
 
@@ -33,6 +33,16 @@ The two failed day-1 attempts were caused by host load, and both were detected:
 - `d1b_16way`: replay bursts (max lag 44 ms, load 21.7) overflowed the 2 KB MII FIFO 3
   times. The feed gap made the book stale, and every BBO after the gap is flagged stale.
   `unflagged_wrong` 0. Host receive lost nothing in this run (counters snapshotted).
+
+**`d2_shoot` (23:01, a fifth run for the media, board reprogrammed with the same bitstream):**
+day 2 exact again, 916,429/916,429, load 5.1 at the start. 0 MII FIFO overflows, 0 feed
+gaps, never stale. capture's `seq_lost` 3 and `seq_backwards` 3: three output datagrams
+arrived out of order on the host and were not lost (`compare`: `lost_datagrams=0`).
+`board_rx_frames_ok` 82,069 = 82,066 feed + 3 non-feed frames (`feed_filtered` 3). Media
+rendered from this run's log by `make demo-gif-day2`:
+`docs/media/2026-11-10_phase-d_board-full-day2-bbo.gif` (the day replayed through
+`analysis/bbo_view.py`) and `docs/media/2026-11-10_phase-d_board-compare-day2.png` (the saved
+`compare` output drawn by `analysis/term_shot.py`, a rendering, not a screen grab).
 
 So at load 15 to 22 the clean rate was 2 of 4 runs. The clean runs had the lowest replay lag
 (24 ms). The deeper MII FIFO (open question in `progress.md`) would absorb these bursts.
