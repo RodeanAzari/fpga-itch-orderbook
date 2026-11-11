@@ -1,6 +1,6 @@
 """make sim-full: book_engine at the real geometry on 1M+ events (Phase D DoD) and, when
-the extract is available, the whole 2019-10-18 AAPL day. Same scoreboard as test_book
-(every BBO update against model.bounded.BoundedBook, field by field, no extras).
+the extract is available, a whole real AAPL day (ITCH_EXTRACT; see DAYS). Same scoreboard
+as test_book (every BBO update against model.bounded.BoundedBook, field by field, no extras).
 
 Not part of `make sim` (minutes, not seconds). Each passing test appends one row to
 $SIM_FULL_CSV: test, seed, messages, BBO updates matched, every counter, wall seconds. A
@@ -26,6 +26,12 @@ from model.itch import iter_raw
 SET_BITS = int(os.environ.get("SET_BITS", "11"))
 WAYS = int(os.environ.get("WAYS", "16"))
 EXTRACT = Path(os.environ.get("ITCH_EXTRACT", "/mnt/d/itch/derived/2019-10-18_AAPL.itch"))
+# Per extract: window base (ticks) and the bounded model's out-of-window BBO count, both
+# measured independently (data/results/<day>_AAPL_summary.csv and _bounded*.csv).
+DAYS = {
+    "2019-10-18_AAPL.itch": (REAL_BASE, 4),  # ADR 0002
+    "2025-12-12_AAPL.itch": (27_801, 3),  # ADR 0010
+}
 
 
 def record(test: str, n: int, book: BoundedBook, stats: dict[str, int], t0: float) -> None:
@@ -81,11 +87,12 @@ async def wide_200k(dut):
 
 @cocotb.test(skip=SET_BITS != 11 or not EXTRACT.exists())
 async def real_full_day(dut):
-    """Every book message of 2019-10-18 AAPL (needs the off-repo extract)."""
+    """Every book message of a real AAPL day in DAYS (needs the off-repo extract)."""
+    base, bbo_oow = DAYS[EXTRACT.name]
     t0 = time.monotonic()
     with EXTRACT.open("rb") as f:
         recs = records(list(iter_raw(f)))
     stats: dict[str, int] = {}
-    book = await run(dut, "full_day", recs, REAL_BASE, 1.0, 1.0, stats)
-    assert not book.stale and book.bbo_oow == 4  # ADR 0002's count for this day
-    record("real_full_day", len(recs), book, stats, t0)
+    book = await run(dut, "full_day", recs, base, 1.0, 1.0, stats)
+    assert not book.stale and book.bbo_oow == bbo_oow
+    record(f"real_full_day {EXTRACT.stem}", len(recs), book, stats, t0)
