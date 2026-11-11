@@ -26,8 +26,10 @@
 // Latency (cycle 0 = the delta's handshake cycle), one delta at a time. A last delta
 // presents its BBO update in cycle 8 for K_LEVEL (read, output register, modify, bitmap,
 // done, form, compare, present), 14 when the best empties (+ L1 encode, L2 read, L2
-// encode, size read, output register, size set), 4 for K_NONE and 5 for K_OOW. A non-last delta frees the
-// input after 6 (K_LEVEL). Measured end to end by test_book.py latency_matches_header.
+// encode, size read, output register, size set), 9 when the best empties and leaves its
+// side empty (no level to search), 4 for K_NONE and 5 for K_OOW. A non-last delta frees
+// the input after 6 (K_LEVEL), 12 when it empties the best. Measured end to end by
+// test_book.py latency_matches_header.
 // After reset the level RAMs and L2 are cleared, one index per cycle (2^WIN_BITS cycles).
 // Reset: synchronous, active-high.
 module book_levels #(

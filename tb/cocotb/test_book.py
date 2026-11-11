@@ -257,7 +257,9 @@ async def latency_matches_header(dut):
     result is the cycle the BBO update is presented. order_table's beat is taken in cycle
     7; book_levels then needs 8 cycles for a level update (read, output register, modify,
     bitmap, done, form, compare, present) and 6 more when the best empties (L1 encode, L2
-    read, L2 encode, size read, output register, size set)."""
+    read, L2 encode, size read, output register, size set), 1 more when that leaves the
+    side empty. A Replace's first delta frees book_levels after 6 cycles, or 12 when it
+    empties the best, so its second delta (7 cycles later) then waits 5."""
     base = 10_000
     await reset(dut, base)
     dut.m_ready_i.value = 1
@@ -287,3 +289,15 @@ async def latency_matches_header(dut):
     assert await send(a_msg(1, b"B", 100, price)) == 15  # new best bid
     assert await send(a_msg(2, b"B", 100, price - 500 * TICK)) is None  # worse level
     assert await send(d_msg(1)) == 21  # best emptied: bitmap search to the worse level
+    # Measured on the board (data/results/2026-11-11_record_fifo_board_causes.csv, T2-T1
+    # minus the decoder's 2): a Replace is two deltas, the second 7 cycles after the first.
+    assert await send(a_msg(3, b"B", 100, price)) == 15  # best bid again (3 alone)
+    assert await send(a_msg(4, b"B", 100, price)) == 15  # joins 3's level: best size
+    assert await send(u_msg(4, 5, 100, price - 100 * TICK)) == 22  # level stays: no search
+    # 3 is alone at the best now: its removal searches (6 more cycles before the input is
+    # free), so the second delta waits 5
+    assert await send(u_msg(3, 6, 100, price + 100 * TICK)) == 27
+    for ref in (6, 5):
+        await send(d_msg(ref))
+    # ref 2 is now the only bid: deleting it empties the side, no level to search for
+    assert await send(d_msg(2)) == 16
