@@ -13,7 +13,7 @@ from cocotb.triggers import RisingEdge
 from tb_common import get_rng
 
 from model import generator
-from model.bounded import TICK
+from model.bounded import TICK, colliding_refs
 from model.itch import Add, Delete, Message, Reduce, Replace, decode
 
 HALF = 2048
@@ -77,6 +77,19 @@ def directed(base_ticks: int) -> list[bytes]:
     return out
 
 
+def overflow_block(base_ticks: int, set_bits: int, ways: int) -> list[bytes]:
+    """Fill bucket pair 0 (set 0 in both banks) one past its 2 x ways entries, then delete
+    them all: table_overflow is reached at any geometry, not left to the generator's luck
+    (at 16 ways its 64 aimed refs rarely have 33 live at once)."""
+    gen_bits = generator.DEFAULT.sets_per_bank.bit_length() - 1
+    taken = set(colliding_refs(gen_bits, 64))  # the generator's aimed refs
+    need = 2 * ways + 1
+    refs = [x for x in colliding_refs(set_bits, need + 64) if x not in taken][:need]
+    assert len(refs) == need, "not enough colliding refs"
+    price = (base_ticks - HALF) * TICK + 500
+    return [a_msg(x, b"B", 100, price) for x in refs] + [d_msg(x) for x in refs]
+
+
 def records(raws: list[bytes]) -> list[tuple[int, Message]]:
     out = []
     for raw in raws:
@@ -101,12 +114,16 @@ def dut_fields(kind: int, m: Message) -> dict[str, int]:
 
 
 def adversarial(
-    seed: int, n: int, cfg: generator.Config = generator.DEFAULT
+    seed: int,
+    n: int,
+    cfg: generator.Config = generator.DEFAULT,
+    overflow: tuple[int, int] | None = None,
 ) -> list[tuple[int, Message]]:
+    """overflow=(set_bits, ways) adds overflow_block to the mid-stream directed block."""
     rng = get_rng(f"ot_gen_{seed}")
     msgs = generator.generate(seed=rng.randrange(1 << 30), count=n, cfg=cfg)
     base = generator.DEFAULT.base_price // TICK
-    block = directed(base)
+    block = directed(base) + (overflow_block(base, *overflow) if overflow else [])
     k = rng.randrange(len(msgs) // 4, len(msgs) // 2)  # mid-stream, with a busy table
     return records(msgs[:k] + block + msgs[k:] + directed(base))
 

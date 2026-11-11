@@ -217,15 +217,18 @@ def wide(seed: int, n: int, base: int) -> tuple[list[tuple[int, Message]], dict[
 async def adversarial_full_rate(dut):
     """Generator + directed limits at full rate: every counter path, flagged BBOs."""
     base = generator.DEFAULT.base_price // TICK
-    book = await run(dut, "book_adv", adversarial(1, 20_000), base, 1.0, 1.0)
+    book = await run(
+        dut, "book_adv", adversarial(1, 20_000, overflow=(SET_BITS, WAYS)), base, 1.0, 1.0
+    )
     assert book.bbo_oow > 0, "stimulus never flagged a BBO"
+    assert book.table_overflow > 0, "stimulus never overflowed the table"
 
 
 @cocotb.test()
 async def adversarial_backpressure(dut):
     """Same mix with input gaps and BBO-output stalls."""
     base = generator.DEFAULT.base_price // TICK
-    await run(dut, "book_adv_bp", adversarial(2, 8_000), base, 0.6, 0.3)
+    await run(dut, "book_adv_bp", adversarial(2, 8_000, overflow=(SET_BITS, WAYS)), base, 0.6, 0.3)
 
 
 @cocotb.test()

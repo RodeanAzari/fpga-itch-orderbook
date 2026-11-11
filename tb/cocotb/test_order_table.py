@@ -167,10 +167,10 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
 async def adversarial_full_rate(dut):
     """Generator + directed limits, no stalls: every counter path must be reached."""
     base = generator.DEFAULT.base_price // TICK
-    book = await run(dut, "ot_adv", adversarial(1, 20_000), base, 1.0, 1.0)
+    book = await run(
+        dut, "ot_adv", adversarial(1, 20_000, overflow=(SET_BITS, WAYS)), base, 1.0, 1.0
+    )
     for path in STATUS.values():
-        if path == "table_overflow" and SET_BITS != 9:
-            continue  # the generator aims its collisions at 512 sets per bank
         assert model_count(book, path) > 0, f"stimulus never produced {path}"
 
 
@@ -178,7 +178,7 @@ async def adversarial_full_rate(dut):
 async def adversarial_backpressure(dut):
     """Same mix with input gaps and output stalls: the handshake must not lose a beat."""
     base = generator.DEFAULT.base_price // TICK
-    await run(dut, "ot_adv_bp", adversarial(2, 8_000), base, 0.6, 0.4)
+    await run(dut, "ot_adv_bp", adversarial(2, 8_000, overflow=(SET_BITS, WAYS)), base, 0.6, 0.4)
 
 
 @cocotb.test(skip=SET_BITS != 11)
