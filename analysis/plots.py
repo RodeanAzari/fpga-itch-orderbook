@@ -89,7 +89,9 @@ def bbo_day(prefix: str, out: Path) -> None:
     print(f"wrote {out}")
 
 
-def board_vs_model(csv_path: Path, runs_csv: Path, run_name: str, out: Path) -> None:
+def board_vs_model(
+    csv_path: Path, runs_csv: Path, run_name: str, out: Path, day: str = "2019-10-18"
+) -> None:
     """The board's last BBO per minute drawn over the golden model's, and their difference.
     Minutes with an empty side on either source are left out (no bid/ask pair to draw).
     The record-level totals come from run `run_name` in `runs_csv`."""
@@ -128,7 +130,7 @@ def board_vs_model(csv_path: Path, runs_csv: Path, run_name: str, out: Path) -> 
     top.set_ylabel("Price (USD)", color=INK)
     top.legend(loc="upper left", frameon=False, labelcolor=INK, ncol=2, fontsize=9)
     top.set_title(
-        "AAPL best bid / ask, 2019-10-18: FPGA on the board vs golden model (last BBO per minute)",
+        f"AAPL best bid / ask, {day}: FPGA on the board vs golden model (last BBO per minute)",
         color=INK,
         loc="left",
         fontsize=11,
@@ -163,6 +165,13 @@ def main() -> None:
         RESULTS / "2026-11-09_full_day_board.csv",
         "day500c",
         MEDIA / "2026-11-09_phase-d_board-vs-model-bbo-day.png",
+    )
+    board_vs_model(
+        RESULTS / "2026-11-10_board_vs_model_bbo_1min_day2.csv",
+        RESULTS / "2026-11-10_full_day_board_16way.csv",
+        "d2_16way",
+        MEDIA / "2026-11-10_phase-d_board-vs-model-bbo-day2.png",
+        day="2025-12-12",
     )
 
 
