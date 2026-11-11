@@ -17,6 +17,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0009](decisions/0009-core-clock.md) | Core clock 125 MHz (full chip WNS +0.059 ns); fallback: one more stage at the price-index multiply | Accepted |
 | [0010](decisions/0010-order-table-16-way.md) | Order table 2 × 2,048 × 16 (same 65,536 entries): 0 overflows on the busier 2025-12-12 day | Accepted |
 | [0011](decisions/0011-timestamps.md) | Timestamps: one 64-bit core-clock counter (no fast clock); T0 matched to frames by queues on eth_rx's per-frame status | Accepted |
+| [0012](decisions/0012-record-fifo.md) | Record FIFO (512 × 512 bits) in front of out_builder's byte writer, so the book hands over a BBO in one cycle; partly supersedes 0008 | Accepted |
 
 Still to write: cut-through vs. store-and-forward, timestamp design.
 

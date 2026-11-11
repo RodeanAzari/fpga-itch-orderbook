@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
-| Date         : Wed Nov 11 02:38:48 2026
+| Date         : Wed Nov 11 11:47:02 2026
 | Host         : RodeanStation running 64-bit Ubuntu 26.04 LTS
 | Command      : report_methodology -file /home/rodea/OrderBook/docs/reports/arty_top/methodology.rpt
 | Design       : arty_top
@@ -23,11 +23,11 @@ Table of Contents
           Floorplan: design_1
       Design limits: <entire design considered>
              Max checks: <unlimited>
-             Checks found: 11
+             Checks found: 19
 +----------+----------+--------------------------------------------+--------+
 | Rule     | Severity | Description                                | Checks |
 +----------+----------+--------------------------------------------+--------+
-| SYNTH-6  | Warning  | Timing of a RAM block might be sub-optimal | 5      |
+| SYNTH-6  | Warning  | Timing of a RAM block might be sub-optimal | 13     |
 | SYNTH-10 | Warning  | Wide multiplier                            | 6      |
 +----------+----------+--------------------------------------------+--------+
 
@@ -40,20 +40,60 @@ Related violations: <none>
 
 SYNTH-6#2 Warning
 Timing of a RAM block might be sub-optimal  
-The timing for the instance u_core/u_eth_rx/u_buf/mem_reg, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_0, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
 Related violations: <none>
 
 SYNTH-6#3 Warning
 Timing of a RAM block might be sub-optimal  
-The timing for the instance u_core/u_eth_rx/u_fifo/mem_reg, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_1, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
 Related violations: <none>
 
 SYNTH-6#4 Warning
 Timing of a RAM block might be sub-optimal  
-The timing for the instance u_core/u_eth_tx/u_fifo/mem_reg, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_2, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
 Related violations: <none>
 
 SYNTH-6#5 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_3, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#6 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_4, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#7 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_5, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#8 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_6, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#9 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_builder/u_rec_fifo/u_ram/mem_reg_7, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#10 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_eth_rx/u_buf/mem_reg, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#11 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_eth_rx/u_fifo/mem_reg, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#12 Warning
+Timing of a RAM block might be sub-optimal  
+The timing for the instance u_core/u_eth_tx/u_fifo/mem_reg, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
+Related violations: <none>
+
+SYNTH-6#13 Warning
 Timing of a RAM block might be sub-optimal  
 The timing for the instance u_core/u_udp_tx/mem_reg, implemented as a RAM block, might be sub-optimal as no output register was merged into the block.
 Related violations: <none>

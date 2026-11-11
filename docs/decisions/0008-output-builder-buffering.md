@@ -1,6 +1,8 @@
 # 0008: Output builder buffering and datagram sequencing
 
 **Status: Accepted 2026-11-08.** Implements ADR 0007's batching in `rtl/out/out_builder.sv`.
+The rejection of a wide record FIFO below is superseded by ADR 0012 (2026-11-11): the
+64-cycle writer paced the book inside every packet.
 
 ## Context
 

@@ -10,7 +10,9 @@ under saturation, never more. Stats are snapshotted on one cycle: every counter 
 stats datagram is driven with the current cycle number, so a snapshot that is taken
 piecewise shows mixed cycles. An ack flushes the previous run (including a
 half-written record), resets pkt_seq and applies the new mode, but never cuts the
-datagram in flight. Nothing at all is sent before the first ack.
+datagram in flight. Nothing at all is sent before the first ack. The record FIFO (ADR
+0012) takes a record per cycle until it is full, so the book never waits on the byte
+writer: that wait was most of the board's T2-T1 tail.
 """
 
 from __future__ import annotations
@@ -39,6 +41,14 @@ STAT_REP = sum(1 << (64 * (N_STATS - 1 - k) + 8) for k in range(N_STATS))
 STAT_BASE = sum(k << (64 * (N_STATS - 1 - k)) for k in range(N_STATS))
 REC_KIND = {0: BBO, 1: TRACE}
 PERIOD_NS = 10
+BYTE_FIFO = 2048  # out_builder FIFO_ADDR_W = 11 (ADR 0008)
+TIMEOUT_MS = 10  # each test needs < 1 ms of sim time; a stalled handshake fails, not hangs
+
+
+def capacity(dut, mode: int) -> int:
+    """Records accepted with the output stalled before s_ready drops (module header): the
+    record FIFO, the byte FIFO's complete records, and the one in the writer."""
+    return 2 ** int(dut.REC_ADDR_W.value) + BYTE_FIFO // RECORD_LEN[REC_KIND[mode]] + 1
 
 
 def now(dut) -> int:
@@ -166,7 +176,7 @@ def check_run(dgrams: list[tuple[int, Datagram]], cfg: Config, recs: list[bytes]
         assert g == w, f"record {k}: got {g.hex()} want {w.hex()}"
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
 async def nothing_before_ack(dut):
     """No records or stats leave before the first ack; the ack flushes what was queued."""
     h = Harness(dut, "nothing_before_ack")
@@ -214,21 +224,21 @@ async def stream(dut, mode: int) -> None:
     cocotb.log.info("mode %d: %d datagrams, largest batch %d", mode, len(h.dgrams), batched)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
 async def stream_bbo(dut):
     """Random BBO records, gaps, backpressure and stats requests: exact record stream."""
     await stream(dut, 0)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
 async def stream_trace(dut):
     """As stream_bbo with 40-byte trace records (the record's other 24 bytes are junk)."""
     await stream(dut, 1)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
 async def latency_matches_header(dut):
-    """Light load: one record per datagram, first header byte REC_LEN + 2 cycles after
+    """Light load: one record per datagram, first header byte REC_LEN + 4 cycles after
     the record is accepted (the module header's figure)."""
     for mode in (0, 1):
         h = Harness(dut, f"latency_mode{mode}")
@@ -242,12 +252,12 @@ async def latency_matches_header(dut):
             acc = await h.push(r)
             await h.idle(quiet=100)
             lat = h.starts[n] - acc
-            assert lat == RECORD_LEN[REC_KIND[mode]] + 2, f"mode {mode}: latency {lat}"
+            assert lat == RECORD_LEN[REC_KIND[mode]] + 4, f"mode {mode}: latency {lat}"
         check_run(h.dgrams, cfg, recs)
         assert all(len(d.records) == 1 for _, d in h.dgrams), "light load batched"
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
 async def saturation_batches_max(dut):
     """Sink stalled until the FIFO fills: the backlog leaves in MAX_COUNT batches."""
     for mode in (0, 1):
@@ -257,7 +267,7 @@ async def saturation_batches_max(dut):
         await h.ack(cfg)
         await h.idle(quiet=20)
         h.sink.p_ready = 0.0
-        recs = h.random_records(mode, 120)
+        recs = h.random_records(mode, capacity(dut, mode) + 20)
         pusher = cocotb.start_soon(_push_all(h, recs))
         low = 0
         while low < 200:  # writer stuck: the FIFO is full
@@ -278,7 +288,35 @@ async def _push_all(h: Harness, recs: list[bytes]) -> None:
         await h.push(r)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
+async def accepts_every_cycle_until_full(dut):
+    """ADR 0012: with the output stalled, records are accepted on consecutive cycles until
+    exactly capacity() are in, then s_ready stays low; nothing is lost once it resumes."""
+    for mode in (0, 1):
+        h = Harness(dut, f"accepts_mode{mode}")
+        await h.reset()
+        cfg = Config(mode=mode)
+        await h.ack(cfg)
+        await h.idle(quiet=20)
+        h.sink.p_ready = 0.0
+        cap = capacity(dut, mode)
+        recs = h.random_records(mode, cap + 5)
+        acc = [await h.push(r) for r in recs[:cap]]
+        # one accept per cycle while the record FIFO has room; after that each waits for
+        # the writer to pop one (REC_LEN cycles)
+        n_free = 2 ** int(dut.REC_ADDR_W.value)
+        gaps = {y - x for x, y in zip(acc[: n_free - 1], acc[1:n_free], strict=True)}
+        assert gaps == {1}, f"mode {mode}: accept spacing {gaps}"
+        await ClockCycles(dut.clk_i, 20 * RECORD_LEN[REC_KIND[mode]])
+        assert not int(dut.s_ready_o.value), f"mode {mode}: took more than {cap}"
+        h.sink.p_ready = 1.0
+        for r in recs[cap:]:
+            await h.push(r)
+        await h.idle()
+        check_run(h.dgrams, cfg, recs)
+
+
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
 async def ack_mid_traffic(dut):
     """A second ack while a datagram is in flight: the datagram completes intact, the
     rest of the queue is dropped, pkt_seq restarts at 0. The new mode is set long before
@@ -296,7 +334,9 @@ async def ack_mid_traffic(dut):
             dut.mode_i.value = cfg1.mode
             n_mode = len(h.starts)
         await h.push(r)
-    while not h._in_dgram:
+    # the record FIFO takes all 150 at once: let the old run send a few datagrams in the
+    # new mode_i before the ack
+    while len(h.starts) < n_mode + 3 or not h._in_dgram:
         await RisingEdge(dut.clk_i)
     n_before = len(h.starts)
     await h.ack(cfg1)
@@ -316,7 +356,7 @@ async def ack_mid_traffic(dut):
     check_run(h.dgrams[i_ack:], cfg1, new)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=TIMEOUT_MS, timeout_unit="ms")
 async def ack_flushes_half_record(dut):
     """An ack that starts while the writer is mid-record drops that record's remaining
     bytes, so the next run's records stay byte-aligned."""
@@ -329,7 +369,7 @@ async def ack_flushes_half_record(dut):
     await h.idle(quiet=100)
     await h.push(b)
     await ClockCycles(dut.clk_i, 5)
-    assert not int(dut.s_ready_o.value), "writer should still be copying b"
+    assert int(dut.wleft_q.value) != 0, "writer should still be copying b"
     n_before = len(h.dgrams)
     await h.ack(cfg)
     await h.push(c)

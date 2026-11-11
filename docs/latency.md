@@ -26,7 +26,10 @@ block's test (`latency_matches_header`).
 | **T2 − T1 with no wait** | **17** normal; **23** best empties; **14** out of window; **24** Replace (**21** if its new price is out of window) | sum |
 
 Anything above these values is waiting: the book handles one message at a time (a U
-takes two deltas), and the output builder can stall the book while a datagram goes out.
+takes two deltas), and its output waits when out_builder's record FIFO is full (ADR 0012:
+512 + 32 BBOs queued behind the 100 Mb/s TX). Before ADR 0012 the byte writer took one
+record per 65 cycles, which paced the book inside every packet (the board's 102/119/125
+peaks, `data/results/2026-11-11_first_latency_board.md`).
 
 Measured in simulation (`test_core`, 2026-11-11, one seeded run, 94 BBOs; `make sim` logs
 it every run): every no-wait case lands exactly on its budget: 14 (Add out of window, 1),

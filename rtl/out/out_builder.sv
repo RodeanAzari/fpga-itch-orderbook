@@ -4,9 +4,12 @@
 //
 // Records in (s_*): one record per handshake, as its wire bytes, byte 0 in the top 8 bits
 //   of s_rec_i. Length by the mode (mode_i as of the last ack): 0 = BBO (64 bytes),
-//   1 = trace (40 bytes, the top 40 bytes of s_rec_i). A writer copies the bytes into a
-//   byte FIFO at one per cycle; s_ready_o is low while it does (REC_LEN cycles per record,
-//   longer while the FIFO is full).
+//   1 = trace (40 bytes, the top 40 bytes of s_rec_i). Records enter a record FIFO
+//   (2**REC_ADDR_W x 512 bits, ADR 0012) in one cycle; s_ready_o is low only while it is
+//   full. A writer pops them and copies the bytes into a byte FIFO at one per cycle
+//   (REC_LEN cycles per record, longer while the byte FIFO is full). Capacity before
+//   s_ready_o drops with the output stalled: 2**REC_ADDR_W + the byte FIFO's complete
+//   records + the one in the writer.
 // Datagrams out (m_*): AXI-Stream, one byte per beat, tlast on a datagram's last byte.
 //   When idle, the builder starts the highest-priority datagram that is due:
 //     1. config ack (ack_req_i seen): flushes the FIFO and any half-written record, sets
@@ -19,17 +22,20 @@
 //        MAX_COUNT), oldest first ("flush on idle", no timer).
 //   Nothing is sent before the first ack. pkt_seq counts every datagram after the ack.
 // Contract: ack_rec_i is stable from ack_req_i until flush_o. mode_i is latched when an
-//   ack starts (records still queued from the previous run leave in the previous mode).
+//   ack starts (records still queued from the previous run leave in the previous mode;
+//   the ack flushes both FIFOs in the cycle it starts).
 //   The caller holds the record source in reset until flush_o.
 // Status (registered one-cycle pulses): dgram_o at each datagram start, with dgram_recs_o
 //   = its BBO/trace record count (0 for acks and stats); flush_o when an ack starts.
-// Latency: record accepted (idle, empty FIFO) -> first header byte valid: REC_LEN + 2
+// Latency: record accepted (idle, empty FIFOs) -> first header byte valid: REC_LEN + 4
 //   cycles (measured by test_out.py latency_matches_header).
-// Memory: one 2**FIFO_ADDR_W x 8 sync_fifo (one BRAM18 at the default).
+// Memory: one 2**FIFO_ADDR_W x 8 sync_fifo (one BRAM18 at the default) and one
+//   2**REC_ADDR_W x 512 sync_fifo (about 7.5 BRAM36 at the default).
 // Reset: synchronous, active-high.
 module out_builder #(
     parameter int N_STATS     = 41,
     parameter int FIFO_ADDR_W = 11,
+    parameter int REC_ADDR_W  = 9,     // record FIFO depth 2**N (ADR 0012)
     parameter int MAX_PAYLOAD = 1472  // udp_tx's limit
 ) (
     input  wire logic                    clk_i,
@@ -86,16 +92,27 @@ module out_builder #(
     logic [7:0]         fifo_dout;
     logic               rec_done;  // the current record's last byte is written this cycle
     logic               mode_q;    // mode_i as of the last ack
+    logic               rf_full, rf_empty, rf_rd;
+    logic [64*8-1:0]    rf_dout;
 
-    assign s_ready_o = wleft_q == '0;
+    // ---- record FIFO: the book hands a record over in one cycle ----
+    assign s_ready_o = !rf_full;
+    assign rf_rd     = wleft_q == '0 && !rf_empty && !flush;
+
+    sync_fifo #(.ADDR_W(REC_ADDR_W), .DATA_W(64*8)) u_rec_fifo (
+        .clk_i(clk_i), .rst_i(rst_i), .flush_i(flush),
+        .wr_en_i(s_valid_i && !rf_full), .wr_data_i(s_rec_i), .full_o(rf_full),
+        .rd_en_i(rf_rd), .rd_data_o(rf_dout), .empty_o(rf_empty)
+    );
+
     assign fifo_wr   = wleft_q != '0 && !fifo_full;
     assign rec_done  = fifo_wr && wleft_q == WLEFT_W'(1);
 
     always_ff @(posedge clk_i) begin
         if (rst_i || flush) begin
             wleft_q <= '0;
-        end else if (s_valid_i && s_ready_o) begin
-            wsh_q   <= s_rec_i;
+        end else if (rf_rd) begin
+            wsh_q   <= rf_dout;
             wleft_q <= mode_q ? WLEFT_W'(TRACE_LEN) : WLEFT_W'(BBO_LEN);
         end else if (fifo_wr) begin
             wsh_q   <= wsh_q << 8;
