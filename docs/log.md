@@ -699,3 +699,30 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
     → one RAM per bank (no output mux).
   - Mine: syn/build_top.tcl lists RTL dirs by hand, rtl/meas was missing; a failed build
     overwrote the committed reports (restored with git checkout before committing).
+
+## 2026-11-11 (later) — T2−T1 tail explained and removed (ADR 0012)
+
+- The first board day's tail (peaks 102/119/125, 19 outliers to 13,348 cycles) was the
+  output, not the book. `analysis/t2_gaps.py`: behind each peak the previous BBO's T2 is 65
+  cycles earlier (71 for 125): out_builder's byte writer took 64 cycles per record and
+  held `s_ready` low, while messages inside a packet reach the book every 22–82 cycles.
+  `analysis/tx_queue_model.py` puts the outliers in TX-path bursts (approximate: same 5
+  bursts, not the same records).
+- ADR 0012 (user's choice of three options): 512 × 512-bit record FIFO inside out_builder,
+  flushed by the ack in the same cycle as the byte FIFO. test_out: new
+  `accepts_every_cycle_until_full`; 4 injected bugs, 3 caught, 1 equivalent. test_core: every
+  T2−T1 on its budget (was 18–125). Full chip WNS +0.015 ns, 119 BRAM36.
+- **Board, day 1 (`e2_rf`):** 831,842/831,842 exact; T2−T1 min 14, p50 17, p99 24, max 29
+  cycles (232 ns). Every BBO equals its cause's no-wait budget
+  (`analysis/latency_causes.py`). Two budget cases were missing from docs/latency.md and the
+  book_levels header: 29 = Replace whose old order was alone at the best (the first delta's
+  search delays the second by 5), 18 = Delete that empties its side (no search). Both now
+  pinned in test_book `latency_matches_header`.
+- Bugs (symptom → root cause → fix):
+  - Bug-injection run hung 20 min instead of failing → test_out had no timeouts; a
+    blocked `push()` waits forever → `timeout_time` on every test_out test.
+  - `make ci` failed in model-test → ruff B905 (`zip` without `strict`) in the new test →
+    `strict=True`.
+  - Mine: `pkill -f "tb/run.py test_out"` killed my own shell again (the `pgrep -f` trap);
+    the injected file had to be restored by hand. Don't pkill -f with a pattern that
+    appears in the calling command.

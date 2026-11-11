@@ -1,0 +1,11 @@
+msg_type,empties_best,t2_minus_t1,count
+Add,0,14,1
+Add,0,17,411339
+Delete,0,14,1
+Delete,0,17,271654
+Delete,1,18,2
+Delete,1,23,73695
+Reduce,0,17,34556
+Reduce,1,23,21311
+Replace,0,24,17521
+Replace,1,29,1762

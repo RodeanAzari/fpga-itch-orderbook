@@ -65,6 +65,8 @@ unchanged (ADR 0007, 0008).
   (not caught: equivalent, since the FIFO's flush and the writer's reset take priority).
 - `test_core` (one seeded run, 100 BBOs at line rate): every T2−T1 is exactly its no-wait
   budget (14: 3, 17: 63, 23: 21, 24: 13); before this change the same test logged 18–125.
-- Board re-measurement of T2−T1: [TBD].
+- Board, day 1 (`data/results/2026-11-11_record_fifo_board.md`, run `e2_rf`): 831,842 /
+  831,842 exact; T2−T1 min 14, p50 17, p99 24, p99.9 29, max 29 cycles (was p50 37, p99
+  125, max 13,348). Every BBO equals the no-wait budget of its cause; no BBO waited.
 - Full chip (`docs/reports/arty_top/`, 2026-11-11): WNS +0.015 ns (was +0.038; the worst
   path is still the order table's 16-way match), 119 BRAM36, 12,354 LUT, 19,091 FF, 10 DSP.
