@@ -58,6 +58,12 @@ TESTS = {
     "test_mux": ("out_mux", ["rtl/out/out_mux.sv"], [{"LEVEL_W": 36}]),
     "test_ctrl": ("out_ctrl", ["rtl/out/out_ctrl.sv"], [{}]),
     "test_pkt_gate": ("pkt_gate", ["rtl/lib/pkt_gate.sv"], [{}]),
+    # real depths, and 8-entry queues that fill and wrap
+    "test_t0_track": (
+        "t0_track",
+        ["rtl/meas/t0_track.sv"],
+        [{"PEND_AW": 6, "DONE_AW": 7}, {"PEND_AW": 3, "DONE_AW": 3}],
+    ),
     # 30,000-cycle stats tick: stats datagrams interleave with the records.
     "test_core": ("ob_core", CORE, [{"TICK_CYCLES": 30_000}]),
     # make sim-full only: minutes per run, real geometry.
