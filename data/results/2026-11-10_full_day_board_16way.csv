@@ -1,0 +1,5 @@
+run,day,mode,target_pps,load_before,messages,packets_sent,qdisc,achieved_pps,replay_max_lag_ms,board_rx_frames_ok,board_rx_fifo_overflow,feed_gaps,feed_end_of_session,book_records,table_overflow,unknown_ref,book_stale,out_datagrams,host_rx_datagrams,host_seq_lost,expected_records,fpga_records,records_matching_before_first_loss,match,unflagged_wrong
+d1_16way,2019-10-18,bbo,500,18.9,1669592,35313,pfifo,500.0,49.893,35314,0,0,1,1658958,0,0,0,224603,224466,141,831842,831442,340113,0,0
+d1b_16way,2019-10-18,bbo,500,21.7,1669592,35313,pfifo,500.0,44.086,35310,3,1,1,1658813,0,8406,3,212355,212356,0,831842,488211,129566,0,0
+d2_16way,2025-12-12,bbo,500,17.6,3542449,82066,pfifo,500.0,24.776,82066,0,0,1,3511772,0,0,0,442417,442418,0,916429,916429,916429,1,0
+d1c_16way,2019-10-18,bbo,500,15.8,1669592,35313,pfifo,500.0,23.897,35313,0,0,1,1658958,0,0,0,225753,225754,0,831842,831842,831842,1,0
