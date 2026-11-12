@@ -812,3 +812,14 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
     stopped on the first stats datagram once all BBOs were in, and the last frame (no BBO)
     was not yet counted in that snapshot → use only stats received two ticks after the
     last frame was sent. A test race, not an RTL bug; the assertion now names the field.
+- fpga-coord 0005 (fpga-eth-core): **reproduced in simulation** (`a35b0dc`): a core-side
+  reset while rx_clk is stopped resets the async FIFO's read pointer and not its write
+  pointer (the rx reset_sync cannot move without rx_clk) → `fifo_level_o` 3,193–3,262 on a
+  2,048 FIFO, old frames re-delivered as good (9 ok for 5 sent). Even with rx_clk running,
+  the examples' wiring reset the read side ~3 rx_clk before the write side (the FIFO's
+  write-side SVA fired once). **Fix** (user chose the reset handshake): `rx_reset_bridge`
+  in eth_rx (`2b803fe`): request held until the rx side acknowledges; the FIFO read side
+  resets only inside the write side's reset; new `in_reset_o`. 4/4 reset cases pass, 3/3
+  injected bridge bugs caught, eth-core `make ci` green, rx_stats WNS +0.502 ns (`ae88535`).
+  Hardware confirmation [TBD]; P3 asked whether their top resets the MAC with rx_clk absent.
+  Not yet bridged: eth_tx's FIFO has the same reset requirement on tx_clk.
