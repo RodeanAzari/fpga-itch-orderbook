@@ -64,10 +64,20 @@ TESTS = {
     "test_t0_track": (
         "t0_track",
         ["rtl/meas/t0_track.sv"],
-        [{"PEND_AW": 6, "DONE_AW": 7}, {"PEND_AW": 3, "DONE_AW": 3}],
+        [
+            {"PEND_AW": 6, "DONE_AW": 7, "CUT_THROUGH": 0},
+            {"PEND_AW": 3, "DONE_AW": 3, "CUT_THROUGH": 0},
+            {"PEND_AW": 6, "DONE_AW": 7, "CUT_THROUGH": 1},
+            {"PEND_AW": 3, "DONE_AW": 3, "CUT_THROUGH": 1},
+        ],
     ),
     # 30,000-cycle stats tick: stats datagrams interleave with the records.
-    "test_core": ("ob_core", CORE, [{"TICK_CYCLES": 30_000}]),
+    # both eth_rx modes (ADR 0013)
+    "test_core": (
+        "ob_core",
+        CORE,
+        [{"TICK_CYCLES": 30_000, "CUT_THROUGH": 0}, {"TICK_CYCLES": 30_000, "CUT_THROUGH": 1}],
+    ),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 11}]),
 }

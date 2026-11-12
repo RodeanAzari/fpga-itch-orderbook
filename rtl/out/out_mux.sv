@@ -8,12 +8,13 @@
 // in expected()) and trace_record. The decoder already zeroes the fields a type does
 // not use (itch_decoder header), so trace fields are placed as they come.
 // BBO flags: stale, crossed, locked (both sides non-empty: size != 0), out_of_window;
-// t0/t1/t2 (ADR 0011) come from ob_core; cut_through is 0 until the cut-through build.
+// t0/t1/t2 (ADR 0011) come from ob_core; cut_through = the build's CUT_THROUGH (ADR 0013).
 // The record fields of the book's input are wired straight from the feed in the top
 // level; only the handshake passes through here. Purely combinational (0 cycles).
 // mode_i changes only while the pipeline is in reset (a config).
 module out_mux #(
-    parameter int LEVEL_W = 36  // book_engine's size width (36 at ADR 0001's geometry), <= 48
+    parameter int LEVEL_W = 36,  // book_engine's size width (36 at ADR 0001's geometry), <= 48
+    parameter bit CUT_THROUGH = 1'b0  // eth_rx build mode, reported in every BBO's flags
 ) (
     input  wire logic               mode_i,
     // feed records in
@@ -51,7 +52,7 @@ module out_mux #(
     output logic [64*8-1:0]         o_rec_o
 );
     // docs/protocol.md BBO flags
-    localparam int F_STALE = 0, F_CROSSED = 1, F_LOCKED = 2, F_OOW = 3;
+    localparam int F_STALE = 0, F_CROSSED = 1, F_LOCKED = 2, F_OOW = 3, F_CT = 4;
 
     logic        both;
     logic [15:0] flags;
@@ -64,6 +65,7 @@ module out_mux #(
         flags[F_CROSSED] = both && b_bid_px_i > b_ask_px_i;
         flags[F_LOCKED]  = both && b_bid_px_i == b_ask_px_i;
         flags[F_OOW]     = b_oow_i;
+        flags[F_CT]      = CUT_THROUGH;
     end
 
     // BBO record: symbol(2) flags(2) bid_px(4) ask_px(4) bid_sz(6) ask_sz(6) itch_ts(6)

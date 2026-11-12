@@ -755,3 +755,35 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   and T2 have their pulse. Full chip WNS +0.028 ns (host load 38: ~1 h build).
 - User decisions: ADR 0013 accepted as proposed; 0005 next = link flaps + ILA; a scope is
   available for the cross-check.
+
+## 2026-11-12 — cut-through (ADR 0013): model, eth-core option, OrderBook side
+
+- P5 request 0012 done (tb-common Used by: learned-resilience).
+- User decision: the cut-through release is `eth-core-v0.3`; the 0005 fix moves to v0.4
+  (request 0005 and `dependencies.toml` updated; v0.3 release test = sim both modes +
+  `rx_stats` cut-through ≥ 10 min on the board, zero drops).
+- Golden model first: `T0Track(cut_through=True)` (`model/timestamps.py`), tested against
+  a frame-level schedule (`model/tests/test_timestamps.py`, 49 tests, 5 injected bugs
+  caught). Needs a new eth_rx output, `emitted_o`, and a one-entry hold (ADR 0013).
+- fpga-eth-core `71097d9`: `eth_rx` `CUT_THROUGH`, `emitted_o`, `m_tuser_o`; oversize
+  checked in eth_rx in cut-through. Sim: first byte 520 ns after the SFD (store-and-forward
+  121,536 ns, 1,514-byte frame). `rx_stats` cut-through build WNS +0.592 ns.
+- OrderBook (uncommitted until the tag): t0_track cut-through mode (5/5 injected bugs
+  caught); ob_core stale on a delivered bad frame + stats counter 41 `cut_through_bad`
+  (N_STATS 42), BBO flag `cut_through`, control datagrams only from frames already ended
+  good; `CUT_THROUGH` through arty_top and `syn/build_top.tcl ... ct`. test_core in both
+  modes + `ct_bad_frames` (3/4 injected bugs caught; the 4th was an unreachable term,
+  removed and replaced by an assertion).
+- Bugs (symptom → root cause → fix):
+  - Model: a frame start after a late frame's start mismatched its T0 → a start taken from
+    `hold` set `started`, so the next frame's status thought its own start had happened →
+    only a PEND start sets `started`.
+  - eth_rx cut-through: a good 339-byte frame came out marked bad → the oversize hold was
+    set on the same cycle its tlast beat left (set overrode clear) and leaked to the next
+    frame → set only while the beat waits.
+  - `ct_status_order` reported no overflow → the stall phase still drained 2.5 B/µs →
+    full stall.
+  - test_core cut-through: no straddle of the feed release → the 325-byte payload streams
+    at wire speed and ends before the release → 400 bytes in cut-through. The "clean" run
+    went stale → `feed_packets` injects damaged messages → plain `packetize`.
+  - `pkill -f` on the sim name killed its own shell again (pattern in the command line).

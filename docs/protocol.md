@@ -79,7 +79,7 @@ Flags:
 - `crossed`: both sides non-empty and `bid_px > ask_px`. `locked`: both non-empty and
   `bid_px == ask_px`. Same definitions as `model.book.Bbo`.
 - `out_of_window`: ADR 0002. Set exactly when this BBO differs from the unbounded book.
-- `cut_through`: the bitstream was built in cut-through mode (§6.2); 0 until Phase E.
+- `cut_through`: the bitstream was built in cut-through mode (§6.2, ADR 0013).
 
 ## Trace record (type 0x02, 40 bytes)
 
@@ -101,7 +101,7 @@ not fed in trace mode.
 ## Stats (type 0x03)
 
 One datagram per second of core clock, and none before the first config. `count` =
-`N_STATS` = 40; each record is one u64 counter, in this order. All counters are snapshotted
+`N_STATS` = 42; each record is one u64 counter, in this order. All counters are snapshotted
 on the same cycle, and all are cleared by a config. Each is a count of events since the
 last config, except where noted.
 
@@ -148,6 +148,7 @@ last config, except where noted.
 | 38 | `ctrl_ok` | config packets accepted (not cleared by a config) |
 | 39 | `ctrl_bad` | packets to `CTRL_PORT` rejected: wrong magic, version, type, count, `record_len` or length (not cleared by a config) |
 | 40 | `t0_lost` | frames whose T0 could not be matched to them (ADR 0011: an SFD missed, or a queue full); their updates carry `t0` = 0 |
+| 41 | `cut_through_bad` | cut-through build only (ADR 0013): frames that put payload into the feed and then failed (`eth_rx` `m_tuser_o` on their tlast); each marks the feed stale. 0 in store-and-forward |
 
 ## Config (type 0x10, host → FPGA) and config ack (type 0x11)
 
@@ -159,7 +160,9 @@ that arrive before it are dropped while the pipeline is in reset (counted as fra
 decoded). A rejected packet changes nothing and gets no ack. A config that arrives
 while an earlier one is still being applied waits and is applied (and acked) after it;
 if several arrive meanwhile, only the latest is applied and acked. A truncated control
-datagram is rejected.
+datagram is rejected. In a cut-through build (ADR 0013) a control datagram must also fill
+its Ethernet frame (no padding, so at least 18 payload bytes; a config is 32): one that
+ends before its frame does is rejected, because its frame's FCS is not yet known.
 
 | Offset | Size | Field | Meaning |
 |---|---|---|---|

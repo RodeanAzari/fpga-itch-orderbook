@@ -1,5 +1,5 @@
 `default_nettype none
-// out_stats: the 41 u64 stats counters of docs/protocol.md (type 0x03) and the stats tick.
+// out_stats: the 42 u64 stats counters of docs/protocol.md (type 0x03) and the stats tick.
 //
 // Ports are named after the counters (docs/protocol.md table, model.protocol.STATS_NAMES).
 // Each *_i pulse adds 1 to its counter, except the amount inputs: mold_gap_messages_i is
@@ -17,7 +17,7 @@
 // TICK_CYCLES >= 2.
 module out_stats #(
     parameter int TICK_CYCLES = 125_000_000,
-    localparam int N_STATS    = 41
+    localparam int N_STATS    = 42
 ) (
     input  wire logic                  clk_i,
     input  wire logic                  rst_i,
@@ -64,6 +64,7 @@ module out_stats #(
     input  wire logic                  ctrl_ok_i,
     input  wire logic                  ctrl_bad_i,
     input  wire logic                  t0_lost_i,
+    input  wire logic                  cut_through_bad_i,  // ADR 0013
     output logic [N_STATS*64-1:0]      stats_o,
     output logic                       tick_o
 );
@@ -119,6 +120,7 @@ module out_stats #(
         add[38] = 64'(ctrl_ok_i);
         add[39] = 64'(ctrl_bad_i);
         add[40] = 64'(t0_lost_i);
+        add[41] = 64'(cut_through_bad_i);
     end
 
     always_ff @(posedge clk_i) begin

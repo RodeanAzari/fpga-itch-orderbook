@@ -1,6 +1,8 @@
 # Full-chip batch build of rtl/top/arty_top for the Arty A7-100T:
-#   vivado -mode batch -source syn/build_top.tcl [-tclargs <core_div>]
+#   vivado -mode batch -source syn/build_top.tcl [-tclargs <core_div> [ct]]
 # core_div: MMCM divider of the 1000 MHz VCO for the core clock (default 8 = 125 MHz).
+# ct: eth_rx in cut-through (CUT_THROUGH=1, ADR 0013); writes build/arty_top_ct/ and
+# docs/reports/arty_top_ct/ instead.
 # Non-project flow; writes build/arty_top/ and the reports in docs/reports/arty_top/.
 # The bitstream is written only if every timing path meets and no clock-domain crossing
 # is unconstrained or unsafe. Flow and gates follow fpga-eth-core's syn/build_example.tcl.
@@ -16,8 +18,10 @@ set part    xc7a100tcsg324-1
 set top     arty_top
 set repo    [file normalize [file join [file dirname [info script]] ..]]
 set eth     [file join $repo rtl eth]
-set rundir  [file join $repo build $top]
-set reports [file join $repo docs reports $top]
+set ct      [expr {[lindex $argv 1] eq "ct"}]
+set tag     [expr {$ct ? "${top}_ct" : $top}]
+set rundir  [file join $repo build $tag]
+set reports [file join $repo docs reports $tag]
 file mkdir $rundir $reports
 cd $rundir
 
@@ -34,7 +38,8 @@ read_xdc [file join $repo constr arty_pmod.xdc]
 read_xdc -ref async_fifo [file join $eth constr async_fifo.xdc]
 
 set clk_hz [expr {int(round(1.0e9 / $core_div))}]
-synth_design -top $top -part $part -generic CORE_DIV=$core_div -generic CLK_HZ=$clk_hz
+synth_design -top $top -part $part -generic CORE_DIV=$core_div -generic CLK_HZ=$clk_hz \
+    -generic CUT_THROUGH=$ct
 set bb [get_cells -hier -quiet -filter {IS_BLACKBOX == 1}]
 if {[llength $bb] > 0} { error "black boxes in the netlist: $bb" }
 

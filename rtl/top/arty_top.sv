@@ -25,7 +25,8 @@ module arty_top #(
     parameter logic [47:0] OWN_MAC          = 48'h02_00_0A_0B_0C_0D,
     parameter logic [31:0] OWN_IP           = 32'hC0_A8_0A_02,    // 192.168.10.2
     parameter logic [15:0] CTRL_PORT        = 16'd7000,
-    parameter int          PULSE_CYCLES     = 4                    // 32 ns at 125 MHz
+    parameter int          PULSE_CYCLES     = 4,                   // 32 ns at 125 MHz
+    parameter bit          CUT_THROUGH      = 1'b0                 // eth_rx mode (ADR 0013)
 ) (
     input  wire logic       CLK100MHZ,
     input  wire logic       ck_rst,        // active low
@@ -101,7 +102,8 @@ module arty_top #(
         .OWN_MAC     (OWN_MAC),
         .OWN_IP      (OWN_IP),
         .CTRL_PORT   (CTRL_PORT),
-        .TICK_CYCLES (CLK_HZ)
+        .TICK_CYCLES (CLK_HZ),
+        .CUT_THROUGH (CUT_THROUGH)
     ) u_core (
         .clk_i        (clk),
         .rst_i        (mac_rst_q),
