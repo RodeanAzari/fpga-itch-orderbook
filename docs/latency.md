@@ -53,3 +53,11 @@ From the SFD's last nibble on the pins:
 | **Total** | **18 cycles (144 ns)** in simulation; on hardware the synchronizer adds 0 or 1 cycle of phase, to be checked with the ILA | |
 
 T0 as sent is the captured count. Subtracting the constant gives the SFD time.
+
+## External cross-check (Pmod)
+
+`arty_top` drives Pmod JA1 one cycle after each T1 (every decoded message) and JA2 one
+cycle after each T2, through IOB registers (`constr/arty_pmod.xdc`), so a scope's rising-
+edge delay JA1 → JA2 is T2 − T1 plus pin-to-pin skew. `test_core` checks that every BBO's
+T1 and T2 have their pulse exactly one cycle later. Scope result: [TBD] (capture listed
+in `docs/portfolio-todo.md`).

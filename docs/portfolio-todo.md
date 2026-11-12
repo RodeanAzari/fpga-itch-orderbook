@@ -46,6 +46,16 @@ Done by Claude from run `d2_shoot` (`make demo-gif-day2`, `make plots`): the day
 Result: `data/results/2026-11-11_record_fifo_board.md` (T2−T1 p50 136 ns, max 232 ns).
 Done by Claude: `docs/media/2026-11-11_phase-e_board-latency-t2-t1.png` (`make plots`):
 before/after tail and the per-cause histogram.
-- Physical (with the Pmod step, not yet built): scope capture of the T1 and T2 pulses on
-  two channels during a replay, cursors on one T1→T2 pair, to cross-check the in-band
-  timestamps (buildplan §6.5).
+- **Physical, user: scope cross-check (buildplan §6.5).** Pmod JA, top row: pin 1 = T1
+  (`ja[0]`), pin 2 = T2 (`ja[1]`), pin 5 = GND (3.3 V LVCMOS, 32 ns pulses). Each pin rises
+  1 cycle after its event, so rising edge to rising edge = T2 − T1.
+  - Setup: CH1 on JA1, CH2 on JA2, both grounded to JA5; ≥ 100 MHz bandwidth, ≥ 500 MS/s;
+    trigger on CH2 rising, 1 V; timebase 50 ns/div with the trigger at the right third.
+  - During any full-day replay (`scripts/board_run.sh ... bbo 500 0`), the T1 edge just
+    before the trigger is the cause: expect 112, 136, 184, 192 or 232 ns (14/17/23/24/29
+    cycles). Most captures: 136 ns.
+  - Captures: (1) one screenshot with cursors on a 136 ns pair; (2) if the scope has
+    edge-to-edge delay statistics, its min/mean/max over ≥ 1,000 triggers (screenshot);
+    (3) a photo of the probes on the Pmod header.
+  - Expected disagreement: a few ns of pin-to-pin skew (IOB + traces), and T1 pulses from
+    messages that changed no BBO (they have no T2 after them).

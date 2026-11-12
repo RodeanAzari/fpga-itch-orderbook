@@ -1,6 +1,6 @@
 # 0013: Cut-through receive as a build option
 
-**Status: Proposed 2026-11-11** (awaiting the user's go-ahead). Buildplan §6.2, Phase E DoD
+**Status: Accepted 2026-11-11** (user chose option A as proposed). Buildplan §6.2, Phase E DoD
 ("cut-through mode added; latency compared with store-and-forward").
 
 ## Context
@@ -38,7 +38,7 @@ FIFO overflow never start; their PEND entries must be retired by the ovf status 
 misaligning a started frame. To be designed against `model/timestamps.py` first (golden
 model before RTL).
 
-## Decision (proposed)
+## Decision
 
 Option A in fpga-eth-core (`eth-core-v0.4`, interface addition only: default unchanged),
 stale-on-delivered-bad-frame in OrderBook, `t0_track` cut-through mode, and a

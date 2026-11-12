@@ -749,3 +749,9 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
     openFPGALoader (SRAM, ~5 s).
   - Run 1 kept no per-cycle logs, so its one corrupted cycle can't be diagnosed → the
     harness now keeps UART/programmer/sender logs and a "fresh design" check.
+- Pmod scope pulses: JA1 one cycle after each T1 (feed_frontend's existing `t1_o`), JA2 one
+  cycle after each T2, stretched to 4 cycles, IOB output registers (OLOGIC 6 → 8); pins from
+  Digilent's master XDC at the same commit as eth-core's. test_core checks every BBO's T1
+  and T2 have their pulse. Full chip WNS +0.028 ns (host load 38: ~1 h build).
+- User decisions: ADR 0013 accepted as proposed; 0005 next = link flaps + ILA; a scope is
+  available for the cross-check.

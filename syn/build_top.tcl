@@ -30,6 +30,7 @@ read_verilog -sv $sv
 read_xdc [file join $eth constr arty_a7_100_pins.xdc]
 read_xdc [file join $eth constr arty_a7_100_pins_tx.xdc]
 read_xdc [file join $repo constr arty_timing.xdc]
+read_xdc [file join $repo constr arty_pmod.xdc]
 read_xdc -ref async_fifo [file join $eth constr async_fifo.xdc]
 
 set clk_hz [expr {int(round(1.0e9 / $core_div))}]

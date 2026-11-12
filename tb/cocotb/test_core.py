@@ -108,6 +108,7 @@ class Bench:
         self.sfd_now: list[int] = []  # now_q when each frame's sfd_o rose (one per frame)
         self.t2_seen: list[int] = []  # ob_core's first-valid captures, one per BBO
         self.t2_mark = 0
+        self.pulses: dict[str, set[int]] = {"t1": set(), "t2": set()}  # now_q at each rise
         self.straddles = 0  # payloads the feed's release fell inside
 
     async def start(self) -> None:
@@ -119,6 +120,8 @@ class Bench:
         cocotb.start_soon(self.mon.run())
         cocotb.start_soon(self.watch_sfd())
         cocotb.start_soon(self.watch_t2())
+        for name in self.pulses:
+            cocotb.start_soon(self.watch_pulse(name))
         for r in (dut.rst_i, dut.mii_rx_rst_i, dut.mii_tx_rst_i):
             r.value = 1
         await ClockCycles(dut.mii_rx_clk_i, 4)
@@ -165,6 +168,15 @@ class Bench:
             await Edge(self.dut.b_t2_q)
             await ReadOnly()
             self.t2_seen.append(int(self.dut.b_t2_q.value))
+
+    async def watch_pulse(self, name: str) -> None:
+        """The scope pins' sources (buildplan 6.5): now_q when the pulse rises. A rise at
+        edge k reads now_q = event + 1, the header's 'one cycle after its event'."""
+        sig = getattr(self.dut, f"{name}_pulse_o")
+        while True:
+            await RisingEdge(sig)
+            await ReadOnly()
+            self.pulses[name].add(int(self.dut.now_q.value))
 
     def feed(self, payload: bytes, src_mac: bytes = bytes.fromhex("0200deadbeef")) -> bytes:
         """A feed-port frame; its payload is recorded for the gate reference."""
@@ -278,6 +290,13 @@ def check_times(b: Bench, cfg: Config, pkts: list[bytes], frames: list[int],
         by[kind_of[seq]] = by.get(kind_of[seq], 0) + 1
     t2s = [struct.unpack(">Q", g[56:64])[0] for g in got]
     assert t2s == b.t2_seen[b.t2_mark :], "T2 is not each BBO's first valid cycle"
+    # scope pulses: each BBO's T1 and T2 have a pulse rising exactly one cycle later
+    for g in got:
+        t1, t2 = struct.unpack(">QQ", g[48:64])
+        assert t1 + 1 in b.pulses["t1"], f"no T1 pulse for T1 {t1}"
+        assert t2 + 1 in b.pulses["t2"], f"no T2 pulse for T2 {t2}"
+    n_t2 = sum(1 for c in b.pulses["t2"] if c - 1 >= min(t2s))
+    assert n_t2 == len(t2s), f"{n_t2} T2 pulses for {len(t2s)} BBOs"
     cocotb.log.info("T0 - SFD (cycles: count) %s; T2 - T1 (cycles: type: count) %s",
                     dict(sorted(delays.items())), dict(sorted(lat.items())))  # fmt: skip
     assert max(delays) - min(delays) <= 1 and 0 < min(delays) < 12, delays

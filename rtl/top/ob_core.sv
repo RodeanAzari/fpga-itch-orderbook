@@ -57,7 +57,11 @@ module ob_core #(
     output logic            running_o,      // a config has been acked; the feed runs
     output logic            stale_o,        // feed or book stale
     output logic            sent_o,         // a datagram left udp_tx (pulse)
-    output logic            error_o         // sticky: frame/FIFO/TX errors since reset
+    output logic            error_o,        // sticky: frame/FIFO/TX errors since reset
+    // scope cross-check (buildplan 6.5): one-cycle pulses, each 1 cycle after its event,
+    // so pulse-to-pulse equals T2 - T1. T1 pulses for every decoded message.
+    output logic            t1_pulse_o,
+    output logic            t2_pulse_o
 );
     localparam int LEVEL_W  = SHARES_W + SET_BITS + 1 + $clog2(WAYS);  // book_engine's
     localparam int N_STATS  = 41;
@@ -285,7 +289,6 @@ module ob_core #(
     logic [63:0] r_seq, r_ref, r_new_ref, gap_msgs, r_t0, r_t1;
     logic [47:0] r_ts;
     logic [31:0] r_shares, r_price;
-    logic        t1_unused;
     logic        m_pkt, m_hb, m_end, m_gap, m_dup, m_sess, m_mal_pkt, m_empty;
     logic        i_unknown, i_mal, i_other, i_dir, i_loc_chg, loc_valid, feed_stale;
     logic [15:0] locate;
@@ -317,7 +320,7 @@ module ob_core #(
         .m_price_o          (r_price),
         .m_t0_o             (r_t0),
         .m_t1_o             (r_t1),
-        .t1_o               (t1_unused),
+        .t1_o               (t1_pulse_o),   // registered: T1 + 1
         .pkt_o              (m_pkt),
         .heartbeat_o        (m_hb),
         .end_o              (m_end),
@@ -398,6 +401,7 @@ module ob_core #(
         if (rst_i) b_hold_q <= 1'b0;
         else       b_hold_q <= b_m_valid && !b_m_ready;
         if (b_new) b_t2_q <= now_q;
+        t2_pulse_o <= b_new && !rst_i;  // T2 + 1, as t1_pulse_o is T1 + 1
     end
     assign b_new = b_m_valid && !b_hold_q;
     assign b_t2  = b_new ? now_q : b_t2_q;
@@ -571,6 +575,6 @@ module ob_core #(
     logic unused;
     assign unused = ^{fifo_level_unused, c_dport_unused, c_ok_unused, c_filt_unused,
                       c_csum_unused, c_mal_unused, u_mac_unused, u_ip_unused,
-                      u_sport_unused, u_dport_unused, t1_unused, t0_valid_unused};
+                      u_sport_unused, u_dport_unused, t0_valid_unused};
 endmodule
 `default_nettype wire

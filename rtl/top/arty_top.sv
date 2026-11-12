@@ -12,6 +12,10 @@
 // config was acked); led[2] stale or a sticky error (frame, FIFO, TX); led[3] datagram
 // activity (stretched to ~33 ms).
 // UART: idle (the stats travel as UDP datagrams); MDIO unused, eth_mdc held low.
+// Pmod JA (scope cross-check, buildplan 6.5): ja[0] rises 1 cycle after each T1, ja[1] 1
+// cycle after each T2 (ob_core's pulses), each held PULSE_CYCLES; both leave through IOB
+// registers (constr/arty_pmod.xdc), so their rising edges are T2 - T1 apart plus the pin-
+// to-pin skew. An event inside the previous pulse extends it (no new edge).
 // Top-level ports use the Digilent master-XDC names.
 module arty_top #(
     parameter real         CORE_DIV         = 8.0,                 // 1000/8 = 125 MHz
@@ -20,7 +24,8 @@ module arty_top #(
     parameter int          MAC_START_CYCLES = CLK_HZ / 5,          // 200 ms
     parameter logic [47:0] OWN_MAC          = 48'h02_00_0A_0B_0C_0D,
     parameter logic [31:0] OWN_IP           = 32'hC0_A8_0A_02,    // 192.168.10.2
-    parameter logic [15:0] CTRL_PORT        = 16'd7000
+    parameter logic [15:0] CTRL_PORT        = 16'd7000,
+    parameter int          PULSE_CYCLES     = 4                    // 32 ns at 125 MHz
 ) (
     input  wire logic       CLK100MHZ,
     input  wire logic       ck_rst,        // active low
@@ -36,7 +41,8 @@ module arty_top #(
     input  wire logic       eth_tx_clk,
     output logic            eth_tx_en,
     output logic [3:0]      eth_txd,
-    output logic            eth_mdc
+    output logic            eth_mdc,
+    output logic [1:0]      ja             // Pmod JA1 = T1, JA2 = T2
 );
     localparam int START_W  = $clog2(MAC_START_CYCLES + 1);
     localparam int BEAT_W   = $clog2(CLK_HZ / 2);
@@ -89,7 +95,7 @@ module arty_top #(
     );
 
     // ------------------------------------------------------------- pipeline
-    logic running, stale, sent, error, sfd_unused;
+    logic running, stale, sent, error, sfd_unused, t1_pulse, t2_pulse;
 
     ob_core #(
         .OWN_MAC     (OWN_MAC),
@@ -112,8 +118,29 @@ module arty_top #(
         .running_o    (running),
         .stale_o      (stale),
         .sent_o       (sent),
-        .error_o      (error)
+        .error_o      (error),
+        .t1_pulse_o   (t1_pulse),
+        .t2_pulse_o   (t2_pulse)
     );
+
+    // ------------------------------------------------------------ Pmod pulses
+    localparam int PULSE_W = $clog2(PULSE_CYCLES + 1);
+    logic [PULSE_W-1:0] t1_left_q, t2_left_q;
+
+    always_ff @(posedge clk) begin
+        if (mac_rst_q) begin
+            t1_left_q <= '0;
+            t2_left_q <= '0;
+            ja        <= '0;
+        end else begin
+            if (t1_pulse) t1_left_q <= PULSE_W'(PULSE_CYCLES - 1);
+            else if (t1_left_q != '0) t1_left_q <= t1_left_q - PULSE_W'(1);
+            if (t2_pulse) t2_left_q <= PULSE_W'(PULSE_CYCLES - 1);
+            else if (t2_left_q != '0) t2_left_q <= t2_left_q - PULSE_W'(1);
+            ja[0] <= t1_pulse || t1_left_q != '0;  // output registers, packed into the IOBs
+            ja[1] <= t2_pulse || t2_left_q != '0;
+        end
+    end
 
     // ----------------------------------------------------------------- LEDs
     logic [BEAT_W-1:0] beat_q;
