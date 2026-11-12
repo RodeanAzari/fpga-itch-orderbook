@@ -1,0 +1,43 @@
+# Hosted CI: `make ci` on every push and pull request (CLAUDE.md §2). Vivado is not run
+# here; its reports are committed per milestone (docs/reports/).
+# Tool versions follow docs/toolchain.md: oss-cad-suite 2026-10-07 is the release the
+# local Verilator 5.053 / Yosys 0.69 / SBY come from.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: YosysHQ/setup-oss-cad-suite@v3
+        with:
+          version: "2026-10-07"
+
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+
+      - name: Tool versions
+        run: |
+          verilator --version
+          yosys -V
+          python3 --version
+          g++ --version | head -1
+          cmake --version | head -1
+
+      - name: Setup
+        run: make setup
+
+      - name: make ci
+        run: make ci
