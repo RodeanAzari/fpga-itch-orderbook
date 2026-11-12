@@ -1,4 +1,4 @@
-"""Build and run the cocotb tests with Verilator: python tb/run.py [test_module ...]
+"""Build and run the cocotb tests with Verilator: [JOBS=n] python tb/run.py [test_module ...]
 
 Each test module runs at every DATA_W in its parameter list. Exit status is non-zero if
 any test fails.
@@ -7,7 +7,9 @@ any test fails.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from cocotb_tools.runner import get_results, get_runner
@@ -98,33 +100,68 @@ TESTS = {
 FULL_ONLY = {"test_book_full"}
 
 
+def run_set(name: str, idx: int) -> int:
+    """Build and run one parameter set of one test module; returns the failure count."""
+    top, srcs, param_sets = TESTS[name]
+    params = param_sets[idx]
+    tag = "_".join(f"{k}{v}" for k, v in params.items() if isinstance(v, int)) or "default"
+    build_dir = ROOT / "build" / "sim" / f"{name}_{tag}"
+    runner = get_runner("verilator")
+    runner.build(
+        sources=[ROOT / s for s in srcs],
+        hdl_toplevel=top,
+        parameters=params,
+        build_args=["--assert", "-Wall", "-Wno-fatal", "--timing"],
+        build_dir=build_dir,
+        always=True,
+    )
+    os.environ.update({k: str(v) for k, v in params.items()})
+    os.environ["PYTHONPATH"] = f"{ROOT}:{os.environ.get('PYTHONPATH', '')}"
+    results = runner.test(
+        hdl_toplevel=top,
+        test_module=name,
+        test_dir=ROOT / "tb" / "cocotb",
+        build_dir=build_dir,
+    )
+    _, fails = get_results(results)
+    return fails
+
+
+def run_child(name: str, idx: int) -> tuple[str, int, Path]:
+    """One set in its own process (environment and output kept apart); its log file."""
+    log = ROOT / "build" / "sim" / f"{name}_{idx}.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("w") as f:
+        rc = subprocess.run(
+            [sys.executable, __file__, "--set", name, str(idx)], stdout=f, stderr=subprocess.STDOUT
+        ).returncode
+    return name, rc, log
+
+
 def main(names: list[str]) -> int:
+    """JOBS > 1 (environment) runs that many sets at once, each in its own process; a
+    failing set's log is printed in full, the others' summary lines only."""
+    if names[:1] == ["--set"]:
+        return 1 if run_set(names[1], int(names[2])) else 0
+    names = names or [t for t in TESTS if t not in FULL_ONLY]
+    sets = [(n, i) for n in names for i in range(len(TESTS[n][2]))]
+    jobs = int(os.environ.get("JOBS", "1"))
+    if jobs <= 1:
+        return 1 if sum(run_set(n, i) for n, i in sets) else 0
     failed = 0
-    for name in names or [t for t in TESTS if t not in FULL_ONLY]:
-        top, srcs, param_sets = TESTS[name]
-        for params in param_sets:
-            tag = "_".join(f"{k}{v}" for k, v in params.items() if isinstance(v, int))
-            tag = tag or "default"
-            build_dir = ROOT / "build" / "sim" / f"{name}_{tag}"
-            runner = get_runner("verilator")
-            runner.build(
-                sources=[ROOT / s for s in srcs],
-                hdl_toplevel=top,
-                parameters=params,
-                build_args=["--assert", "-Wall", "-Wno-fatal", "--timing"],
-                build_dir=build_dir,
-                always=True,
-            )
-            os.environ.update({k: str(v) for k, v in params.items()})
-            os.environ["PYTHONPATH"] = f"{ROOT}:{os.environ.get('PYTHONPATH', '')}"
-            results = runner.test(
-                hdl_toplevel=top,
-                test_module=name,
-                test_dir=ROOT / "tb" / "cocotb",
-                build_dir=build_dir,
-            )
-            _, fails = get_results(results)
-            failed += fails
+    with ThreadPoolExecutor(jobs) as pool:
+        for fut in as_completed([pool.submit(run_child, n, i) for n, i in sets]):
+            name, rc, log = fut.result()
+            text = log.read_text()
+            if rc:
+                failed += 1
+                print(text)
+                print(f"FAILED: {name} (exit {rc}), log {log}")
+            else:
+                print(f"{name}: {log}")
+                print("\n".join(ln for ln in text.splitlines() if "TESTS=" in ln))
+            sys.stdout.flush()
+    print(f"{len(sets)} sets, {failed} failed")
     return 1 if failed else 0
 
 
