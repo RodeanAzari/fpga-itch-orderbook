@@ -315,7 +315,7 @@ Linux or WSL2 with Python ≥ 3.11 and GNU make. The day file (3.95 GB, not comm
 
 The sizing and bounded-model runs are listed with their exact commands in
 [the results sidecar](data/results/2019-10-18_AAPL.md). Board runs need the host set up as in
-[docs/log.md](docs/log.md) (2026-11-09). Everything runs locally; hosted CI is `[TBD]`.
+[docs/log.md](docs/log.md) (2026-11-09). `make ci` also runs on GitHub Actions on every push.
 
 ## Repository layout
 
