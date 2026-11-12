@@ -9,8 +9,9 @@ a Python golden model over a full trading day.
 (2019-10-18, 1,669,592 messages) replayed into the Arty produced **831,842 BBO updates,
 all byte-identical to the golden model**, with no frame lost, in four runs
 ([CSV](data/results/2026-11-09_full_day_board.csv)). Phase A is tagged (`v0.1-model`);
-Phases B–D are working on hardware and finishing their checklists; latency (Phase E) is
-next.
+Phases B–D are working on hardware and finishing their checklists. Phase E (latency) is
+under way: on the same day, every BBO left the book **17 to 29 cycles (136–232 ns) after
+its cause message's last byte** ([sidecar](data/results/2026-11-11_record_fifo_board.md)).
 
 Every number here comes from a CSV in [`data/results/`](data/results/), produced by a `make`
 target or a command in its sidecar `.md`, with its measurement conditions stated.
@@ -50,7 +51,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 |---|---|
 | **Board / PHY** | Arty A7-100T (`xc7a100tcsg324-1`), TI DP83848J 10/100 MII |
 | **Pipeline** | MII MAC → CDC → IPv4/UDP filter → MoldUDP64 → ITCH decoder → order table → price levels → BBO |
-| **Pipeline latency T2−T1** | p50 / p99 / p99.9 / max: `[TBD]` |
+| **Pipeline latency T2−T1** | p50 / p99 / p99.9 / max: **136 / 192 / 232 / 232 ns** (17 / 24 / 29 / 29 cycles at 125 MHz), 831,842 BBOs on the board, AAPL 2019-10-18 ([CSV](data/results/2026-11-11_record_fifo_board.csv)) |
 | **Pipeline capacity** | `[TBD]` msg/s (on-chip injector, `DATA_W` 8 and 64) |
 | **Line-rate throughput** | `[TBD]` msg/s at 100 Mbps |
 | **Hardware full-day replay** | **0 mismatches on two days**: AAPL 2025-12-12, 916,429 / 916,429 BBO updates; AAPL 2019-10-18, 831,842 / 831,842; 0 frames lost, `table_overflow`/`unknown_ref` 0, never stale ([CSV](data/results/2026-11-10_full_day_board_16way.csv)) |
@@ -60,8 +61,8 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Functional coverage** | `[TBD]` |
 | **Formal proofs** | Async FIFO (in fpga-eth-core) and the price-level bitmap search (`tb/formal/bitmap_search.sby`), SymbiYosys |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
-| **Timing** | Full chip meets 125 MHz: WNS +0.004 ns, WHS +0.015 ns, Vivado 2025.2 ([report](docs/reports/arty_top/summary.txt)) |
-| **Utilization** | 13,064 LUT (21 %), 20,142 FF (16 %), 111.5 / 135 BRAM36 (83 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
+| **Timing** | Full chip meets 125 MHz: WNS +0.028 ns, WHS +0.020 ns, Vivado 2025.2 ([report](docs/reports/arty_top/summary.txt)) |
+| **Utilization** | 12,351 LUT (19 %), 19,073 FF (15 %), 119 / 135 BRAM36 (88 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
 | **CI** | `make ci` locally: Verilator lint, cocotb regression, formal, model tests, host build + tests (ASan/UBSan), clang-tidy, ruff; hosted CI `[TBD]` |
 
 ## Status
@@ -72,7 +73,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; photo/ILA captures outstanding |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode: 198,084 / 198,084 decoded records match the model ([CSV](data/results/2026-11-09_first_board_run.csv)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
-| E — Timestamping + latency measurement | Not started | |
+| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through built and sim-verified, board comparison pending |
 | F — Stress, coverage closure, portfolio | Not started | |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
@@ -210,8 +211,32 @@ updates in total.
 
 ## Timestamping and cut-through
 
-`[TBD]` (Phase E): T0 (SFD, ±40 ns), T1 (last message byte) and T2 (BBO valid) on one core-clock
-counter; store-and-forward vs. cut-through latency on the same input.
+Every BBO record carries three stamps from one 125 MHz counter ([ADR 0011](docs/decisions/0011-timestamps.md),
+[docs/latency.md](docs/latency.md)): **T0**, the cause frame's SFD (±40 ns); **T1**, the
+cause message's last byte at the decoder; **T2**, the BBO valid at the book's output.
+T2−T1 is the pipeline latency. T2−T0 also contains the frame's serialization at 80 ns/byte
+and the store-and-forward wait for its FCS, so it is the line-rate bound, not the pipeline.
+
+[![T2−T1 histogram on the board, AAPL 2019-10-18](docs/media/2026-11-11_phase-e_board-latency-t2-t1.png)](docs/media/2026-11-11_phase-e_board-latency-t2-t1.png)
+
+| Metric (board, AAPL 2019-10-18, 831,842 BBOs, 500 pps) | min | p50 | p99 | p99.9 | max |
+|---|---|---|---|---|---|
+| T2−T1, ns | 112 | 136 | 192 | 232 | 232 |
+| T2−T0, µs | 74.2 | 126.7 | 133.1 | 133.7 | 133.8 |
+
+**No BBO waited.** Each one took exactly the no-wait cycle count of its cause: 17 cycles
+for an Add, Delete or Reduce that keeps the best level, 23 when it empties the best, 24 for
+a Replace, 29 for a Replace whose old order was alone at the best
+([per cause](data/results/2026-11-11_record_fifo_board_causes.csv)). The first run had a
+tail to 13,348 cycles: the output writer paced the book. A 545-record FIFO in front of the
+writer removed it ([ADR 0012](docs/decisions/0012-record-fifo.md)).
+
+**Cut-through** ([ADR 0013](docs/decisions/0013-cut-through.md)) is a build option. The
+decoder sees each byte as it arrives instead of after the frame's FCS. The cost: a frame
+that later fails its FCS has already moved the book, so it is counted (`cut_through_bad`)
+and marks the book stale. In simulation, a 1,514-byte frame's first byte reaches the
+decoder 520 ns after its SFD, against 121.5 µs store-and-forward. The board comparison of
+T2−T0 in both builds is `[TBD]`.
 
 ## On the board, demos, in Vivado
 
@@ -246,8 +271,10 @@ pacing) and configures the board and logs its output with `host/capture`;
 | RTL sim, random records vs model | 1,009,900, 0 mismatches | seeded generator | [sim](data/results/2026-11-07_sim_random_1m.csv) |
 | **Hardware day 2: BBO updates identical to the model** | **916,429 / 916,429** | AAPL 2025-12-12 (3.5 M AAPL messages), 500 pps, 2 runs | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
 | Hardware runs at host load 15 to 22 | 2 of 4 clean; failures were host receive loss and an MII FIFO overflow, both detected (0 unflagged wrong BBOs) | 16-way bitstream | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
-| Full-chip timing | 125 MHz met, WNS +0.004 ns | Vivado 2025.2 | [report](docs/reports/arty_top/summary.txt) |
-| Pipeline latency, capacity | `[TBD]` (Phase E) | | |
+| Full-chip timing | 125 MHz met, WNS +0.028 ns | Vivado 2025.2 | [report](docs/reports/arty_top/summary.txt) |
+| **Pipeline latency T2−T1 (board)** | **p50 136 ns, p99 192 ns, max 232 ns** | AAPL 2019-10-18, 831,842 BBOs, 500 pps | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
+| T2−T0, line-rate bound (board) | p50 126.7 µs, max 133.8 µs | same; store-and-forward | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
+| Pipeline capacity (injector), cut-through vs store-and-forward on the board | `[TBD]` (Phase E) | | |
 
 ## Limitations
 
