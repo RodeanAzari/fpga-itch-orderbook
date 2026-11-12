@@ -1,6 +1,6 @@
 # 0014: On-chip injector for the pipeline-capacity measurement
 
-**Status: Proposed 2026-11-12.** Buildplan §6.7, Phase E DoD ("injector: pipeline capacity
+**Status: Accepted 2026-11-12** (user approved the design as proposed). Buildplan §6.7, Phase E DoD ("injector: pipeline capacity
 in messages/s at `DATA_W` = 8 and 64").
 
 ## Context
