@@ -32,15 +32,38 @@ Book-side handling of a bad frame (with A):
 | **Stale when a frame udp_rx delivered to the feed later gets a bad status** (pair udp_rx's per-frame status with eth_rx's, both one per frame, in order) | Only frames that touched the book make it stale. New counter `cut_through_bad`. |
 | Stale on any bad frame | Simpler, but a bad frame addressed elsewhere would mark the book stale for nothing. |
 
-T0 (ADR 0011) in cut-through: frames leave eth_rx before their status, so `t0_track` takes
-T0 from PEND at frame start (not from DONE after status). Frames lost whole to the async
-FIFO overflow never start; their PEND entries must be retired by the ovf status without
-misaligning a started frame. To be designed against `model/timestamps.py` first (golden
-model before RTL).
+T0 (ADR 0011) in cut-through: a frame leaves eth_rx before its status, so `t0_track`
+takes its T0 straight from PEND at frame start (DONE is unused). A status then discards
+only the PEND entries of frames that never started. "Started" cannot be inferred from
+timing at t0_track: eth_fcs_check emits nothing for a frame of 4 bytes or fewer
+(including a lone overflow abort beat), and a 5-byte frame's first beat can leave after
+its status. So eth_rx adds one output, `emitted_o`, valid with every status pulse: this
+frame put at least one beat on `m_*` (in store-and-forward it equals `frame_ok_o`).
+
+| T0 match in cut-through | Notes |
+|---|---|
+| **`emitted_o` qualifier on eth_rx's status; a frame start pops PEND; a status pops its frames minus `emitted`; an emitted status before its frame's start moves the head to a one-entry hold that the start takes** | Exact for every frame length. Order holds because a frame's first beat cannot leave fcs_check until the previous frame's last beat has (one-beat pipeline register), so every earlier status has been applied. "Before its start" = no start since the previous status (a start from hold does not count: that frame was already judged). On a cycle with both, they are the same frame: the start takes the head, the status the entries after it. |
+| Hold the first 60 bytes so runts never leave | Adds ~5 µs to every frame and still leaves overflow-aborted frames of any length. Rejected. |
+| Infer "started" from frame starts alone, without `emitted` | At a status with no start since the last one, the frame may be a 4-byte frame (pop its entry) or a 5-byte frame still to start (keep it): indistinguishable, and either guess shifts every later T0 to another frame. Rejected. |
+
+Golden model: `model/timestamps.py` `T0Track(cut_through=True)`, tested in
+`model/tests/test_timestamps.py` against a frame-level schedule (each start must get its
+own SFD cycle; 40 random seeds plus the edge cases; 5 injected model bugs all caught).
+
+An overflow abort that ends a started frame counts that frame in `ovf_frames_o`
+(rx_ovf_guard counts a frame on its first lost beat, and the abort is the next beat
+written), so its status pops `ovf_frames_o − 1`.
+
+Book side in ob_core: eth_rx also marks a bad frame with `m_tuser_o` on its `tlast` beat
+in cut-through (as `eth_fcs_check` already does internally; oversize is added in eth_rx).
+When that beat is accepted, the feed `udp_rx`'s status for the same frame comes on the
+same or the next cycle; if that frame put any payload beat into the feed, the feed is
+marked stale (sticky) and `cut_through_bad` counts it.
 
 ## Decision
 
-Option A in fpga-eth-core (`eth-core-v0.4`, interface addition only: default unchanged),
+Option A in fpga-eth-core (`eth-core-v0.4`, interface additions only: `CUT_THROUGH`,
+`emitted_o`, `m_tuser_o`; default unchanged),
 stale-on-delivered-bad-frame in OrderBook, `t0_track` cut-through mode, and a
 `CUT_THROUGH` build flag for `arty_top` (`syn/build_top.tcl` argument). Measure both
 builds on the same day file: T2−T1 (expected unchanged) and T2−T0 (expected to drop by
