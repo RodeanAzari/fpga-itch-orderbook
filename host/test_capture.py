@@ -188,6 +188,7 @@ def test_other_ack_restarts_sequence(tmp_path: Path) -> None:
         ),
         (["--lo-price", "7", "--locate", "0", "--symbol", "A"],
          P.Config(locate_valid=True, symbol="A", lo_price=7)),
+        (["--lo-price", "0", "--mode", "inject"], P.Config(mode=2)),  # ADR 0014
     ],
 )  # fmt: skip
 def test_config_encoding(tmp_path: Path, args: list[str], cfg: P.Config) -> None:

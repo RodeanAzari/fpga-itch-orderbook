@@ -4,7 +4,7 @@
 //
 // Payloads in (s_*): the control port's udp_rx output, one byte per beat, always accepted.
 //   A payload is a config when it is exactly 36 bytes, header magic 0x4F42, version 1,
-//   type 0x10, count 1, record_len 24, record mode <= 1 and locate_valid <= 1, and
+//   type 0x10, count 1, record_len 24, record mode <= 2 and locate_valid <= 1, and
 //   s_tuser_i (truncated datagram) is low on its tlast. pkt_seq and the record's last
 //   2 bytes are ignored (as parse_config does). ctrl_ok_o / ctrl_bad_o pulse at tlast.
 //   An accepted config and its source (src_*_i, udp_rx metadata, valid at tlast) wait in a
@@ -37,7 +37,8 @@ module out_ctrl (
     // configuration out (docs/protocol.md config record)
     output logic [31:0]        cfg_group_o,
     output logic [15:0]        cfg_port_o,
-    output logic               cfg_mode_o,
+    output logic               cfg_mode_o,         // mode bit 0: 1 = trace
+    output logic               cfg_inject_o,       // mode 2: injector run (ADR 0014)
     output logic               cfg_locate_valid_o,
     output logic [63:0]        cfg_symbol_o,
     output logic [31:0]        cfg_lo_price_o,
@@ -68,7 +69,7 @@ module out_ctrl (
     localparam int          OFF_TYPE   = 3;
     localparam int          OFF_COUNT  = 8;                   // u16, must be 1
     localparam int          OFF_RLEN   = 10;                  // u16, must be 24
-    localparam int          OFF_MODE   = HDR_LEN + 6;         // record offset 6, 0/1
+    localparam int          OFF_MODE   = HDR_LEN + 6;         // record offset 6, 0..2
     localparam int          OFF_LV     = HDR_LEN + 7;         // record offset 7, 0/1
     localparam int          IDX_W      = 6;                   // counts past PAY_LEN
 
@@ -96,7 +97,7 @@ module out_ctrl (
             IDX_W'(OFF_COUNT + 1): bad_d = bad_d || s_tdata_i != 8'd1;
             IDX_W'(OFF_RLEN):      bad_d = bad_d || s_tdata_i != 8'd0;
             IDX_W'(OFF_RLEN + 1):  bad_d = bad_d || s_tdata_i != 8'(REC_LEN);
-            IDX_W'(OFF_MODE):      bad_d = bad_d || s_tdata_i > 8'd1;
+            IDX_W'(OFF_MODE):      bad_d = bad_d || s_tdata_i > 8'd2;
             IDX_W'(OFF_LV):        bad_d = bad_d || s_tdata_i > 8'd1;
             default: ;
         endcase
@@ -167,6 +168,7 @@ module out_ctrl (
     assign cfg_group_o        = cfg_q[191:160];
     assign cfg_port_o         = cfg_q[159:144];
     assign cfg_mode_o         = cfg_q[136];
+    assign cfg_inject_o       = cfg_q[137];
     assign cfg_locate_valid_o = cfg_q[128];
     assign cfg_symbol_o       = cfg_q[127:64];
     assign cfg_lo_price_o     = cfg_q[63:32];
@@ -175,7 +177,7 @@ module out_ctrl (
 
     // the unused record bits: mode and locate_valid high bits (checked 0), pad
     logic unused_cfg;
-    assign unused_cfg = ^{cfg_q[143:137], cfg_q[135:129], cfg_q[15:0]};
+    assign unused_cfg = ^{cfg_q[143:138], cfg_q[135:129], cfg_q[15:0]};
 
 `ifndef SYNTHESIS
     // out_builder contract: ack_rec_o stable from ack_req_o until flush_i

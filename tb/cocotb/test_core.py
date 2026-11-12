@@ -33,8 +33,12 @@ from tb_common import get_rng
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "rtl" / "eth" / "tb"))
 from eth import MiiDriver, MiiFrame, MiiTxMonitor, UdpFrame, ip_checksum, with_fcs  # noqa: E402
 
+from analysis.injector_image import BASE_TICKS as INJ_BASE  # noqa: E402
+from analysis.injector_image import CONFIG as INJ_CFG  # noqa: E402
+from analysis.injector_image import image  # noqa: E402
 from model import generator  # noqa: E402
 from model.bounded import BoundedBook  # noqa: E402
+from model.injector import expected_run  # noqa: E402
 from model.moldudp64 import FeedDecoder, heartbeat, pack, packetize  # noqa: E402
 from model.protocol import (  # noqa: E402
     BBO,
@@ -530,22 +534,108 @@ async def ct_bad_frames(dut):
     assert 0 < n_bad < len(recs)
     got: list[bytes] = []
     stats: list = []
-    for _ in range(150):
+    # Only stats snapshotted after every frame is counted: the last frames may publish no
+    # BBO, so "all records in" alone can stop on a snapshot taken before their end.
+    settle = 2 * TICK_CYCLES
+    for i in range(150):
         await ClockCycles(dut.clk_i, 10_000)
         for d in b.datagrams(host):
             assert d.kind != CONFIG_ACK, "a config in a bad frame was applied"
-            if d.kind == STATS:
-                stats.append(d)
-            else:
+            if d.kind != STATS:
                 got.extend(d.records)
-        if len(got) >= len(recs) and len(stats) >= 2:
+            elif (i + 1) * 10_000 > settle:
+                stats.append(d)
+        if len(got) >= len(recs) and stats:
             break
     vals = {n: int.from_bytes(r) for n, r in zip(STATS_NAMES, stats[-1].records, strict=True)}
     want = {"cut_through_bad": 1, "rx_crc_err": 3, "ctrl_ok": 1, "ctrl_bad": 1,
             "feed_datagrams": len(pkts), "stale": 1}  # fmt: skip
-    assert {n: vals[n] for n in want} == want, {n: vals[n] for n in want}
+    bad = {n: (vals[n], w) for n, w in want.items() if vals[n] != w}
+    assert not bad, f"stats (got, want): {bad}"
     got = [without_times(g) for g in got]
     assert len(got) == len(recs), f"{len(got)} records, want {len(recs)}"
     diff = [i for i, (g, w) in enumerate(zip(got, recs, strict=True)) if g != w]
     assert not diff, f"first diff at {diff[0]}: {got[diff[0]].hex()} vs {recs[diff[0]].hex()}"
     cocotb.log.info("ct bad frames: %d BBOs, %d stale after the bad frame", len(got), n_bad)
+
+
+async def inject_run(b: Bench, host: Host, cfg: Config, pkt_seq: int, noise: list[bytes]):
+    """One mode-2 config; network feed frames (noise) arrive during the run. Returns the
+    final stats once two consecutive stats datagrams agree on the meter's values, and
+    the span by the bench's own clock: first injector beat to the last BBO's T2, + 1."""
+    first: list[int] = []
+
+    async def first_beat() -> None:
+        dut = b.dut
+        while True:
+            await RisingEdge(dut.clk_i)
+            await ReadOnly()
+            if int(dut.i_tvalid.value) and int(dut.i_tready.value):
+                first.append(int(dut.now_q.value))
+                return
+
+    watch = cocotb.start_soon(first_beat())
+    await b.send(host.ctrl_frame(packet(CONFIG, pkt_seq, [cfg.record()])))
+    for p in noise:
+        await b.send(b.feed(p))
+    prev, acked = None, False
+    for _ in range(60):
+        await ClockCycles(b.dut.clk_i, 10_000)
+        for d in b.datagrams(host):
+            assert d.kind in (CONFIG_ACK, STATS), f"datagram type {d.kind:#x} in mode 2"
+            acked |= d.kind == CONFIG_ACK
+            if d.kind == STATS and acked:  # earlier stats are the previous run's
+                vals = dict(zip(STATS_NAMES, (int.from_bytes(r) for r in d.records), strict=True))
+                inj = (vals["inj_cycles"], vals["inj_bbos"], vals["inj_digest"])
+                if inj == prev and inj[1]:
+                    assert first, "no injector beat seen"
+                    return vals, b.t2_seen[-1] - first[0] + 1
+                prev = inj
+    watch.kill()
+    raise AssertionError(f"inject run did not settle: {prev}")
+
+
+@cocotb.test()
+async def inject_capacity(dut):
+    """Mode 2 (ADR 0014): the injector's AAPL image through the decoder and book at core
+    rate. Every BBO must match the model (count and order-sensitive digest), the network
+    feed must not leak in, nothing but stats may be sent, and the run must repeat
+    cycle-exact (the span is the capacity measurement)."""
+    rng = get_rng("inject_capacity")
+    b = Bench(dut)
+    await b.start()
+    host = Host(rng)
+    img = image()
+    cfg = Config(GROUP, PORT, 2, False, INJ_CFG.symbol, INJ_CFG.lo_price, 0)
+    book = BoundedBook(base_ticks=INJ_BASE, half_window=2048, sets_per_bank=1 << SET_BITS,
+                       ways=WAYS)  # fmt: skip
+    want = expected_run(img, cfg, book, cut_through=bool(CUT))
+    n_book, _ = book_records(Config(GROUP, PORT, 0, False, "AAPL", cfg.lo_price, 0), img.pkts)
+    noise = list(packetize(generator.generate(rng.randrange(1 << 30), 60), b"SESSIONNOI"))
+    runs = []
+    for k in range(2):
+        vals, span = await inject_run(b, host, cfg, k + 1, noise if k == 0 else [])
+        assert vals["inj_cycles"] == span, f"run {k}: inj_cycles {vals['inj_cycles']}, bench {span}"
+        got = {n: vals[n] for n in ("inj_bbos", "inj_digest", "mold_packets", "book_records",
+                                    "out_records", "feed_datagrams")}  # fmt: skip
+        exp = {"inj_bbos": want.bbos, "inj_digest": want.digest, "mold_packets": len(img.pkts),
+               "book_records": n_book, "out_records": 0,
+               "feed_datagrams": len(noise) if k == 0 else 0}  # fmt: skip
+        assert got == exp, f"run {k}: {got} vs {exp}"
+        n_bytes = sum(map(len, img.pkts))
+        assert vals["inj_cycles"] >= n_bytes, "faster than one byte per cycle"
+        runs.append(vals["inj_cycles"])
+    assert runs[0] == runs[1], f"spans differ: {runs}"
+    # a normal config afterwards zeroes the meter
+    await b.send(host.ctrl_frame(packet(CONFIG, 3, [Config(GROUP, PORT).record()])))
+    await ClockCycles(dut.clk_i, 2 * TICK_CYCLES + 10_000)
+    last = [d for d in b.datagrams(host) if d.kind == STATS][-1]
+    vals = dict(zip(STATS_NAMES, (int.from_bytes(r) for r in last.records), strict=True))
+    assert (vals["inj_cycles"], vals["inj_bbos"], vals["inj_digest"]) == (0, 0, 0)
+    cyc = runs[0]
+    cocotb.log.info(
+        "inject: %d messages, %d payload bytes, %d BBOs, digest %#018x in %d cycles: "
+        "%.3f M msg/s at 125 MHz (%.3f bytes/cycle)",
+        img.messages, n_bytes, want.bbos, want.digest, cyc, img.messages * 125 / cyc,
+        n_bytes / cyc,
+    )  # fmt: skip

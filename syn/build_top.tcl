@@ -31,6 +31,8 @@ foreach d {lib lib/xilinx feed book meas out top} {
 }
 set sv [concat $sv [lsort [glob [file join $eth rtl *.sv]]]]
 read_verilog -sv $sv
+# injector ROM image (ADR 0014; analysis/injector_image.py), found by name by $readmemh
+read_mem [file join $repo data samples injector_aapl.mem]
 read_xdc [file join $eth constr arty_a7_100_pins.xdc]
 read_xdc [file join $eth constr arty_a7_100_pins_tx.xdc]
 read_xdc [file join $repo constr arty_timing.xdc]

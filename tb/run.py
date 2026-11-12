@@ -41,11 +41,17 @@ CORE = [
     "rtl/lib/pkt_gate.sv",
     "rtl/lib/cdc_pulse.sv",
     "rtl/meas/t0_track.sv",
+    "rtl/meas/injector.sv",
+    "rtl/meas/inj_meter.sv",
     "rtl/out/out_mux.sv",
     "rtl/out/out_stats.sv",
     "rtl/out/out_ctrl.sv",
     "rtl/top/ob_core.sv",
 ]
+
+# the injector ROM (ADR 0014; analysis/injector_image.py), a string parameter, so it is
+# left out of the build directory's name
+INJ = {"INJ_FILE": f'"{ROOT / "data/samples/injector_aapl.mem"}"'}
 
 # test module -> (toplevel, sources, parameter sets)
 TESTS = {
@@ -76,7 +82,15 @@ TESTS = {
     "test_core": (
         "ob_core",
         CORE,
-        [{"TICK_CYCLES": 30_000, "CUT_THROUGH": 0}, {"TICK_CYCLES": 30_000, "CUT_THROUGH": 1}],
+        [
+            {"TICK_CYCLES": 30_000, "CUT_THROUGH": 0, **INJ},
+            {"TICK_CYCLES": 30_000, "CUT_THROUGH": 1, **INJ},
+        ],
+    ),
+    "test_injector": (
+        "injector",
+        ["rtl/meas/injector.sv"],
+        [{"INIT_FILE": INJ["INJ_FILE"]}],
     ),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 11}]),
@@ -89,7 +103,8 @@ def main(names: list[str]) -> int:
     for name in names or [t for t in TESTS if t not in FULL_ONLY]:
         top, srcs, param_sets = TESTS[name]
         for params in param_sets:
-            tag = "_".join(f"{k}{v}" for k, v in params.items()) or "default"
+            tag = "_".join(f"{k}{v}" for k, v in params.items() if isinstance(v, int))
+            tag = tag or "default"
             build_dir = ROOT / "build" / "sim" / f"{name}_{tag}"
             runner = get_runner("verilator")
             runner.build(

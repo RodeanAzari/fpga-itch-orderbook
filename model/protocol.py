@@ -70,6 +70,9 @@ STATS_NAMES = (
     "ctrl_bad",
     "t0_lost",
     "cut_through_bad",
+    "inj_cycles",
+    "inj_bbos",
+    "inj_digest",
 )
 N_STATS = len(STATS_NAMES)
 
@@ -167,7 +170,7 @@ def stats_records(values: Sequence[int]) -> list[bytes]:
 class Config:
     feed_group: int = 0xEF010101  # 239.1.1.1
     feed_port: int = 26400
-    mode: int = 0  # 0 = BBO, 1 = trace
+    mode: int = 0  # 0 = BBO, 1 = trace, 2 = inject (ADR 0014)
     locate_valid: bool = False
     symbol: str = "AAPL"
     lo_price: int = 0
@@ -187,7 +190,7 @@ class Config:
 
 
 def parse_config(payload: bytes) -> Config | None:
-    """What the RTL accepts: a well-formed type 0x10 packet with mode and locate_valid 0/1.
+    """What the RTL accepts: a well-formed type 0x10 packet, mode 0-2, locate_valid 0/1.
     Returns None (counted in ctrl_bad, no ack) for anything else."""
     try:
         d = parse(payload)
@@ -196,7 +199,7 @@ def parse_config(payload: bytes) -> Config | None:
     if d.kind != CONFIG or len(d.records) != 1:
         return None
     group, port, mode, lv, sym, lo, loc, _ = _CONFIG.unpack(d.records[0])
-    if mode > 1 or lv > 1:
+    if mode > 2 or lv > 1:
         return None
     return Config(group, port, mode, bool(lv), sym.decode("latin-1").rstrip(" "), lo, loc)
 

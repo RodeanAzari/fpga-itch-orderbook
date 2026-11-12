@@ -24,6 +24,9 @@
 // frame (control frames show up in feed_filtered).
 // Clocks: clk_i (core), mii_rx_clk_i, mii_tx_clk_i (PHY); resets synchronous, active-high,
 // one per domain from a common source (eth-core requirement).
+// Injector (ADR 0014): config mode 2 replays the injector ROM into feed_frontend from the
+// first cycle of RUN (the network feed is blocked meanwhile); the book's BBO records go
+// to inj_meter instead of out_builder, and its results are stats 42-44.
 // Timestamps (ADR 0011): now_q counts core cycles from reset. T0 = now_q at the frame's
 // synchronized SFD, matched to the frame by t0_track; T1 = now_q when the decoder takes
 // the message's last byte; T2 = now_q on the first cycle a BBO is valid at the book's
@@ -38,7 +41,8 @@ module ob_core #(
     parameter int          WAYS        = 16,
     parameter int          SHARES_W    = 20,
     parameter int          WIN_BITS    = 12,               // price window (ADR 0002)
-    parameter bit          CUT_THROUGH = 1'b0              // eth_rx mode (ADR 0013)
+    parameter bit          CUT_THROUGH = 1'b0,             // eth_rx mode (ADR 0013)
+    parameter string       INJ_FILE    = "injector_aapl.mem"  // injector ROM (ADR 0014)
 ) (
     input  wire logic       clk_i,
     input  wire logic       rst_i,
@@ -65,7 +69,7 @@ module ob_core #(
     output logic            t2_pulse_o
 );
     localparam int LEVEL_W  = SHARES_W + SET_BITS + 1 + $clog2(WAYS);  // book_engine's
-    localparam int N_STATS  = 42;
+    localparam int N_STATS  = 45;
     localparam int USER_W   = 1 + 64 + 64;  // {feed stale, T0, T1} through the book
 
     logic [63:0] now_q;
@@ -199,7 +203,7 @@ module ob_core #(
     // configuration and sequence
     logic [31:0]          cfg_group, cfg_lo_price;
     logic [15:0]          cfg_port, cfg_locate;
-    logic                 cfg_mode, cfg_locate_valid;
+    logic                 cfg_mode, cfg_inject, cfg_locate_valid;
     logic [63:0]          cfg_symbol;
     logic [47:0]          dst_mac;
     logic [31:0]          dst_ip;
@@ -222,6 +226,7 @@ module ob_core #(
         .cfg_group_o        (cfg_group),
         .cfg_port_o         (cfg_port),
         .cfg_mode_o         (cfg_mode),
+        .cfg_inject_o       (cfg_inject),
         .cfg_locate_valid_o (cfg_locate_valid),
         .cfg_symbol_o       (cfg_symbol),
         .cfg_lo_price_o     (cfg_lo_price),
@@ -332,7 +337,7 @@ module ob_core #(
     ) u_gate (
         .clk_i      (clk_i),
         .rst_i      (rst_i),
-        .block_i    (feed_rst),
+        .block_i    (feed_rst || cfg_inject),
         .s_tdata_i  (u_tdata),
         .s_tvalid_i (u_tvalid),
         .s_tready_o (u_tready),
@@ -356,6 +361,32 @@ module ob_core #(
     assign feed_stale_any = feed_stale || ct_stale_q;
     logic [15:0] locate;
 
+    // injector (ADR 0014): runs in mode 2 from the first cycle of RUN, once
+    logic [7:0] i_tdata, fe_tdata;
+    logic       i_tvalid, i_tready, i_tlast, i_done_unused;
+    logic       fe_tvalid, fe_tready, fe_tlast, fe_tuser;
+
+    injector #(
+        .INIT_FILE (INJ_FILE)
+    ) u_inj (
+        .clk_i      (clk_i),
+        .rst_i      (feed_rst || !cfg_inject),
+        .m_tdata_o  (i_tdata),
+        .m_tvalid_o (i_tvalid),
+        .m_tready_i (i_tready),
+        .m_tlast_o  (i_tlast),
+        .done_o     (i_done_unused)
+    );
+
+    always_comb begin
+        fe_tdata  = cfg_inject ? i_tdata  : g_tdata;
+        fe_tvalid = cfg_inject ? i_tvalid : g_tvalid;
+        fe_tlast  = cfg_inject ? i_tlast  : g_tlast;
+        fe_tuser  = cfg_inject ? 1'b0     : g_tuser;
+        i_tready  = cfg_inject && fe_tready;
+        g_tready  = !cfg_inject && fe_tready;
+    end
+
     feed_frontend #(
         .DATA_W (8)
     ) u_feed (
@@ -364,11 +395,11 @@ module ob_core #(
         .cfg_symbol_i       (cfg_symbol),
         .cfg_locate_valid_i (cfg_locate_valid),
         .cfg_locate_i       (cfg_locate),
-        .s_tdata_i          (g_tdata),
-        .s_tvalid_i         (g_tvalid),
-        .s_tready_o         (g_tready),
-        .s_tlast_i          (g_tlast),
-        .s_tuser_i          (g_tuser),
+        .s_tdata_i          (fe_tdata),
+        .s_tvalid_i         (fe_tvalid),
+        .s_tready_o         (fe_tready),
+        .s_tlast_i          (fe_tlast),
+        .s_tuser_i          (fe_tuser),
         .s_t0_i             (t0),  // the frame inside udp_rx: its payload's T0 (ADR 0011)
         .now_i              (now_q),
         .m_valid_o          (r_valid),
@@ -470,8 +501,25 @@ module ob_core #(
     assign b_t2  = b_new ? now_q : b_t2_q;
 
     // --------------------------------------------------------------- output
-    logic           o_valid, o_ready;
+    logic           o_valid, o_ready, ob_valid, ob_ready;
     logic [64*8-1:0] o_rec;
+    logic [63:0]    inj_cycles, inj_bbos, inj_digest;
+
+    // mode 2: every BBO record goes to the meter, which never stalls (ADR 0014)
+    assign ob_valid = o_valid && !cfg_inject;
+    assign o_ready  = cfg_inject || ob_ready;
+
+    inj_meter u_meter (
+        .clk_i       (clk_i),
+        .rst_i       (rst_i || stats_clear),
+        .now_i       (now_q),
+        .beat_i      (i_tvalid && i_tready),
+        .rec_valid_i (o_valid && cfg_inject),
+        .rec_i       (o_rec[511 -: 320]),  // the record before t0/t1/t2
+        .cycles_o    (inj_cycles),
+        .bbos_o      (inj_bbos),
+        .digest_o    (inj_digest)
+    );
 
     out_mux #(
         .LEVEL_W     (LEVEL_W),
@@ -562,6 +610,9 @@ module ob_core #(
         .ctrl_bad_i                (ctrl_bad),
         .t0_lost_i                 (t0_lost),
         .cut_through_bad_i         (ct_bad),
+        .inj_cycles_i              (inj_cycles),
+        .inj_bbos_i                (inj_bbos),
+        .inj_digest_i              (inj_digest),
         .stats_o                   (stats),
         .tick_o                    (tick)
     );
@@ -576,8 +627,8 @@ module ob_core #(
         .clk_i        (clk_i),
         .rst_i        (rst_i),
         .mode_i       (cfg_mode),
-        .s_valid_i    (o_valid),
-        .s_ready_o    (o_ready),
+        .s_valid_i    (ob_valid),
+        .s_ready_o    (ob_ready),
         .s_rec_i      (o_rec),
         .stats_req_i  (tick),
         .stats_i      (stats),
@@ -640,6 +691,6 @@ module ob_core #(
     logic unused;
     assign unused = ^{fifo_level_unused, c_dport_unused, c_ok_unused, c_filt_unused,
                       c_csum_unused, c_mal_unused, u_mac_unused, u_ip_unused,
-                      u_sport_unused, u_dport_unused, t0_valid_unused};
+                      u_sport_unused, u_dport_unused, t0_valid_unused, i_done_unused};
 endmodule
 `default_nettype wire

@@ -107,14 +107,17 @@ def test_parse_round_trip_and_rejects() -> None:
 
 
 def test_stats() -> None:
-    assert N_STATS == 42 and len(set(STATS_NAMES)) == 42  # cut_through_bad (ADR 0013)
+    # cut_through_bad (ADR 0013); inj_cycles, inj_bbos, inj_digest (ADR 0014)
+    assert N_STATS == 45 and len(set(STATS_NAMES)) == 45
     assert STATS_NAMES[0] == "uptime_cycles" and STATS_NAMES[39] == "ctrl_bad"
     assert STATS_NAMES[40] == "t0_lost"
     assert STATS_NAMES[41] == "cut_through_bad"
+    assert STATS_NAMES[42:] == ("inj_cycles", "inj_bbos", "inj_digest")
     p = packet(STATS, 3, stats_records(list(range(N_STATS))))
-    assert len(p) == 12 + 8 * 42 and be(p[12 + 8 * 39 : 12 + 8 * 40]) == 39
+    assert len(p) == 12 + 8 * 45 and be(p[12 + 8 * 39 : 12 + 8 * 40]) == 39
     assert be(p[12 + 8 * 40 : 12 + 8 * 41]) == 40
     assert be(p[12 + 8 * 41 : 12 + 8 * 42]) == 41
+    assert be(p[12 + 8 * 44 : 12 + 8 * 45]) == 44
 
 
 def test_config_round_trip_offsets_and_rejects() -> None:
@@ -125,7 +128,9 @@ def test_config_round_trip_offsets_and_rejects() -> None:
     assert be(r[16:20]) == (234_55 - 2048) * 100 and be(r[20:22]) == 14 and r[22:24] == b"\0\0"
     assert parse_config(packet(CONFIG, 0, [r])) == cfg
     assert parse_config(packet(CONFIG_ACK, 0, [r])) is None  # an ack is not a config
-    assert parse_config(packet(CONFIG, 0, [r[:6] + b"\x02" + r[7:]])) is None  # mode 2
+    inject = parse_config(packet(CONFIG, 0, [r[:6] + b"\x02" + r[7:]]))
+    assert inject is not None and inject.mode == 2  # ADR 0014
+    assert parse_config(packet(CONFIG, 0, [r[:6] + b"\x03" + r[7:]])) is None  # mode 3
     assert parse_config(packet(CONFIG, 0, [r[:7] + b"\x02" + r[8:]])) is None  # locate_valid 2
     assert parse_config(packet(CONFIG, 0, [r]) + b"\0") is None
 

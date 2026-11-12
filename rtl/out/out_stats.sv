@@ -1,12 +1,13 @@
 `default_nettype none
-// out_stats: the 42 u64 stats counters of docs/protocol.md (type 0x03) and the stats tick.
+// out_stats: the 45 u64 stats counters of docs/protocol.md (type 0x03) and the stats tick.
 //
 // Ports are named after the counters (docs/protocol.md table, model.protocol.STATS_NAMES).
 // Each *_i pulse adds 1 to its counter, except the amount inputs: mold_gap_messages_i is
 // added when mold_gaps_i pulses; rx_fifo_overflow_i (frames lost, eth_rx ovf_frames_o
 // gated by ovf_o), itch_malformed_messages_i and out_records_i are counts this cycle.
 // locate and stale are values, not counts: locate = {known, locate[15:0]},
-// stale = {book, feed}. uptime_cycles counts cycles since the last clear.
+// stale = {book, feed}; inj_cycles, inj_bbos, inj_digest (ADR 0014) are inj_meter's
+// outputs (it is reset by the same clear). uptime_cycles counts cycles since the last clear.
 // clear_i (a config) zeroes every counter except ctrl_ok and ctrl_bad, restarts the tick,
 // and an event in the same cycle is dropped (the pipeline is in reset then anyway).
 // Counters wrap at 2^64 (never in practice: 4,600 years of cycles at 125 MHz).
@@ -17,7 +18,7 @@
 // TICK_CYCLES >= 2.
 module out_stats #(
     parameter int TICK_CYCLES = 125_000_000,
-    localparam int N_STATS    = 42
+    localparam int N_STATS    = 45
 ) (
     input  wire logic                  clk_i,
     input  wire logic                  rst_i,
@@ -65,6 +66,9 @@ module out_stats #(
     input  wire logic                  ctrl_bad_i,
     input  wire logic                  t0_lost_i,
     input  wire logic                  cut_through_bad_i,  // ADR 0013
+    input  wire logic [63:0]           inj_cycles_i,       // ADR 0014, values
+    input  wire logic [63:0]           inj_bbos_i,
+    input  wire logic [63:0]           inj_digest_i,
     output logic [N_STATS*64-1:0]      stats_o,
     output logic                       tick_o
 );
@@ -72,6 +76,7 @@ module out_stats #(
     localparam int K_LOCATE = 24;
     localparam int K_STALE  = 35;
     localparam int K_CTRL0  = 38;  // ctrl_ok, ctrl_bad: not cleared by a config
+    localparam int K_INJ    = 42;  // inj_cycles, inj_bbos, inj_digest
     localparam int TICK_W   = $clog2(TICK_CYCLES);
 
     logic [63:0] add [N_STATS];
@@ -121,6 +126,9 @@ module out_stats #(
         add[39] = 64'(ctrl_bad_i);
         add[40] = 64'(t0_lost_i);
         add[41] = 64'(cut_through_bad_i);
+        add[42] = '0;  // inj_*: values
+        add[43] = '0;
+        add[44] = '0;
     end
 
     always_ff @(posedge clk_i) begin
@@ -131,6 +139,9 @@ module out_stats #(
         // values, registered like the counters
         cnt_q[K_LOCATE] <= 64'({locate_valid_i, locate_i});
         cnt_q[K_STALE]  <= 64'({book_stale_i, feed_stale_i});
+        cnt_q[K_INJ]    <= inj_cycles_i;
+        cnt_q[K_INJ+1]  <= inj_bbos_i;
+        cnt_q[K_INJ+2]  <= inj_digest_i;
     end
 
     always_ff @(posedge clk_i) begin

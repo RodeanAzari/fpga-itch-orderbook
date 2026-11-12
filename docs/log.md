@@ -787,3 +787,28 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
     at wire speed and ends before the release → 400 bytes in cut-through. The "clean" run
     went stale → `feed_packets` injects damaged messages → plain `packetize`.
   - `pkill -f` on the sim name killed its own shell again (pattern in the command line).
+
+## 2026-11-12 (later): on-chip injector, pipeline capacity in simulation (ADR 0014)
+
+- Board unavailable (adapter and Arty not attached); worked on what needs no hardware.
+- README Phase E results filled in from the 2026-11-11 board sidecar (`793b594`).
+- Injector (ADR 0014, proposed): golden model first (`model/injector.py`: ROM image =
+  longest prefix of the AAPL fixture that fits 32 K × 9 and ends on a BBO-publishing
+  message; 64-bit order-sensitive digest; 7 tests, 5/5 injected model bugs caught). RTL
+  `rtl/meas/injector.sv` (ROM, 2-entry output FIFO, one byte per cycle) and
+  `rtl/meas/inj_meter.sv` (never stalls; span, count, digest), config mode 2, stats
+  42–44 (N_STATS 45), `capture --mode inject`.
+- Sim result (test_core `inject_capacity`, both eth_rx modes, cycle-exact and repeatable):
+  1,043 messages / 31,679 payload bytes → 248 BBOs, digest = model, in **31,703 cycles**:
+  0.999 bytes/cycle, 4.11 M msg/s at 125 MHz. At `DATA_W` 8 the byte-wide input is the
+  limit; the book keeps up with this mix (mostly Adds and Deletes, pre-market).
+- Verification: `test_injector` (exact bytes at full rate, under backpressure, replay after
+  reset); `inject_capacity` checks count, digest, network feed blocked, no BBO datagrams
+  sent, `inj_cycles` equal to the bench's own first-beat-to-last-T2 span, meter zeroed by
+  the next config. 7 of 8 injected RTL bugs caught; the 8th (meter ready taken from
+  out_builder) is equivalent here: out_builder gets nothing in mode 2, so its ready stays 1.
+- Bugs (symptom → root cause → fix):
+  - `ct_bad_frames` failed at seed 1456894486 with `feed_datagrams` 37 vs 38 → the test
+    stopped on the first stats datagram once all BBOs were in, and the last frame (no BBO)
+    was not yet counted in that snapshot → use only stats received two ticks after the
+    last frame was sent. A test race, not an RTL bug; the assertion now names the field.
