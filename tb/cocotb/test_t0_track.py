@@ -133,7 +133,7 @@ async def pressure(dut):
 async def ct_frames(dut):
     """Cut-through, eth_rx-shaped traffic (frames of every kind, overflow groups, 5-byte
     frames judged before they start): every start gets its own SFD's T0, nothing lost."""
-    sch = schedule(get_rng("t0_ct_frames"), 2_000)
+    sch = schedule(get_rng("t0_ct_frames"), 2_000, cap=1 << PEND_AW)
     await reset(dut)
     model = T0Track(pend_n=1 << PEND_AW, done_n=1 << DONE_AW, cut_through=True)
     starts = 0

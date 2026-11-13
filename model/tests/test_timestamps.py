@@ -38,19 +38,25 @@ class Schedule:
     end: int = 0
 
 
-def schedule(rng: random.Random, frames: int) -> Schedule:
+def schedule(rng: random.Random, frames: int, cap: int | None = None) -> Schedule:
     """Random contract-shaped traffic. SFDs run ahead of the core-side events (the async
-    FIFO holds several frames); start/status of frame k never precede frame k-1's."""
+    FIFO holds several frames); start/status of frame k never precede frame k-1's.
+    cap: at most this many SFDs outstanding (a T0 queue of cap entries never overflows);
+    an SFD counts as outstanding until the later of its frame's status and start, which
+    is no earlier than the cycle the queue releases it. None: unbounded."""
     sch = Schedule()
+    retire: list[int] = []  # per SFD so far: the cycle its frame's status and start are done
     sfd_t = 10
     core_t = 10  # last cycle with a core-side event
     k = 0
     while k < frames:
         group = rng.choice((1, 1, 1, 1, 2, 3, 6)) if rng.random() < 0.3 else 0
         n = max(group, 1)
-        sfds = []
+        sfds: list[int] = []
         for _ in range(n):
             sfd_t += rng.randint(1, 12)
+            if cap is not None and len(retire) + len(sfds) >= cap:
+                sfd_t = max(sfd_t, retire[len(retire) + len(sfds) - cap] + 1)
             sch.cycles[sfd_t].sfd = True
             sfds.append(sfd_t)
         kind = rng.choice(("ok", "bad", "tiny", "late")) if not group else "ovf"
@@ -76,6 +82,7 @@ def schedule(rng: random.Random, frames: int) -> Schedule:
             sch.cycles[start].start = True
             sch.cycles[start].want = (sfds[0], True)
         core_t = max(status, start or 0)
+        retire += [core_t] * n
         k += n
     sch.end = max(sfd_t, core_t) + 1
     return sch
@@ -110,6 +117,32 @@ def test_every_start_gets_its_own_sfd(seed: int) -> None:
     assert starts > 100
     assert t.lost == 0
     assert not t.pend and t.hold is None
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_capped_schedule_fits_a_small_queue(seed: int) -> None:
+    """The cocotb test drives an 8-entry RTL queue with schedule(cap=8) and expects no
+    T0 lost: the cap must keep the queue from overflowing (regression: seed 1015131750
+    overflowed it without a cap)."""
+    t = T0Track(pend_n=8, cut_through=True)
+    starts = run(t, schedule(random.Random(seed), 2_000, cap=8))
+    assert starts > 500
+    assert t.lost == 0
+
+
+def test_uncapped_schedule_overflows_a_small_queue() -> None:
+    """Without the cap the same traffic does overflow 8 entries for some seeds, so the
+    capped test above is not passing by luck."""
+    lost = 0
+    for seed in range(40):
+        t = T0Track(pend_n=8, cut_through=True)
+        sch = schedule(random.Random(seed), 2_000)
+        for now in range(sch.end + 1):
+            c = sch.cycles.get(now, Cycle())
+            t.step(now, sfd=c.sfd, ok=c.ok, drop=c.drop, ovf_frames=c.ovf_frames,
+                   emitted=c.emitted, frame_start=c.start)  # fmt: skip
+        lost += t.lost
+    assert lost > 0
 
 
 def test_late_start_after_overflow_status_keeps_its_t0() -> None:
