@@ -63,8 +63,8 @@ def datagrams(cfg: P.Config, recs: list[bytes], seed: int = 1) -> list[bytes]:
     return out
 
 
-def run(tmp_path: Path, pkts: Path, dgs: list[bytes]) -> dict[str, int]:
-    summary, report = compare(write_framed(tmp_path / "log.bin", dgs), pkts)
+def run(tmp_path: Path, pkts: Path, dgs: list[bytes], ct: bool = False) -> dict[str, int]:
+    summary, report = compare(write_framed(tmp_path / "log.bin", dgs), pkts, cut_through=ct)
     assert bool(report) == (summary["first_mismatch"] >= 0)
     return summary
 
@@ -192,3 +192,22 @@ def test_unflagged_wrong(tmp_path: Path) -> None:
 def test_trace_mode_has_no_unflagged_count(tmp_path: Path) -> None:
     pkts, cfg, recs = setup(tmp_path, mode=1)
     assert "unflagged_wrong" not in run(tmp_path, pkts, datagrams(cfg, recs))
+
+
+def test_cut_through_flag_follows_the_stated_build(tmp_path: Path) -> None:
+    """A cut-through bitstream sets bit 4 on every BBO (ADR 0013). The build mode is the
+    operator's, not read from the records: a log from either build matches only when
+    compared as that build, so a missing or stray flag on the board still fails."""
+    pkts, cfg, recs = setup(tmp_path)
+    ct_recs, _ = P.expected(
+        iter_raw(pkts.open("rb")), cfg, BoundedBook(base_ticks=BASE_TICKS), cut_through=True
+    )
+    assert all(int.from_bytes(r[2:4]) & P.CUT_THROUGH for r in ct_recs)
+    assert run(tmp_path, pkts, datagrams(cfg, ct_recs), ct=True)["match"] == 1
+    s = run(tmp_path, pkts, datagrams(cfg, ct_recs))
+    assert (s["match"], s["mismatched_positions"]) == (0, len(recs))
+    assert run(tmp_path, pkts, datagrams(cfg, recs), ct=True)["match"] == 0
+    k = len(recs) // 2  # one record without the flag in a cut-through run
+    one = [*ct_recs[:k], recs[k], *ct_recs[k + 1 :]]
+    s = run(tmp_path, pkts, datagrams(cfg, one), ct=True)
+    assert (s["match"], s["first_mismatch"], s["mismatched_positions"]) == (0, k, 1)

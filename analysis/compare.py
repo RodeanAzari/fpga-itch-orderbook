@@ -82,8 +82,14 @@ def unflagged_wrong(got: list[bytes], want: list[bytes]) -> int:
     )
 
 
-def compare(log: Path, packets: Path, context: int = 5) -> tuple[dict[str, int], list[str]]:
-    """Summary counters, and report lines for the first mismatch (empty on a match)."""
+def compare(
+    log: Path, packets: Path, context: int = 5, cut_through: bool = False
+) -> tuple[dict[str, int], list[str]]:
+    """Summary counters, and report lines for the first mismatch (empty on a match).
+
+    `cut_through`: the bitstream's build mode, which the operator states (every BBO carries
+    it as a flag, ADR 0013; taking it from the records would make that flag uncheckable).
+    """
     cfg, dgs = read_log(log)
     kind = P.TRACE if cfg.mode == 1 else P.BBO
     # The host may reorder or duplicate datagrams (progress.md); pkt_seq undoes both. The
@@ -98,7 +104,9 @@ def compare(log: Path, packets: Path, context: int = 5) -> tuple[dict[str, int],
     got = [r for d in dgs if d.kind == kind for r in d.records]
     if kind == P.BBO:  # t0/t1/t2 are measured (ADR 0011); every other byte must match
         got = [P.without_times(r) for r in got]
-    want, _ = P.expected(iter_raw(packets.open("rb")), cfg, BoundedBook(base_ticks=base_ticks(cfg)))
+    want, _ = P.expected(
+        iter_raw(packets.open("rb")), cfg, BoundedBook(base_ticks=base_ticks(cfg)), cut_through
+    )
 
     first = next((i for i, (g, w) in enumerate(zip(got, want, strict=False)) if g != w), None)
     if first is None and len(got) != len(want):
@@ -132,8 +140,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--log", type=Path, required=True)
     ap.add_argument("--packets", type=Path, required=True)
     ap.add_argument("--context", type=int, default=5)
+    ap.add_argument(
+        "--cut-through", action="store_true", help="the bitstream was built cut-through"
+    )
     a = ap.parse_args(argv)
-    summary, report = compare(a.log, a.packets, a.context)
+    summary, report = compare(a.log, a.packets, a.context, a.cut_through)
     for k, v in summary.items():
         print(f"{k}={v}")
     for line in report:
