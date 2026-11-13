@@ -336,7 +336,7 @@ This project owns two shared repos, built here and consumed only at release tags
 
 | Repo | What it is | Used here as |
 |---|---|---|
-| [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) | Payload-agnostic 10/100 Ethernet MAC + IPv4/UDP RX/TX for 7-series FPGAs, with two non-ITCH example designs and C++ host test tools | Git submodule at `rtl/eth/`, tag `eth-core-v0.2` |
+| [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) | Payload-agnostic 10/100 Ethernet MAC + IPv4/UDP RX/TX for 7-series FPGAs, with two non-ITCH example designs and C++ host test tools | Git submodule at `rtl/eth/`, tag `eth-core-v0.3` |
 | [tb-common](https://github.com/RodeanAzari/tb-common) | Shared cocotb helpers: AXI-Stream driver/monitor, in-order scoreboard, seeded RNG | `pip` dependency pinned at `tb-common-v0.1` in `requirements.txt` |
 
 ## Roadmap
