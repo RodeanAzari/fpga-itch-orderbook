@@ -59,3 +59,11 @@ before/after tail and the per-cause histogram.
     (3) a photo of the probes on the Pmod header.
   - Expected disagreement: a few ns of pin-to-pin skew (IOB + traces), and T1 pulses from
     messages that changed no BBO (they have no T2 after them).
+
+## Phase E: cut-through vs store-and-forward on the board (2026-11-13)
+
+Result: `data/results/2026-11-13_ct_vs_sf_board.md` (T2−T0 p50 126.7 → 64.2 µs, every
+BBO identical to the model in both builds). Done by Claude:
+`docs/media/2026-11-13_phase-e_board-t2-t0-ct-vs-sf.png` (`make plots`).
+- No physical capture needed. Optional: the scope setup above also works on the
+  cut-through bitstream (`build/arty_top_ct/arty_top.bit`); T2 − T1 is the same there.

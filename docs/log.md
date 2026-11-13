@@ -863,3 +863,15 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   store it as "has entries" (reset 0), so the power-up state is consistent.
 - Verification: test_t0_track on 4 seeds × 4 parameter sets; 5 injected t0_track bugs each
   fail 3 cut-through tests; `make ci` green (65 pass, 0 fail, 9 parameter-set skips).
+- Board day, both builds from `2325efd` (full AAPL day at 500 pps): both match the model
+  on 831,842 / 831,842 BBOs, 0 lost. T2−T1 identical (p50 136 ns, max 232 ns). T2−T0 p50
+  126.7 µs (store-and-forward) → 64.2 µs (cut-through); per record, cut-through is
+  7.2–115.1 µs earlier, never later. `data/results/2026-11-13_ct_vs_sf_board.md`.
+- Bug (analysis): cut-through run reported 831,842 / 831,842 mismatched → every record
+  differed only in the `cut_through` flag (bit 4, set by design) and compare always built
+  the model as store-and-forward → `compare --cut-through` (board_run `CUT_THROUGH=1`),
+  stated by the operator, not read from the records (`22aed41`).
+- Observed: cut-through sends 3.5x the datagrams (1.08 BBOs each vs 3.8): out_builder
+  flushes on idle, and BBOs now arrive at wire speed instead of in buffer-read bursts.
+- Host: Vivado `make prog` hung >5 min after the usbipd re-attach; openFPGALoader worked.
+  One host-side reorder (3 places) in the store-and-forward run, first on the ASIX.

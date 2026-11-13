@@ -11,7 +11,8 @@ import struct
 
 import pytest
 
-from analysis.latency import latencies, nearest_rank, summary
+from analysis.latency import latencies, nearest_rank, paired_t20, summary
+from model import protocol as P
 
 
 def test_nearest_rank_by_definition() -> None:
@@ -49,3 +50,25 @@ def test_summary_in_cycles_and_ns() -> None:
     cyc, ns = summary("T2-T1", [17] * 998 + [24, 125], 0)
     assert (cyc["p50"], cyc["p99"], cyc["p99.9"], cyc["max"]) == (17, 17, 24, 125)
     assert (ns["min"], ns["max"], ns["unit"]) == (136, 1000, "ns")
+
+
+def flagged(r: bytes, flags: int) -> bytes:
+    return r[:2] + flags.to_bytes(2) + r[4:]
+
+
+def test_paired_t20_per_record() -> None:
+    """Same feed on two builds: the saving is per record (base minus this), the
+    cut_through flag and the times may differ, anything else may not."""
+    base = [rec(100, 900, 917), rec(0, 950, 967), rec(1000, 1900, 1923)]
+    ct = [
+        flagged(r, P.CUT_THROUGH)
+        for r in (rec(800, 900, 917), rec(900, 950, 967), rec(1700, 1900, 1925))
+    ]
+    assert paired_t20(base, ct) == ([817 - 117, 923 - 225], 1)  # T0 lost in base: left out
+    with pytest.raises(ValueError, match="length"):
+        paired_t20(base, ct[:2])
+    other = [*ct[:2], flagged(ct[2], P.CUT_THROUGH | P.STALE)]
+    with pytest.raises(ValueError, match="record 2"):
+        paired_t20(base, other)
+    swapped = [ct[0], ct[2], ct[1]]
+    assert paired_t20(base, swapped)[0] != paired_t20(base, ct)[0]
