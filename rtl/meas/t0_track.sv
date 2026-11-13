@@ -124,20 +124,28 @@ module t0_track #(
         logic [64:0]      hold_q;       // {valid, t0} for a frame judged before its start
         logic             hold_full_q;  // hold_q is waiting for its start
         logic             started_q;    // a frame started (not from hold) since the last status
-        logic             pend_empty, start_pop, need_hold, hold_take, short;
-        logic [8:0]       want, avail;  // frames: what the status covers, what PEND has left
-        logic [PEND_AW:0] disc;         // entries the status discards (<= avail <= PEND_N)
+        // PEND occupancy kept in registers (= pend_wr_q - pend_rd_q) so the pop logic does
+        // not start with a pointer subtract (timing at 125 MHz behind eth_rx's status).
+        logic [PEND_AW:0] cnt_q;        // PEND entries
+        logic             some_q;       // cnt_q != 0 (0 at power-up, like cnt_q)
+        logic             pend_empty, start_pop, need_hold, hold_take, short, push;
+        logic [8:0]       want;         // frames the status covers
+        logic [9:0]       need;         // entries this cycle wants: start + hold + status
+        logic [PEND_AW:0] pops;         // entries popped this cycle (<= cnt_q)
 
         always_comb begin
-            pend_empty = pend_count == '0;
+            pend_empty = !some_q;
+            push       = sfd_i && !pend_full;
             start_pop  = frame_start_i && !hold_full_q && !pend_empty;
             want       = (ovf_i ? 9'(ovf_frames_i) : 9'd1) - 9'(emitted_i);
             need_hold  = status && emitted_i && !started_q && !frame_start_i;
-            avail      = 9'(pend_count) - 9'(start_pop);
-            hold_take  = need_hold && avail != '0;
-            avail      = avail - 9'(hold_take);
-            short      = want > avail;
-            disc       = !status ? '0 : short ? avail[PEND_AW:0] : want[PEND_AW:0];
+            // an entry left after the start's pop
+            hold_take  = need_hold && (start_pop ? cnt_q > (PEND_AW + 1)'(1) : some_q);
+            // the status takes want entries after start and hold, or what is left
+            need       = 10'(want) + 10'(start_pop) + 10'(hold_take);
+            short      = status && need > 10'(cnt_q);
+            pops       = short ? cnt_q : need[PEND_AW:0];
+            if (!status) pops = (PEND_AW + 1)'(start_pop);
         end
 
         always_ff @(posedge clk_i) begin
@@ -149,15 +157,18 @@ module t0_track #(
             if (rst_i) begin
                 pend_wr_q   <= '0;
                 pend_rd_q   <= '0;
+                cnt_q       <= '0;
+                some_q      <= 1'b0;
                 hold_full_q <= 1'b0;
                 started_q   <= 1'b0;
                 t0_o        <= '0;
                 t0_valid_o  <= 1'b0;
                 lost_o      <= 1'b0;
             end else begin
-                if (sfd_i && !pend_full) pend_wr_q <= pend_wr_q + 1'b1;
-                pend_rd_q <= pend_rd_q + (PEND_AW + 1)'(start_pop) + (PEND_AW + 1)'(hold_take)
-                           + disc;
+                if (push) pend_wr_q <= pend_wr_q + 1'b1;
+                pend_rd_q <= pend_rd_q + pops;
+                cnt_q     <= cnt_q + (PEND_AW + 1)'(push) - pops;
+                some_q    <= cnt_q + (PEND_AW + 1)'(push) != pops;
                 if (frame_start_i) begin
                     {t0_valid_o, t0_o} <= hold_full_q ? hold_q
                                         : pend_empty  ? 65'd0
@@ -167,10 +178,19 @@ module t0_track #(
                 else if (frame_start_i && hold_full_q) hold_full_q <= 1'b0;
                 if (status)                              started_q <= 1'b0;
                 else if (frame_start_i && !hold_full_q)  started_q <= 1'b1;
-                lost_o <= (status && short) || (need_hold && !hold_take) || (sfd_i && pend_full)
+                lost_o <= short || (need_hold && !hold_take) || (sfd_i && pend_full)
                         || (frame_start_i && !hold_full_q && pend_empty);
             end
         end
+
+`ifndef SYNTHESIS
+        always_ff @(posedge clk_i) begin
+            if (!rst_i) begin
+                assert (cnt_q == pend_count);
+                assert (some_q == (cnt_q != '0));
+            end
+        end
+`endif
     end
 
 endmodule
