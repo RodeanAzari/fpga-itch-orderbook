@@ -61,7 +61,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Functional coverage** | `[TBD]` |
 | **Formal proofs** | Async FIFO (in fpga-eth-core) and the price-level bitmap search (`tb/formal/bitmap_search.sby`), SymbiYosys |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
-| **Timing** | Full chip meets 125 MHz: WNS +0.028 ns, WHS +0.020 ns, Vivado 2025.2 ([report](docs/reports/arty_top/summary.txt)) |
+| **Timing** | Full chip (with the injector) meets 125 MHz in both builds: WNS +0.048 ns store-and-forward, +0.172 ns cut-through, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt)) |
 | **Utilization** | 12,351 LUT (19 %), 19,073 FF (15 %), 119 / 135 BRAM36 (88 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
 | **CI** | `make ci` locally: Verilator lint, cocotb regression, formal, model tests, host build + tests (ASan/UBSan), clang-tidy, ruff; hosted CI `[TBD]` |
 
