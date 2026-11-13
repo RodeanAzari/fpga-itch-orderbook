@@ -841,3 +841,25 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   store-and-forward WNS +0.007 ns, 128 BRAM36; cut-through WNS -0.567 ns (rec_fifo → out_ctrl
   → deframer `expected_q` adder, 23 levels). New critical warning: v0.3 pin XDC's `eth_mdio`
   has no port in arty_top.
+
+## 2026-11-13 — cut-through full chip meets timing
+
+- Three fixes took cut-through `arty_top` (with the injector) from WNS -0.567 ns to
+  **+0.172 ns** (WHS +0.012 ns, 0 critical warnings, 12,506 LUTs, 20,157 FFs, 127 BRAM36,
+  10 DSP; `docs/reports/arty_top_ct/`). Store-and-forward unchanged at +0.048 ns.
+  1. `eth_mdio` port added to arty_top (the v0.3 pin XDC's critical warning); the deframer's
+     `seq + count` registered one cycle ahead of `expected_q` (`46a4827`): -0.567 → -0.962
+     (the next path, the ready chain, was longer).
+  2. sync_fifo `full_o` from a register (`4cae931`): cuts rec_fifo full → f_tready →
+     t0_track: -0.962 → -0.244 ns (22 endpoints).
+  3. t0_track cut-through keeps PEND occupancy in registers and pops `min(want + start +
+     hold, count)` in one step (`2325efd`): -0.244 → +0.172. The order-table `hway_q`
+     path (-0.196, placement) closed in the same build without a change.
+- Bug (test): `test_t0_track.ct_frames` failed at SEED=1015131750 with PEND_AW=3 → the
+  stimulus had more SFDs outstanding than the 8-entry queue, so the model lost a T0 too
+  → cap outstanding SFDs in the schedule to the queue depth (`f219a1a`).
+- Bug (assertion): the new `t0_track` invariant fired at time 0 in `test_core` → the empty
+  flag (reset to 1) disagreed with the zero-initialized count before the first reset →
+  store it as "has entries" (reset 0), so the power-up state is consistent.
+- Verification: test_t0_track on 4 seeds × 4 parameter sets; 5 injected t0_track bugs each
+  fail 3 cut-through tests; `make ci` green (65 pass, 0 fail, 9 parameter-set skips).
