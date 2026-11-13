@@ -52,7 +52,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Board / PHY** | Arty A7-100T (`xc7a100tcsg324-1`), TI DP83848J 10/100 MII |
 | **Pipeline** | MII MAC → CDC → IPv4/UDP filter → MoldUDP64 → ITCH decoder → order table → price levels → BBO |
 | **Pipeline latency T2−T1** | p50 / p99 / p99.9 / max: **136 / 192 / 232 / 232 ns** (17 / 24 / 29 / 29 cycles at 125 MHz), 831,842 BBOs on the board, AAPL 2019-10-18 ([CSV](data/results/2026-11-11_record_fifo_board.csv)) |
-| **Pipeline capacity** | `[TBD]` msg/s (on-chip injector, `DATA_W` 8 and 64) |
+| **Pipeline capacity** | **4.11 M msg/s** at `DATA_W` 8, input-bound (on-chip injector on the board: 1,043 messages in 31,703 cycles, = simulation, [CSV](data/results/2026-11-13_injector_board.csv)); `DATA_W` 64 `[TBD]` |
 | **Line-rate throughput** | `[TBD]` msg/s at 100 Mbps |
 | **Hardware full-day replay** | **0 mismatches on two days**: AAPL 2025-12-12, 916,429 / 916,429 BBO updates; AAPL 2019-10-18, 831,842 / 831,842; 0 frames lost, `table_overflow`/`unknown_ref` 0, never stale ([CSV](data/results/2026-11-10_full_day_board_16way.csv)) |
 | **Golden model, full day** | AAPL 2019-10-18: 1,669,591 messages, 0 unknown refs, 0 negative shares; peak 27,814 live orders ([CSV](data/results/2019-10-18_AAPL_summary.csv)) |
@@ -73,7 +73,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; photo/ILA captures outstanding |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode: 198,084 / 198,084 decoded records match the model ([CSV](data/results/2026-11-09_first_board_run.csv)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
-| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through built and sim-verified, board comparison pending |
+| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8 |
 | F — Stress, coverage closure, portfolio | Not started | |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
@@ -235,8 +235,17 @@ writer removed it ([ADR 0012](docs/decisions/0012-record-fifo.md)).
 decoder sees each byte as it arrives instead of after the frame's FCS. The cost: a frame
 that later fails its FCS has already moved the book, so it is counted (`cut_through_bad`)
 and marks the book stale. In simulation, a 1,514-byte frame's first byte reaches the
-decoder 520 ns after its SFD, against 121.5 µs store-and-forward. The board comparison of
-T2−T0 in both builds is `[TBD]`.
+decoder 520 ns after its SFD, against 121.5 µs store-and-forward. On the board, the same
+day in both builds gives the same 831,842 BBOs (each identical to the model) and the same
+T2−T1; T2−T0 drops by 7.2 to 115.1 µs per BBO, never rising
+([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)):
+
+[![T2−T0 on the board, cut-through vs store-and-forward](docs/media/2026-11-13_phase-e_board-t2-t0-ct-vs-sf.png)](docs/media/2026-11-13_phase-e_board-t2-t0-ct-vs-sf.png)
+
+| T2−T0 on the board, µs | min | p50 | p99 | p99.9 | max |
+|---|---|---|---|---|---|
+| store-and-forward | 74.2 | 126.7 | 133.1 | 133.7 | 133.8 |
+| cut-through | 7.2 | 64.2 | 120.5 | 121.6 | 121.7 |
 
 ## On the board, demos, in Vivado
 
@@ -271,10 +280,11 @@ pacing) and configures the board and logs its output with `host/capture`;
 | RTL sim, random records vs model | 1,009,900, 0 mismatches | seeded generator | [sim](data/results/2026-11-07_sim_random_1m.csv) |
 | **Hardware day 2: BBO updates identical to the model** | **916,429 / 916,429** | AAPL 2025-12-12 (3.5 M AAPL messages), 500 pps, 2 runs | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
 | Hardware runs at host load 15 to 22 | 2 of 4 clean; failures were host receive loss and an MII FIFO overflow, both detected (0 unflagged wrong BBOs) | 16-way bitstream | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
-| Full-chip timing | 125 MHz met, WNS +0.028 ns | Vivado 2025.2 | [report](docs/reports/arty_top/summary.txt) |
+| Full-chip timing (with the injector) | 125 MHz met, WNS +0.048 ns store-and-forward, +0.172 ns cut-through | Vivado 2025.2 | [sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt) |
 | **Pipeline latency T2−T1 (board)** | **p50 136 ns, p99 192 ns, max 232 ns** | AAPL 2019-10-18, 831,842 BBOs, 500 pps | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
 | T2−T0, line-rate bound (board) | p50 126.7 µs, max 133.8 µs | same; store-and-forward | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
-| Pipeline capacity (injector), cut-through vs store-and-forward on the board | `[TBD]` (Phase E) | | |
+| T2−T0, line-rate bound (board), cut-through | p50 64.2 µs, max 121.7 µs; 831,842 / 831,842 BBOs = model | same day; `CUT_THROUGH=1` | [sidecar](data/results/2026-11-13_ct_vs_sf_board.md) |
+| Pipeline capacity (on-chip injector, board) | 4.11 M msg/s: 1,043 msgs in 31,703 cycles, 248 BBOs, digest = model, = simulation | `DATA_W` 8 (input-bound), both builds | [sidecar](data/results/2026-11-13_injector_board.md) |
 
 ## Limitations
 
