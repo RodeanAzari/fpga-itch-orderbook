@@ -11,7 +11,8 @@
 // LEDs: led[0] 1 Hz heartbeat (core clock running, MAC out of reset); led[1] running (a
 // config was acked); led[2] stale or a sticky error (frame, FIFO, TX); led[3] datagram
 // activity (stretched to ~33 ms).
-// UART: idle (the stats travel as UDP datagrams); MDIO unused, eth_mdc held low.
+// UART: idle (the stats travel as UDP datagrams); MDIO unused: eth_mdc held low, eth_mdio
+// released (high-Z; pulled up on the board; the eth-core pin XDC constrains it).
 // Pmod JA (scope cross-check, buildplan 6.5): ja[0] rises 1 cycle after each T1, ja[1] 1
 // cycle after each T2 (ob_core's pulses), each held PULSE_CYCLES; both leave through IOB
 // registers (constr/arty_pmod.xdc), so their rising edges are T2 - T1 apart plus the pin-
@@ -43,6 +44,7 @@ module arty_top #(
     output logic            eth_tx_en,
     output logic [3:0]      eth_txd,
     output logic            eth_mdc,
+    inout  wire logic       eth_mdio,
     output logic [1:0]      ja             // Pmod JA1 = T1, JA2 = T2
 );
     localparam int START_W  = $clog2(MAC_START_CYCLES + 1);
@@ -174,6 +176,7 @@ module arty_top #(
     end
     assign uart_rxd_out = 1'b1;
     assign eth_mdc      = 1'b0;
+    assign eth_mdio     = 1'bz;
 
     logic unused;
     assign unused = sfd_unused;

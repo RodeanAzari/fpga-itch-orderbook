@@ -31,8 +31,9 @@
 // DATA_W: only 8 for now (ADR 0005); 64 adds a message aligner in front of the decoder.
 // Latency: 1 cycle from a message byte in to its output beat. Throughput 1 byte/cycle.
 // Timing: the header verdict's wide compares are precomputed at bytes 10, 11 and 18, and
-// expected = seq + count is formed on the cycle after the header (the next header is
-// at least 20 bytes away).
+// expected = seq + count is added into a register on the cycle after the header and
+// loaded into expected one cycle later, so no 64-bit add follows the backpressure
+// chain (the next header is at least 20 bytes away).
 // Backpressure: s_tready_o = !m_tvalid_o || m_tready_i, also while parsing headers.
 // Reset: synchronous, active-high; clears the session, expected and stale.
 module mold_deframer #(
@@ -101,7 +102,9 @@ module mold_deframer #(
     logic        seq_lt_q;      // byte 18: seq < expected (duplicate / late)
     logic        seq_gt_q;      // byte 18: seq > expected (gap)
     logic [63:0] gap_q;         // byte 18: seq - expected
-    logic        upd_exp_q;     // expected <= seq + count on the cycle after the header
+    logic        upd_exp_q;     // the cycle after the header: exp_sum_q is being formed
+    logic        upd_exp2_q;    // two cycles after the header: expected <= exp_sum_q
+    logic [63:0] exp_sum_q;     // seq + count, from registers stable since the header
 
     logic [63:0] pkt_t0_q;
     logic        fire, emit, hdr_last, last_msg, is_dup, end_ok, drop_pkt;
@@ -167,6 +170,7 @@ module mold_deframer #(
             m_t0_o    <= pkt_t0_q;
         end
         gap_msgs_o <= gap_q;
+        exp_sum_q  <= seq_in_q + 64'(count_q);
     end
 
     // Control.
@@ -178,6 +182,7 @@ module mold_deframer #(
             have_session_q   <= 1'b0;
             expected_q       <= FIRST_SEQ;
             upd_exp_q        <= 1'b0;
+            upd_exp2_q       <= 1'b0;
             stale_o          <= 1'b0;
             m_tvalid_o       <= 1'b0;
             m_tlast_o        <= 1'b0;
@@ -200,8 +205,9 @@ module mold_deframer #(
             malformed_o      <= 1'b0;
             empty_msg_o      <= 1'b0;
             upd_exp_q        <= 1'b0;
+            upd_exp2_q       <= upd_exp_q;
             // seq_in_q and count_q are stable for >= 10 cycles after the header.
-            if (upd_exp_q) expected_q <= seq_in_q + 64'(count_q);
+            if (upd_exp2_q) expected_q <= exp_sum_q;
 
             if (emit) begin
                 m_tvalid_o <= 1'b1;
