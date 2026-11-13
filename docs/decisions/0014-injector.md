@@ -48,4 +48,8 @@ path (ADR 0005 aligner) reuses the same image and meter.
 
 ## Measured evidence
 
-[TBD]
+- Simulation (test_core `inject_capacity`, both eth_rx builds): 1,043 messages / 31,679
+  bytes → 248 BBOs, digest = model, 31,703 cycles (`docs/log.md` 2026-11-12).
+- Board, 2026-11-13 (`data/results/2026-11-13_injector_board.md`): the same 31,703 cycles,
+  248 BBOs and the model's digest for each build (cut-through once, store-and-forward three
+  times, identical). 4.11 M messages/s at `DATA_W` 8, input-bound.

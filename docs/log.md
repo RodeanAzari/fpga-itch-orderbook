@@ -875,3 +875,6 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   flushes on idle, and BBOs now arrive at wire speed instead of in buffer-read bursts.
 - Host: Vivado `make prog` hung >5 min after the usbipd re-attach; openFPGALoader worked.
   One host-side reorder (3 places) in the store-and-forward run, first on the ASIX.
+- Injector on the board (`data/results/2026-11-13_injector_board.md`): 248 BBOs, model
+  digest per build, **31,703 cycles = simulation exactly**, cut-through once and
+  store-and-forward three times (identical). 4.11 M msg/s, input-bound at `DATA_W` 8.
