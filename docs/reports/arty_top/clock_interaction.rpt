@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
-| Date         : Wed Nov 11 22:35:16 2026
+| Date         : Fri Nov 13 13:29:14 2026
 | Host         : RodeanStation running 64-bit Ubuntu 26.04 LTS
 | Command      : report_clock_interaction -delay_type min_max -file /home/rodea/OrderBook/docs/reports/arty_top/clock_interaction.rpt
 | Design       : arty_top
@@ -18,12 +18,12 @@ Clock Interaction Table
                                   WNS                            TNS Failing  TNS Total    WNS Path         WHS                            THS Failing  THS Total    WHS Path         Clock-Pair           Inter-Clock              
 From Clock       To Clock         Clock Edges  WNS(ns)  TNS(ns)    Endpoints    Endpoints  Requirement(ns)  Clock Edges  WHS(ns)  THS(ns)    Endpoints    Endpoints  Requirement(ns)  Classification       Constraints              
 ---------------  ---------------  -----------  -------  -------  -----------  -----------  ---------------  -----------  -------  -------  -----------  -----------  ---------------  -------------------  -----------------------  
-core_unbuf       core_unbuf       rise - rise     0.03     0.00            0        48307             8.00  rise - rise     0.02     0.00            0        48307             0.00  Clean                Timed                    
-core_unbuf       eth_rx_clk       rise - rise    38.47     0.00            0           13            40.00                                           0           13                   Ignored              Max Delay Datapath Only  
-core_unbuf       eth_tx_clk       rise - rise    38.56     0.00            0           13            40.00                                           0           13                   Ignored              Max Delay Datapath Only  
-eth_rx_clk       core_unbuf       rise - rise     6.13     0.00            0           13             8.00                                           0           13                   Ignored              Max Delay Datapath Only  
-eth_rx_clk       eth_rx_clk       rise - rise     6.30     0.00            0          192            40.00  rise - rise     0.12     0.00            0          192             0.00  Clean                Timed                    
-eth_tx_clk       core_unbuf       rise - rise     6.21     0.00            0           13             8.00                                           0           13                   Ignored              Max Delay Datapath Only  
-eth_tx_clk       eth_tx_clk       rise - rise    20.64     0.00            0          281            40.00  rise - rise     0.12     0.00            0          281             0.00  Clean                Timed                    
+core_unbuf       core_unbuf       rise - rise     0.05     0.00            0        50761             8.00  rise - rise     0.05     0.00            0        50761             0.00  Clean                Timed                    
+core_unbuf       eth_rx_clk       rise - rise    38.37     0.00            0           13            40.00                                           0           13                   Ignored              Max Delay Datapath Only  
+core_unbuf       eth_tx_clk       rise - rise    38.57     0.00            0           13            40.00                                           0           13                   Ignored              Max Delay Datapath Only  
+eth_rx_clk       core_unbuf       rise - rise     6.31     0.00            0           13             8.00                                           0           13                   Ignored              Max Delay Datapath Only  
+eth_rx_clk       eth_rx_clk       rise - rise     6.30     0.00            0          194            40.00  rise - rise     0.12     0.00            0          194             0.00  Clean                Timed                    
+eth_tx_clk       core_unbuf       rise - rise     6.53     0.00            0           13             8.00                                           0           13                   Ignored              Max Delay Datapath Only  
+eth_tx_clk       eth_tx_clk       rise - rise    20.64     0.00            0          287            40.00  rise - rise     0.12     0.00            0          287             0.00  Clean                Timed                    
 
 

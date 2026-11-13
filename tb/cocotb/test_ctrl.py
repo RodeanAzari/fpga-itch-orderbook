@@ -1,7 +1,7 @@
 """cocotb tests for rtl/out/out_ctrl: the control-port parser and the config sequence.
 
 Why these tests matter: a config resets the whole pipeline and picks where the output
-goes. Accepting a malformed packet (wrong magic, a length off by one, mode 2) would
+goes. Accepting a malformed packet (wrong magic, a length off by one, mode 3) would
 reconfigure the board from garbage; rejecting a good one leaves the host waiting for an
 ack that never comes. Releasing the feed before out_builder has started the ack would put
 old-run records after the ack (pkt_seq 0 no longer marks the start of the run); acking
@@ -35,7 +35,7 @@ def random_config(rng) -> Config:
     return Config(
         feed_group=rng.getrandbits(32),
         feed_port=rng.getrandbits(16),
-        mode=rng.getrandbits(1),
+        mode=rng.randrange(3),  # 2: injector run (ADR 0014)
         locate_valid=bool(rng.getrandbits(1)),
         symbol=sym,
         lo_price=rng.getrandbits(32),
@@ -59,7 +59,7 @@ def payload(rng, p_good: float) -> tuple[bytes, bool, str]:
         i = rng.choice([0, 1, 2, 3, 8, 9, 10, 11])
         p[i] ^= 1 << rng.randrange(8)
     elif kind == "mode":
-        p[18] = rng.choice([2, 3, 0x80, 255, rng.randint(2, 255)])  # 2: first bad value
+        p[18] = rng.choice([3, 0x80, 255, rng.randint(3, 255)])  # 3: first bad value
     elif kind == "lv":
         p[19] = rng.choice([2, 3, 0x80, 255, rng.randint(2, 255)])
     elif kind == "short":
@@ -83,7 +83,7 @@ def cfg_of(dut) -> Config:
     return Config(
         feed_group=int(dut.cfg_group_o.value),
         feed_port=int(dut.cfg_port_o.value),
-        mode=int(dut.cfg_mode_o.value),
+        mode=int(dut.cfg_mode_o.value) | int(dut.cfg_inject_o.value) << 1,
         locate_valid=bool(int(dut.cfg_locate_valid_o.value)),
         symbol=sym.decode("latin-1").rstrip(" "),
         lo_price=int(dut.cfg_lo_price_o.value),

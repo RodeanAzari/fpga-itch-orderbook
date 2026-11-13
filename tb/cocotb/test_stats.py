@@ -1,11 +1,11 @@
-"""cocotb tests for rtl/out/out_stats: the 41 stats counters and the 1 s tick.
+"""cocotb tests for rtl/out/out_stats: the 45 stats counters and the 1 s tick.
 
 Why these tests matter: the stats packet is how every capacity limit and error is made
 visible on hardware ("never silently produce a wrong book"). A counter wired to the wrong
 slot, an amount input added as +1, a config clear that also wipes the control counters
 (the host could no longer tell its configs were accepted), or swapped stale bits would
 all mislead the host. A reference model built from docs/protocol.md's table
-(model.protocol.STATS_NAMES order) is compared with all 41 counters on every cycle under
+(model.protocol.STATS_NAMES order) is compared with all 45 counters on every cycle under
 random events on every input at once, random clears, and gap amounts up to 2^64 (wrap).
 The tick must fire exactly every TICK_CYCLES cycles after a clear.
 """
@@ -23,7 +23,8 @@ from model.protocol import N_STATS, STATS_NAMES
 
 TICK = int(os.environ.get("TICK_CYCLES", "50"))
 MASK = (1 << 64) - 1
-VALUES = {"locate", "stale"}
+INJ = ("inj_cycles", "inj_bbos", "inj_digest")  # inj_meter outputs (ADR 0014)
+VALUES = {"locate", "stale", *INJ}
 KEEP = {"ctrl_ok", "ctrl_bad"}  # not cleared by a config
 AMOUNT = {
     "mold_gap_messages": 64,
@@ -44,6 +45,7 @@ async def run(dut, name: str, cycles: int, p_event: float, p_clear: float) -> No
     ins = {n: getattr(dut, f"{n}_i") for n in PULSES + list(AMOUNT)}
     ins |= {n: getattr(dut, n) for n in ("locate_valid_i", "locate_i", "feed_stale_i",
                                           "book_stale_i", "clear_i")}  # fmt: skip
+    ins |= {n: getattr(dut, f"{n}_i") for n in INJ}
     for s in ins.values():
         s.value = 0
     dut.rst_i.value = 1
@@ -89,6 +91,9 @@ async def run(dut, name: str, cycles: int, p_event: float, p_clear: float) -> No
         ins["locate_valid_i"].value, ins["locate_i"].value = lv, loc
         ins["feed_stale_i"].value, ins["book_stale_i"].value = fs, bs
         ins["clear_i"].value = int(clear)
+        inj = {n: rng.choice([0, MASK, rng.getrandbits(64)]) for n in INJ}
+        for n, v in inj.items():
+            ins[n].value = v
 
         for n in STATS_NAMES:
             if n in VALUES:
@@ -111,6 +116,7 @@ async def run(dut, name: str, cycles: int, p_event: float, p_clear: float) -> No
             model[n] &= MASK
         model["locate"] = lv << 16 | loc
         model["stale"] = bs << 1 | fs
+        model |= inj
         since_clear = 0 if clear else since_clear + 1
         clears += clear
     assert ticks > 0 and clears > 0, f"{name}: ticks {ticks}, clears {clears}"

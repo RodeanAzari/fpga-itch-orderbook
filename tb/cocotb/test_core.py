@@ -12,6 +12,8 @@ Oracle: model.protocol.expected() for the record stream (BBO mode, then trace mo
 configured locate after a second config), model counters for the stats. Feed packets are
 lost, duplicated and mixed with heartbeats; foreign frames, bad FCS and bad control
 packets are mixed in. Feed frames sent before the first config must produce nothing.
+Both eth_rx modes (CUT_THROUGH = 0, 1). In cut-through a bad-FCS feed frame reaches the
+decoder, so the main test sends none; `ct_bad_frames` covers the bad-frame rules.
 """
 
 from __future__ import annotations
@@ -31,8 +33,12 @@ from tb_common import get_rng
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "rtl" / "eth" / "tb"))
 from eth import MiiDriver, MiiFrame, MiiTxMonitor, UdpFrame, ip_checksum, with_fcs  # noqa: E402
 
+from analysis.injector_image import BASE_TICKS as INJ_BASE  # noqa: E402
+from analysis.injector_image import CONFIG as INJ_CFG  # noqa: E402
+from analysis.injector_image import image  # noqa: E402
 from model import generator  # noqa: E402
 from model.bounded import BoundedBook  # noqa: E402
+from model.injector import expected_run  # noqa: E402
 from model.moldudp64 import FeedDecoder, heartbeat, pack, packetize  # noqa: E402
 from model.protocol import (  # noqa: E402
     BBO,
@@ -52,17 +58,20 @@ from model.protocol import (  # noqa: E402
 SET_BITS = int(os.environ.get("SET_BITS", "11"))
 WAYS = int(os.environ.get("WAYS", "16"))
 TICK_CYCLES = int(os.environ.get("TICK_CYCLES", "30000"))
+CUT = int(os.environ.get("CUT_THROUGH", "0"))  # eth_rx mode (ADR 0013)
 OWN_MAC, OWN_IP, CTRL_PORT = bytes.fromhex("02000a0b0c0d"), 0xC0A80A02, 7000
 GROUP, PORT = 0xEF010101, 26400
 GOOD_RESIDUE = 0x2144DF1C  # zlib.crc32 over data + a correct FCS
 BASE_TICKS = generator.DEFAULT.base_price // 100
 CORE_NS = 8
+STALE_BIT = 0x01  # docs/protocol.md BBO flags bit 0, low byte of the big-endian u16
 # Feed payload sent right after a config: its burst out of eth_rx's store-and-forward
 # buffer spans the feed's release. Measured: release ~32.7 us after the config's last
 # wire byte (the book clear, 2^12 cycles of levels, dominates); a 325-byte payload's frame
 # ends 31.3 us after it and its ~2.6 us burst covers the release (311-342 B work). The
-# test asserts it did.
-STRADDLE_BYTES = int(os.environ.get("STRADDLE_BYTES", "325"))
+# test asserts it did. Cut-through (ADR 0013): the payload streams at wire speed and the
+# release comes at ~32 us, so a 400-byte payload (frame ends ~37 us) spans it.
+STRADDLE_BYTES = int(os.environ.get("STRADDLE_BYTES", "400" if CUT else "325"))
 
 
 def parse_frame(data: bytes) -> tuple[bytes, int, int, int, bytes]:
@@ -351,7 +360,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
             await b.send(with_fcs(UdpFrame(p[:40], GROUP, PORT + 1).build()))
             want["rx_frames_ok"] += 1
             want["feed_filtered"] += 1
-        if k % 13 == 6:  # bad FCS on a feed frame: never reaches udp_rx
+        if k % 13 == 6 and not CUT:  # bad FCS on a feed frame: never reaches udp_rx
             f = bytearray(with_fcs(UdpFrame(p, GROUP, PORT).build()))
             f[rng.randrange(len(f))] ^= 1 << rng.randrange(8)
             await b.send(bytes(f))
@@ -377,7 +386,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     book = BoundedBook(
         base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS, ways=WAYS
     )
-    recs, _ = expected(pkts, cfg, book)
+    recs, _ = expected(pkts, cfg, book, cut_through=bool(CUT))
     n_book, dec = book_records(cfg, pkts)
     kind = TRACE if cfg.mode else BBO
     got: list[bytes] = []
@@ -476,3 +485,157 @@ async def frames_to_datagrams(dut):
     # trace mode: a 40-byte record per ~38-byte message, so the feed is paced to half rate
     await run_phase(b, rng, h2, cfg2, 300, b"SESSIONBBB", ctrl_counts, 1.0)
     assert b.straddles >= 2, f"the feed release fell inside a payload {b.straddles} times"
+
+
+@cocotb.test(skip=not CUT)
+async def ct_bad_frames(dut):
+    """Cut-through (ADR 0013): a bad frame is acted on before its verdict, so the rules
+    are about what happens after it. A bad frame to another port leaves the book alone; a
+    bad frame carrying a valid config is rejected (no ack, the run continues); a bad feed
+    frame's messages update the book unflagged, every later BBO is stale, and it is
+    counted once in cut_through_bad. Bad FCS only (the payload is intact), so the model
+    knows exactly what the decoder saw."""
+    rng = get_rng("ct_bad_frames")
+    b = Bench(dut)
+    await b.start()
+    host = Host(rng)
+    cfg = Config(GROUP, PORT, 0, False, generator.DEFAULT.stock, window_lo_price(BASE_TICKS), 0)
+    await b.send(host.ctrl_frame(packet(CONFIG, 1, [cfg.record()])))
+    await b.wait_frames(1, 2_000)
+    ack = b.datagrams(host)[0]
+    assert ack.kind == CONFIG_ACK
+    msgs = generator.generate(rng.randrange(1 << 30), 600, generator.Config(p_unknown_ref=0.0))
+    pkts = list(packetize(msgs, b"SESSIONCTB", max_payload=600))  # clean: no damage, no loss
+    k_bad = len(pkts) // 2
+
+    def bad_fcs(frame: bytes) -> bytes:
+        f = bytearray(frame)
+        f[-1] ^= 1 << rng.randrange(8)  # the FCS: every payload byte stays intact
+        return bytes(f)
+
+    for k, p in enumerate(pkts):
+        if k == k_bad - 2:
+            await b.send(bad_fcs(with_fcs(UdpFrame(p, GROUP, PORT + 1).build())))
+            await b.send(bad_fcs(host.ctrl_frame(packet(CONFIG, 2, [cfg.record()]))))
+        await b.send(bad_fcs(b.feed(p)) if k == k_bad else b.feed(p), 0.2)
+    book = BoundedBook(
+        base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS, ways=WAYS
+    )
+    recs, dec = expected(pkts, cfg, book, cut_through=True)
+    assert not dec.stale and not book.stale, "the clean run went stale on its own"
+    first_after = struct.unpack_from(">Q", pkts[k_bad + 1], 10)[0]
+    recs = [
+        r[:2] + bytes([r[2], r[3] | STALE_BIT]) + r[4:]
+        if struct.unpack_from(">Q", r, 32)[0] >= first_after
+        else r
+        for r in recs
+    ]
+    n_bad = sum(1 for r in recs if r[3] & STALE_BIT)
+    assert 0 < n_bad < len(recs)
+    got: list[bytes] = []
+    stats: list = []
+    # Only stats snapshotted after every frame is counted: the last frames may publish no
+    # BBO, so "all records in" alone can stop on a snapshot taken before their end.
+    settle = 2 * TICK_CYCLES
+    for i in range(150):
+        await ClockCycles(dut.clk_i, 10_000)
+        for d in b.datagrams(host):
+            assert d.kind != CONFIG_ACK, "a config in a bad frame was applied"
+            if d.kind != STATS:
+                got.extend(d.records)
+            elif (i + 1) * 10_000 > settle:
+                stats.append(d)
+        if len(got) >= len(recs) and stats:
+            break
+    vals = {n: int.from_bytes(r) for n, r in zip(STATS_NAMES, stats[-1].records, strict=True)}
+    want = {"cut_through_bad": 1, "rx_crc_err": 3, "ctrl_ok": 1, "ctrl_bad": 1,
+            "feed_datagrams": len(pkts), "stale": 1}  # fmt: skip
+    bad = {n: (vals[n], w) for n, w in want.items() if vals[n] != w}
+    assert not bad, f"stats (got, want): {bad}"
+    got = [without_times(g) for g in got]
+    assert len(got) == len(recs), f"{len(got)} records, want {len(recs)}"
+    diff = [i for i, (g, w) in enumerate(zip(got, recs, strict=True)) if g != w]
+    assert not diff, f"first diff at {diff[0]}: {got[diff[0]].hex()} vs {recs[diff[0]].hex()}"
+    cocotb.log.info("ct bad frames: %d BBOs, %d stale after the bad frame", len(got), n_bad)
+
+
+async def inject_run(b: Bench, host: Host, cfg: Config, pkt_seq: int, noise: list[bytes]):
+    """One mode-2 config; network feed frames (noise) arrive during the run. Returns the
+    final stats once two consecutive stats datagrams agree on the meter's values, and
+    the span by the bench's own clock: first injector beat to the last BBO's T2, + 1."""
+    first: list[int] = []
+
+    async def first_beat() -> None:
+        dut = b.dut
+        while True:
+            await RisingEdge(dut.clk_i)
+            await ReadOnly()
+            if int(dut.i_tvalid.value) and int(dut.i_tready.value):
+                first.append(int(dut.now_q.value))
+                return
+
+    watch = cocotb.start_soon(first_beat())
+    await b.send(host.ctrl_frame(packet(CONFIG, pkt_seq, [cfg.record()])))
+    for p in noise:
+        await b.send(b.feed(p))
+    prev, acked = None, False
+    for _ in range(60):
+        await ClockCycles(b.dut.clk_i, 10_000)
+        for d in b.datagrams(host):
+            assert d.kind in (CONFIG_ACK, STATS), f"datagram type {d.kind:#x} in mode 2"
+            acked |= d.kind == CONFIG_ACK
+            if d.kind == STATS and acked:  # earlier stats are the previous run's
+                vals = dict(zip(STATS_NAMES, (int.from_bytes(r) for r in d.records), strict=True))
+                inj = (vals["inj_cycles"], vals["inj_bbos"], vals["inj_digest"])
+                if inj == prev and inj[1]:
+                    assert first, "no injector beat seen"
+                    return vals, b.t2_seen[-1] - first[0] + 1
+                prev = inj
+    watch.kill()
+    raise AssertionError(f"inject run did not settle: {prev}")
+
+
+@cocotb.test()
+async def inject_capacity(dut):
+    """Mode 2 (ADR 0014): the injector's AAPL image through the decoder and book at core
+    rate. Every BBO must match the model (count and order-sensitive digest), the network
+    feed must not leak in, nothing but stats may be sent, and the run must repeat
+    cycle-exact (the span is the capacity measurement)."""
+    rng = get_rng("inject_capacity")
+    b = Bench(dut)
+    await b.start()
+    host = Host(rng)
+    img = image()
+    cfg = Config(GROUP, PORT, 2, False, INJ_CFG.symbol, INJ_CFG.lo_price, 0)
+    book = BoundedBook(base_ticks=INJ_BASE, half_window=2048, sets_per_bank=1 << SET_BITS,
+                       ways=WAYS)  # fmt: skip
+    want = expected_run(img, cfg, book, cut_through=bool(CUT))
+    n_book, _ = book_records(Config(GROUP, PORT, 0, False, "AAPL", cfg.lo_price, 0), img.pkts)
+    noise = list(packetize(generator.generate(rng.randrange(1 << 30), 60), b"SESSIONNOI"))
+    runs = []
+    for k in range(2):
+        vals, span = await inject_run(b, host, cfg, k + 1, noise if k == 0 else [])
+        assert vals["inj_cycles"] == span, f"run {k}: inj_cycles {vals['inj_cycles']}, bench {span}"
+        got = {n: vals[n] for n in ("inj_bbos", "inj_digest", "mold_packets", "book_records",
+                                    "out_records", "feed_datagrams")}  # fmt: skip
+        exp = {"inj_bbos": want.bbos, "inj_digest": want.digest, "mold_packets": len(img.pkts),
+               "book_records": n_book, "out_records": 0,
+               "feed_datagrams": len(noise) if k == 0 else 0}  # fmt: skip
+        assert got == exp, f"run {k}: {got} vs {exp}"
+        n_bytes = sum(map(len, img.pkts))
+        assert vals["inj_cycles"] >= n_bytes, "faster than one byte per cycle"
+        runs.append(vals["inj_cycles"])
+    assert runs[0] == runs[1], f"spans differ: {runs}"
+    # a normal config afterwards zeroes the meter
+    await b.send(host.ctrl_frame(packet(CONFIG, 3, [Config(GROUP, PORT).record()])))
+    await ClockCycles(dut.clk_i, 2 * TICK_CYCLES + 10_000)
+    last = [d for d in b.datagrams(host) if d.kind == STATS][-1]
+    vals = dict(zip(STATS_NAMES, (int.from_bytes(r) for r in last.records), strict=True))
+    assert (vals["inj_cycles"], vals["inj_bbos"], vals["inj_digest"]) == (0, 0, 0)
+    cyc = runs[0]
+    cocotb.log.info(
+        "inject: %d messages, %d payload bytes, %d BBOs, digest %#018x in %d cycles: "
+        "%.3f M msg/s at 125 MHz (%.3f bytes/cycle)",
+        img.messages, n_bytes, want.bbos, want.digest, cyc, img.messages * 125 / cyc,
+        n_bytes / cyc,
+    )  # fmt: skip

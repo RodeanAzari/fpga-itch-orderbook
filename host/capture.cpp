@@ -11,7 +11,7 @@
 // model.protocol.parse splits it), flushed per datagram so it can be followed live. Not
 // logged, only counted: datagrams before the ack,
 // datagrams from any other source, and malformed ones (header, type, record_len or length
-// wrong; a config type; stats without all 41 counters).
+// wrong; a config type; stats without all 45 counters).
 //
 // pkt_seq must rise by 1 per datagram after the ack (0). A jump counts seq_gaps and the
 // datagrams lost (seq_lost); a lower or equal value counts seq_backwards (reordered or
@@ -56,7 +56,7 @@ constexpr uint8_t kBbo = 0x01, kTrace = 0x02, kStats = 0x03, kConfig = 0x10, kAc
 constexpr size_t kConfigLen = 24;
 
 // docs/protocol.md, "Stats": the counters in record order.
-constexpr std::array<const char*, 41> kStatsNames = {"uptime_cycles",
+constexpr std::array<const char*, 45> kStatsNames = {"uptime_cycles",
                                                      "rx_frames_ok",
                                                      "rx_crc_err",
                                                      "rx_err",
@@ -96,7 +96,11 @@ constexpr std::array<const char*, 41> kStatsNames = {"uptime_cycles",
                                                      "out_datagrams",
                                                      "ctrl_ok",
                                                      "ctrl_bad",
-                                                     "t0_lost"};
+                                                     "t0_lost",
+                                                     "cut_through_bad",
+                                                     "inj_cycles",
+                                                     "inj_bbos",
+                                                     "inj_digest"};
 
 size_t record_len(uint8_t type) {
     switch (type) {
@@ -153,14 +157,14 @@ int64_t now_ns() {
 
 [[noreturn]] void usage(const char* argv0) {
     std::fprintf(stderr,
-                 "usage: %s --log FILE --lo-price N [--symbol SYM] [--mode bbo|trace]\n"
+                 "usage: %s --log FILE --lo-price N [--symbol SYM] [--mode MODE]\n"
                  "          [--locate N] [--group IP] [--feed-port N] [--fpga IP]\n"
                  "          [--ctrl-port N] [--bind-ip IP] [--ready-file FILE]\n"
                  "          [--retry-ms N] [--ack-timeout S] [--idle S] [--duration S]\n"
                  "  --log          datagram log (u16 BE length + payload)\n"
                  "  --lo-price     price window's low edge, ITCH price units (ADR 0002)\n"
                  "  --symbol       up to 8 characters (default AAPL)\n"
-                 "  --mode         bbo (default) or trace\n"
+                 "  --mode         bbo (default), trace or inject (ADR 0014)\n"
                  "  --locate       use this locate (else the FPGA learns it from R)\n"
                  "  --group/--feed-port  feed address (default 239.1.1.1:26400)\n"
                  "  --fpga/--ctrl-port   FPGA control address (default 192.168.10.2:7000)\n"
@@ -212,8 +216,8 @@ Args parse(int argc, char** argv) {
             a.symbol = v;
         else if (k == "--mode") {
             const std::string m = v;
-            if (m != "bbo" && m != "trace") usage(argv[0]);
-            a.mode = m == "trace" ? 1 : 0;
+            if (m != "bbo" && m != "trace" && m != "inject") usage(argv[0]);
+            a.mode = m == "trace" ? 1 : m == "inject" ? 2 : 0;
         } else if (k == "--locate") {
             a.locate = to_u64(v, argv[0]);
             a.locate_valid = true;
@@ -489,7 +493,7 @@ int run(const Args& a) {
     std::printf("log=%s\n", a.log.c_str());
     std::printf("fpga=%s:%d\n", a.fpga.c_str(), a.ctrl_port);
     std::printf("feed=%s:%d\n", a.group.c_str(), a.feed_port);
-    std::printf("mode=%s\n", a.mode == 1 ? "trace" : "bbo");
+    std::printf("mode=%s\n", a.mode == 1 ? "trace" : a.mode == 2 ? "inject" : "bbo");
     std::printf("symbol=%s\n", a.symbol.c_str());
     u("lo_price", a.lo_price);
     if (a.locate_valid) u("locate_cfg", a.locate);

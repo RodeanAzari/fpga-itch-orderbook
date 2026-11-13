@@ -23,11 +23,14 @@ lint:
 	@for f in $(RTL); do \
 	  verilator --lint-only -Wall --assert $(RTL) $(ETH_RTL) $(XIL_RTL) --top-module $$(basename $$f .sv) || exit 1; \
 	done
-	@echo "lint: $(words $(RTL)) modules clean"
+	verilator --lint-only -Wall --assert $(RTL) $(ETH_RTL) $(XIL_RTL) --top-module ob_core -GCUT_THROUGH=1
+	@echo "lint: $(words $(RTL)) modules clean, and ob_core in cut-through (ADR 0013)"
 
-# cocotb + Verilator regression (tb/run.py [test_module ...] for a subset).
+# cocotb + Verilator regression (tb/run.py [test_module ...] for a subset); JOBS parameter
+# sets at once, each in its own process (build/sim/<test>_<n>.log).
+JOBS ?= 4
 sim:
-	$(PY) tb/run.py
+	JOBS=$(JOBS) $(PY) tb/run.py
 
 # SymbiYosys proofs (buildplan §8.3).
 formal:

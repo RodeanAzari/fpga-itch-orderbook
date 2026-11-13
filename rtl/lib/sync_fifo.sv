@@ -6,7 +6,9 @@
 // happen on every cycle. A write becomes visible on rd_data_o 2 cycles after it is
 // accepted (wr_vis_q lags the write pointer by one cycle, so the RAM read of a freshly
 // written address never returns the old contents).
-// full_o counts every accepted write, so the RAM never overflows.
+// full_o counts every accepted write, so the RAM never overflows. It is a register
+// (next occupancy == DEPTH, from this cycle's wr_en_i and rd_en_i), equal cycle for cycle
+// to the pointer compare (asserted), so a writer's ready path starts at a flip-flop.
 // flush_i: empties the FIFO in one cycle (pointers to 0); takes priority over wr/rd.
 // Writes into a full FIFO and pops of an empty FIFO are protocol errors (asserted).
 // Reset: synchronous, active-high (pointers only; the RAM is not cleared).
@@ -27,21 +29,25 @@ module sync_fifo #(
     localparam int PTR_W = ADDR_W + 1;  // extra bit tells full from empty
     localparam logic [PTR_W-1:0] DEPTH = PTR_W'(2 ** ADDR_W);
 
-    logic [PTR_W-1:0] wr_q, wr_vis_q, rd_q, rd_d;
+    logic [PTR_W-1:0] wr_q, wr_vis_q, rd_q, rd_d, wr_d;
+    logic             full_q;
 
-    assign full_o  = (wr_q - rd_q) == DEPTH;
+    assign full_o  = full_q;
     assign empty_o = wr_vis_q == rd_q;
     assign rd_d    = rd_q + PTR_W'(rd_en_i);
+    assign wr_d    = wr_q + PTR_W'(wr_en_i);
 
     always_ff @(posedge clk_i) begin
         if (rst_i || flush_i) begin
             wr_q     <= '0;
             wr_vis_q <= '0;
             rd_q     <= '0;
+            full_q   <= 1'b0;
         end else begin
-            wr_q     <= wr_q + PTR_W'(wr_en_i);
+            wr_q     <= wr_d;
             wr_vis_q <= wr_q;
             rd_q     <= rd_d;
+            full_q   <= (wr_d - rd_d) == DEPTH;
         end
     end
 
@@ -56,6 +62,7 @@ module sync_fifo #(
             assert (!(wr_en_i && full_o));
             assert (!(rd_en_i && empty_o));
         end
+        if (!rst_i) assert (full_q == ((wr_q - rd_q) == DEPTH));
     end
 `endif
 endmodule

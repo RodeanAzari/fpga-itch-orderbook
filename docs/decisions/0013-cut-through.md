@@ -58,7 +58,17 @@ Book side in ob_core: eth_rx also marks a bad frame with `m_tuser_o` on its `tla
 in cut-through (as `eth_fcs_check` already does internally; oversize is added in eth_rx).
 When that beat is accepted, the feed `udp_rx`'s status for the same frame comes on the
 same or the next cycle; if that frame put any payload beat into the feed, the feed is
-marked stale (sticky) and `cut_through_bad` counts it.
+marked stale (sticky until the next config) and `cut_through_bad` counts it. A payload's
+last beat can leave udp_rx after its frame's status (output backpressure); a flag keeps
+that beat from counting as payload of the next frame.
+
+Control path: the control udp_rx also sees every frame, and a corrupted config must
+never be applied. ob_core sets the control datagram's `tuser` (out_ctrl rejects it,
+counted in `ctrl_bad`) unless its frame has already ended good when the datagram's last
+beat leaves udp_rx. So in cut-through a control datagram must end its frame (no
+Ethernet padding: payload ≥ 18 bytes; a config is 32). Rejected alternative: a
+store-and-forward buffer on the control path only (BRAM and a second frame path, for
+a packet sent once per run).
 
 ## Decision
 
@@ -79,4 +89,16 @@ roughly the frame's serialization after each message).
 
 ## Measured evidence
 
-[TBD]
+- Board, full AAPL day 2019-10-18 at 500 pps, both builds from `2325efd`
+  (`data/results/2026-11-13_ct_vs_sf_board.md`): 831,842 / 831,842 BBOs identical to the
+  model in each build and to each other but for the times and the `cut_through` flag;
+  `cut_through_bad` 0, no FCS errors on the link. T2−T1 unchanged (p50 136 ns, max 232 ns).
+  T2−T0 p50 126.7 → 64.2 µs, max 133.8 → 121.7 µs; paired per record, cut-through is
+  7.2–115.1 µs earlier, never later.
+- Output: cut-through sent 3.5x the datagrams (1.08 BBOs each vs 3.8), since out_builder
+  flushes on idle and BBOs now arrive at wire speed.
+- Timing (full chip with the injector, 125 MHz): WNS +0.172 ns cut-through, +0.048 ns
+  store-and-forward (`docs/reports/arty_top_ct/`, `docs/reports/arty_top/`). Closing it
+  took the registered deframer sum, a registered sync_fifo full and registered t0_track
+  PEND occupancy (`docs/log.md` 2026-11-13).
+- The bad-frame path (`cut_through_bad`) is covered in simulation only (`ct_bad_frames`).

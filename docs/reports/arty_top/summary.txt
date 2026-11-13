@@ -1,3 +1,3 @@
 vivado 2025.2  part xc7a100tcsg324-1  top arty_top
 core clock period 8.000 ns (MMCM divider 8)
-WNS 0.028 ns  WHS 0.020 ns
+WNS 0.048 ns  WHS 0.051 ns

@@ -69,6 +69,10 @@ STATS_NAMES = (
     "ctrl_ok",
     "ctrl_bad",
     "t0_lost",
+    "cut_through_bad",
+    "inj_cycles",
+    "inj_bbos",
+    "inj_digest",
 )
 N_STATS = len(STATS_NAMES)
 
@@ -113,12 +117,19 @@ def without_times(rec: bytes) -> bytes:
     return rec[: TIMES.start] + bytes(TIMES.stop - TIMES.start)
 
 
-def bbo_record(bbo: Bbo, mold_seq: int, stale: bool, t: tuple[int, int, int] = (0, 0, 0)) -> bytes:
+def bbo_record(
+    bbo: Bbo,
+    mold_seq: int,
+    stale: bool,
+    t: tuple[int, int, int] = (0, 0, 0),
+    cut_through: bool = False,
+) -> bytes:
     flags = (
         STALE * stale
         | CROSSED * bbo.crossed
         | LOCKED * bbo.locked
         | OUT_OF_WINDOW * bbo.out_of_window
+        | CUT_THROUGH * cut_through
     )
     return _BBO.pack(
         0,
@@ -159,7 +170,7 @@ def stats_records(values: Sequence[int]) -> list[bytes]:
 class Config:
     feed_group: int = 0xEF010101  # 239.1.1.1
     feed_port: int = 26400
-    mode: int = 0  # 0 = BBO, 1 = trace
+    mode: int = 0  # 0 = BBO, 1 = trace, 2 = inject (ADR 0014)
     locate_valid: bool = False
     symbol: str = "AAPL"
     lo_price: int = 0
@@ -179,7 +190,7 @@ class Config:
 
 
 def parse_config(payload: bytes) -> Config | None:
-    """What the RTL accepts: a well-formed type 0x10 packet with mode and locate_valid 0/1.
+    """What the RTL accepts: a well-formed type 0x10 packet, mode 0-2, locate_valid 0/1.
     Returns None (counted in ctrl_bad, no ack) for anything else."""
     try:
         d = parse(payload)
@@ -188,7 +199,7 @@ def parse_config(payload: bytes) -> Config | None:
     if d.kind != CONFIG or len(d.records) != 1:
         return None
     group, port, mode, lv, sym, lo, loc, _ = _CONFIG.unpack(d.records[0])
-    if mode > 1 or lv > 1:
+    if mode > 2 or lv > 1:
         return None
     return Config(group, port, mode, bool(lv), sym.decode("latin-1").rstrip(" "), lo, loc)
 
@@ -199,12 +210,13 @@ def window_lo_price(base_ticks: int, half_window: int = 2048) -> int:
 
 
 def expected(
-    pkts: Iterable[bytes], cfg: Config, book: BoundedBook
+    pkts: Iterable[bytes], cfg: Config, book: BoundedBook, cut_through: bool = False
 ) -> tuple[list[bytes], FeedDecoder]:
     """The record stream the FPGA must send for these feed payloads (BBO or trace mode).
 
     The BBO stale flag is the cause record's feed stale (it rides with the record) OR the
     book's stale state after applying it. `book` is the RTL's geometry; it is updated.
+    `cut_through`: the bitstream's build mode, carried in every BBO's flags (ADR 0013).
     """
     dec = FeedDecoder(cfg.symbol, locate=cfg.locate if cfg.locate_valid else None)
     out: list[bytes] = []
@@ -213,5 +225,7 @@ def expected(
             if cfg.mode == 1:
                 out.append(trace_record(rec))
             elif (bbo := book.apply(rec.msg)) is not None:
-                out.append(bbo_record(bbo, rec.seq, rec.stale or book.stale))
+                out.append(
+                    bbo_record(bbo, rec.seq, rec.stale or book.stale, cut_through=cut_through)
+                )
     return out, dec

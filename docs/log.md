@@ -755,3 +755,126 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   and T2 have their pulse. Full chip WNS +0.028 ns (host load 38: ~1 h build).
 - User decisions: ADR 0013 accepted as proposed; 0005 next = link flaps + ILA; a scope is
   available for the cross-check.
+
+## 2026-11-12 — cut-through (ADR 0013): model, eth-core option, OrderBook side
+
+- P5 request 0012 done (tb-common Used by: learned-resilience).
+- User decision: the cut-through release is `eth-core-v0.3`; the 0005 fix moves to v0.4
+  (request 0005 and `dependencies.toml` updated; v0.3 release test = sim both modes +
+  `rx_stats` cut-through ≥ 10 min on the board, zero drops).
+- Golden model first: `T0Track(cut_through=True)` (`model/timestamps.py`), tested against
+  a frame-level schedule (`model/tests/test_timestamps.py`, 49 tests, 5 injected bugs
+  caught). Needs a new eth_rx output, `emitted_o`, and a one-entry hold (ADR 0013).
+- fpga-eth-core `71097d9`: `eth_rx` `CUT_THROUGH`, `emitted_o`, `m_tuser_o`; oversize
+  checked in eth_rx in cut-through. Sim: first byte 520 ns after the SFD (store-and-forward
+  121,536 ns, 1,514-byte frame). `rx_stats` cut-through build WNS +0.592 ns.
+- OrderBook (uncommitted until the tag): t0_track cut-through mode (5/5 injected bugs
+  caught); ob_core stale on a delivered bad frame + stats counter 41 `cut_through_bad`
+  (N_STATS 42), BBO flag `cut_through`, control datagrams only from frames already ended
+  good; `CUT_THROUGH` through arty_top and `syn/build_top.tcl ... ct`. test_core in both
+  modes + `ct_bad_frames` (3/4 injected bugs caught; the 4th was an unreachable term,
+  removed and replaced by an assertion).
+- Bugs (symptom → root cause → fix):
+  - Model: a frame start after a late frame's start mismatched its T0 → a start taken from
+    `hold` set `started`, so the next frame's status thought its own start had happened →
+    only a PEND start sets `started`.
+  - eth_rx cut-through: a good 339-byte frame came out marked bad → the oversize hold was
+    set on the same cycle its tlast beat left (set overrode clear) and leaked to the next
+    frame → set only while the beat waits.
+  - `ct_status_order` reported no overflow → the stall phase still drained 2.5 B/µs →
+    full stall.
+  - test_core cut-through: no straddle of the feed release → the 325-byte payload streams
+    at wire speed and ends before the release → 400 bytes in cut-through. The "clean" run
+    went stale → `feed_packets` injects damaged messages → plain `packetize`.
+  - `pkill -f` on the sim name killed its own shell again (pattern in the command line).
+
+## 2026-11-12 (later): on-chip injector, pipeline capacity in simulation (ADR 0014)
+
+- Board unavailable (adapter and Arty not attached); worked on what needs no hardware.
+- README Phase E results filled in from the 2026-11-11 board sidecar (`793b594`).
+- Injector (ADR 0014, proposed): golden model first (`model/injector.py`: ROM image =
+  longest prefix of the AAPL fixture that fits 32 K × 9 and ends on a BBO-publishing
+  message; 64-bit order-sensitive digest; 7 tests, 5/5 injected model bugs caught). RTL
+  `rtl/meas/injector.sv` (ROM, 2-entry output FIFO, one byte per cycle) and
+  `rtl/meas/inj_meter.sv` (never stalls; span, count, digest), config mode 2, stats
+  42–44 (N_STATS 45), `capture --mode inject`.
+- Sim result (test_core `inject_capacity`, both eth_rx modes, cycle-exact and repeatable):
+  1,043 messages / 31,679 payload bytes → 248 BBOs, digest = model, in **31,703 cycles**:
+  0.999 bytes/cycle, 4.11 M msg/s at 125 MHz. At `DATA_W` 8 the byte-wide input is the
+  limit; the book keeps up with this mix (mostly Adds and Deletes, pre-market).
+- Verification: `test_injector` (exact bytes at full rate, under backpressure, replay after
+  reset); `inject_capacity` checks count, digest, network feed blocked, no BBO datagrams
+  sent, `inj_cycles` equal to the bench's own first-beat-to-last-T2 span, meter zeroed by
+  the next config. 7 of 8 injected RTL bugs caught; the 8th (meter ready taken from
+  out_builder) is equivalent here: out_builder gets nothing in mode 2, so its ready stays 1.
+- Bugs (symptom → root cause → fix):
+  - `ct_bad_frames` failed at seed 1456894486 with `feed_datagrams` 37 vs 38 → the test
+    stopped on the first stats datagram once all BBOs were in, and the last frame (no BBO)
+    was not yet counted in that snapshot → use only stats received two ticks after the
+    last frame was sent. A test race, not an RTL bug; the assertion now names the field.
+- fpga-coord 0005 (fpga-eth-core): **reproduced in simulation** (`a35b0dc`): a core-side
+  reset while rx_clk is stopped resets the async FIFO's read pointer and not its write
+  pointer (the rx reset_sync cannot move without rx_clk) → `fifo_level_o` 3,193–3,262 on a
+  2,048 FIFO, old frames re-delivered as good (9 ok for 5 sent). Even with rx_clk running,
+  the examples' wiring reset the read side ~3 rx_clk before the write side (the FIFO's
+  write-side SVA fired once). **Fix** (user chose the reset handshake): `rx_reset_bridge`
+  in eth_rx (`2b803fe`): request held until the rx side acknowledges; the FIFO read side
+  resets only inside the write side's reset; new `in_reset_o`. 4/4 reset cases pass, 3/3
+  injected bridge bugs caught, eth-core `make ci` green, rx_stats WNS +0.502 ns (`ae88535`).
+  Hardware confirmation [TBD]; P3 asked whether their top resets the MAC with rx_clk absent.
+  Not yet bridged: eth_tx's FIFO has the same reset requirement on tx_clk.
+
+## 2026-11-12/13 — eth-core-v0.3 released; first cut-through full-chip build
+
+- v0.3 gate (`rx_stats`, `CUT_THROUGH=1`, rebuilt from a clean tree at `71097d9`, WNS +0.592 ns):
+  run 1 (host load 10-14) 4,862,465 / 4,880,000; run 2 (load 1-2) 4,879,984 / 4,880,000.
+  Every board RX error counter 0 in both, FIFO high-water mark 1 B. User accepted run 2 as a
+  pass; tagged `eth-core-v0.3` (`1661058`). Evidence: eth-core
+  `data/results/2026-11-12_v0.3_rx_stats_ct_sustained.md`.
+- Bug (harness): run 1 lost 13,787 datagrams that the board never counted as gaps →
+  the sender started right after programming, before link-up, and the host drops while
+  there is no carrier → wait for the board's UART uptime >= 3 s before sending (run 2).
+- Bug (host): in-stream single-datagram drops at line rate → `cdc_ncm` over usbip TX drops
+  (`ip -s link` TX dropped equals the missing count exactly), worse under host load → not
+  fixed (host path); accounted in the sidecar.
+- OrderBook submodule → v0.3 (`6ef629b`), `make ci` green. Full chip with the injector:
+  store-and-forward WNS +0.007 ns, 128 BRAM36; cut-through WNS -0.567 ns (rec_fifo → out_ctrl
+  → deframer `expected_q` adder, 23 levels). New critical warning: v0.3 pin XDC's `eth_mdio`
+  has no port in arty_top.
+
+## 2026-11-13 — cut-through full chip meets timing
+
+- Three fixes took cut-through `arty_top` (with the injector) from WNS -0.567 ns to
+  **+0.172 ns** (WHS +0.012 ns, 0 critical warnings, 12,506 LUTs, 20,157 FFs, 127 BRAM36,
+  10 DSP; `docs/reports/arty_top_ct/`). Store-and-forward unchanged at +0.048 ns.
+  1. `eth_mdio` port added to arty_top (the v0.3 pin XDC's critical warning); the deframer's
+     `seq + count` registered one cycle ahead of `expected_q` (`46a4827`): -0.567 → -0.962
+     (the next path, the ready chain, was longer).
+  2. sync_fifo `full_o` from a register (`4cae931`): cuts rec_fifo full → f_tready →
+     t0_track: -0.962 → -0.244 ns (22 endpoints).
+  3. t0_track cut-through keeps PEND occupancy in registers and pops `min(want + start +
+     hold, count)` in one step (`2325efd`): -0.244 → +0.172. The order-table `hway_q`
+     path (-0.196, placement) closed in the same build without a change.
+- Bug (test): `test_t0_track.ct_frames` failed at SEED=1015131750 with PEND_AW=3 → the
+  stimulus had more SFDs outstanding than the 8-entry queue, so the model lost a T0 too
+  → cap outstanding SFDs in the schedule to the queue depth (`f219a1a`).
+- Bug (assertion): the new `t0_track` invariant fired at time 0 in `test_core` → the empty
+  flag (reset to 1) disagreed with the zero-initialized count before the first reset →
+  store it as "has entries" (reset 0), so the power-up state is consistent.
+- Verification: test_t0_track on 4 seeds × 4 parameter sets; 5 injected t0_track bugs each
+  fail 3 cut-through tests; `make ci` green (65 pass, 0 fail, 9 parameter-set skips).
+- Board day, both builds from `2325efd` (full AAPL day at 500 pps): both match the model
+  on 831,842 / 831,842 BBOs, 0 lost. T2−T1 identical (p50 136 ns, max 232 ns). T2−T0 p50
+  126.7 µs (store-and-forward) → 64.2 µs (cut-through); per record, cut-through is
+  7.2–115.1 µs earlier, never later. `data/results/2026-11-13_ct_vs_sf_board.md`.
+- Bug (analysis): cut-through run reported 831,842 / 831,842 mismatched → every record
+  differed only in the `cut_through` flag (bit 4, set by design) and compare always built
+  the model as store-and-forward → `compare --cut-through` (board_run `CUT_THROUGH=1`),
+  stated by the operator, not read from the records (`22aed41`).
+- Observed: cut-through sends 3.5x the datagrams (1.08 BBOs each vs 3.8): out_builder
+  flushes on idle, and BBOs now arrive at wire speed instead of in buffer-read bursts.
+- Host: Vivado `make prog` hung >5 min after the usbipd re-attach; openFPGALoader worked.
+  One host-side reorder (3 places) in the store-and-forward run, first on the ASIX.
+- Injector on the board (`data/results/2026-11-13_injector_board.md`): 248 BBOs, model
+  digest per build, **31,703 cycles = simulation exactly**, cut-through once and
+  store-and-forward three times (identical). 4.11 M msg/s, input-bound at `DATA_W` 8.

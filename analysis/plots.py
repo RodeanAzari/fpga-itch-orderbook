@@ -232,6 +232,43 @@ def latency(before: Path, after: Path, causes: Path, out: Path) -> None:
     print(f"wrote {out}")
 
 
+def ct_vs_sf(hist: Path, out: Path) -> None:
+    """T2-T0 on the board, same day on both eth_rx builds (ADR 0013): CCDF per build."""
+    ns = 8  # 125 MHz core clock
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    fig.patch.set_facecolor(SURFACE)
+    _style(ax)
+    with open(hist) as f:
+        rows = [r for r in csv.DictReader(f) if r["metric"] == "T2-T0"]
+    for build, color, name in (("sf", ASK, "store-and-forward (waits for the FCS)"),
+                               ("ct", BID, "cut-through")):  # fmt: skip
+        h = [(int(r["cycles"]), int(r["count"])) for r in rows if r["build"] == build]
+        n = sum(c for _, c in h)
+        xs, ys, left_over = [], [], n
+        for cyc, c in h:
+            xs.append(cyc * ns / 1000)
+            ys.append(left_over / n)  # fraction of BBOs taking >= this value
+            left_over -= c
+        ax.step(xs, ys, where="post", color=color, linewidth=2, label=name)
+        p50 = nearest_rank(sorted(c for c, k in h for _ in range(k)), 50.0) * ns / 1000
+        ax.axvline(p50, color=color, linewidth=1, linestyle=":")
+        ax.annotate(f"p50 {p50:.1f} µs", (p50, 1.3), xytext=(4, 0), textcoords="offset points",
+                    color=INK, fontsize=8)  # fmt: skip
+    ax.set_yscale("log")
+    ax.set_ylim(5e-6, 3)
+    ax.set_xlim(0, None)
+    ax.set_xlabel("T2 − T0, SFD on the wire → BBO at the book's output (µs)", color=INK)
+    ax.set_ylabel("Fraction of BBOs at or above (log)", color=INK)
+    ax.legend(loc="lower left", frameon=False, labelcolor=INK, fontsize=9)
+    title = ("AAPL 2019-10-18 on the Arty A7, 831,842 BBOs per build: T2 − T0 "
+             "(includes 100 Mb/s serialization)")  # fmt: skip
+    ax.set_title(title, color=INK, loc="left", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main() -> None:
     bbo_day(
         str(RESULTS / "2019-10-18_AAPL"),
@@ -255,6 +292,10 @@ def main() -> None:
         RESULTS / "2026-11-11_record_fifo_board_hist.csv",
         RESULTS / "2026-11-11_record_fifo_board_causes.csv",
         MEDIA / "2026-11-11_phase-e_board-latency-t2-t1.png",
+    )
+    ct_vs_sf(
+        RESULTS / "2026-11-13_ct_vs_sf_board_hist.csv",
+        MEDIA / "2026-11-13_phase-e_board-t2-t0-ct-vs-sf.png",
     )
 
 

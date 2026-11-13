@@ -11,7 +11,8 @@
 // LEDs: led[0] 1 Hz heartbeat (core clock running, MAC out of reset); led[1] running (a
 // config was acked); led[2] stale or a sticky error (frame, FIFO, TX); led[3] datagram
 // activity (stretched to ~33 ms).
-// UART: idle (the stats travel as UDP datagrams); MDIO unused, eth_mdc held low.
+// UART: idle (the stats travel as UDP datagrams); MDIO unused: eth_mdc held low, eth_mdio
+// released (high-Z; pulled up on the board; the eth-core pin XDC constrains it).
 // Pmod JA (scope cross-check, buildplan 6.5): ja[0] rises 1 cycle after each T1, ja[1] 1
 // cycle after each T2 (ob_core's pulses), each held PULSE_CYCLES; both leave through IOB
 // registers (constr/arty_pmod.xdc), so their rising edges are T2 - T1 apart plus the pin-
@@ -25,7 +26,8 @@ module arty_top #(
     parameter logic [47:0] OWN_MAC          = 48'h02_00_0A_0B_0C_0D,
     parameter logic [31:0] OWN_IP           = 32'hC0_A8_0A_02,    // 192.168.10.2
     parameter logic [15:0] CTRL_PORT        = 16'd7000,
-    parameter int          PULSE_CYCLES     = 4                    // 32 ns at 125 MHz
+    parameter int          PULSE_CYCLES     = 4,                   // 32 ns at 125 MHz
+    parameter bit          CUT_THROUGH      = 1'b0                 // eth_rx mode (ADR 0013)
 ) (
     input  wire logic       CLK100MHZ,
     input  wire logic       ck_rst,        // active low
@@ -42,6 +44,7 @@ module arty_top #(
     output logic            eth_tx_en,
     output logic [3:0]      eth_txd,
     output logic            eth_mdc,
+    inout  wire logic       eth_mdio,
     output logic [1:0]      ja             // Pmod JA1 = T1, JA2 = T2
 );
     localparam int START_W  = $clog2(MAC_START_CYCLES + 1);
@@ -101,7 +104,8 @@ module arty_top #(
         .OWN_MAC     (OWN_MAC),
         .OWN_IP      (OWN_IP),
         .CTRL_PORT   (CTRL_PORT),
-        .TICK_CYCLES (CLK_HZ)
+        .TICK_CYCLES (CLK_HZ),
+        .CUT_THROUGH (CUT_THROUGH)
     ) u_core (
         .clk_i        (clk),
         .rst_i        (mac_rst_q),
@@ -172,6 +176,7 @@ module arty_top #(
     end
     assign uart_rxd_out = 1'b1;
     assign eth_mdc      = 1'b0;
+    assign eth_mdio     = 1'bz;
 
     logic unused;
     assign unused = sfd_unused;

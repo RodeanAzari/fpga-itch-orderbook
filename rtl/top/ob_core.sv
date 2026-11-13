@@ -24,6 +24,9 @@
 // frame (control frames show up in feed_filtered).
 // Clocks: clk_i (core), mii_rx_clk_i, mii_tx_clk_i (PHY); resets synchronous, active-high,
 // one per domain from a common source (eth-core requirement).
+// Injector (ADR 0014): config mode 2 replays the injector ROM into feed_frontend from the
+// first cycle of RUN (the network feed is blocked meanwhile); the book's BBO records go
+// to inj_meter instead of out_builder, and its results are stats 42-44.
 // Timestamps (ADR 0011): now_q counts core cycles from reset. T0 = now_q at the frame's
 // synchronized SFD, matched to the frame by t0_track; T1 = now_q when the decoder takes
 // the message's last byte; T2 = now_q on the first cycle a BBO is valid at the book's
@@ -37,7 +40,9 @@ module ob_core #(
     parameter int          SET_BITS    = 11,               // book geometry (ADR 0001, 0010)
     parameter int          WAYS        = 16,
     parameter int          SHARES_W    = 20,
-    parameter int          WIN_BITS    = 12                // price window (ADR 0002)
+    parameter int          WIN_BITS    = 12,               // price window (ADR 0002)
+    parameter bit          CUT_THROUGH = 1'b0,             // eth_rx mode (ADR 0013)
+    parameter string       INJ_FILE    = "injector_aapl.mem"  // injector ROM (ADR 0014)
 ) (
     input  wire logic       clk_i,
     input  wire logic       rst_i,
@@ -64,7 +69,7 @@ module ob_core #(
     output logic            t2_pulse_o
 );
     localparam int LEVEL_W  = SHARES_W + SET_BITS + 1 + $clog2(WAYS);  // book_engine's
-    localparam int N_STATS  = 41;
+    localparam int N_STATS  = 45;
     localparam int USER_W   = 1 + 64 + 64;  // {feed stale, T0, T1} through the book
 
     logic [63:0] now_q;
@@ -75,12 +80,14 @@ module ob_core #(
 
     // --------------------------------------------------------------- receive
     logic [7:0] f_tdata;
-    logic       f_tvalid, f_tready, f_tlast;
-    logic       e_ok, e_crc, e_rxerr, e_runt, e_over, e_ovf;
+    logic       f_tvalid, f_tready, f_tlast, f_tuser;
+    logic       e_ok, e_crc, e_rxerr, e_runt, e_over, e_ovf, e_emitted;
     logic [7:0] e_ovf_frames;
     logic [11:0] fifo_level_unused;
 
-    eth_rx u_eth_rx (
+    eth_rx #(
+        .CUT_THROUGH (CUT_THROUGH)
+    ) u_eth_rx (
         .mii_clk_i    (mii_rx_clk_i),
         .mii_rst_i    (mii_rx_rst_i),
         .mii_rxd_i    (mii_rxd_i),
@@ -93,6 +100,7 @@ module ob_core #(
         .m_tvalid_o   (f_tvalid),
         .m_tready_i   (f_tready),
         .m_tlast_o    (f_tlast),
+        .m_tuser_o    (f_tuser),
         .frame_ok_o   (e_ok),
         .crc_err_o    (e_crc),
         .rx_err_o     (e_rxerr),
@@ -100,6 +108,7 @@ module ob_core #(
         .oversize_o   (e_over),
         .ovf_o        (e_ovf),
         .ovf_frames_o (e_ovf_frames),
+        .emitted_o    (e_emitted),
         .fifo_level_o (fifo_level_unused)
     );
 
@@ -122,7 +131,9 @@ module ob_core #(
         else if (f_tvalid && f_tready) f_first_q <= f_tlast;
     end
 
-    t0_track u_t0 (
+    t0_track #(
+        .CUT_THROUGH (CUT_THROUGH)
+    ) u_t0 (
         .clk_i         (clk_i),
         .rst_i         (rst_i),
         .now_i         (now_q),
@@ -131,6 +142,7 @@ module ob_core #(
         .drop_i        (e_crc || e_rxerr || e_runt || e_over),
         .ovf_i         (e_ovf),
         .ovf_frames_i  (e_ovf_frames),
+        .emitted_i     (e_emitted),
         .frame_start_i (f_tvalid && f_tready && f_first_q),
         .t0_o          (t0),
         .t0_valid_o    (t0_valid_unused),
@@ -157,7 +169,7 @@ module ob_core #(
 
     // control port
     logic [7:0]  c_tdata;
-    logic        c_tvalid, c_tready, c_tlast, c_tuser;
+    logic        c_tvalid, c_tready, c_tlast, c_tuser, c_tuser_rx;
     logic [47:0] c_mac;
     logic [31:0] c_ip;
     logic [15:0] c_port, c_dport_unused;
@@ -177,7 +189,7 @@ module ob_core #(
         .m_tvalid_o    (c_tvalid),
         .m_tready_i    (c_tready),
         .m_tlast_o     (c_tlast),
-        .m_tuser_o     (c_tuser),
+        .m_tuser_o     (c_tuser_rx),
         .src_mac_o     (c_mac),
         .src_ip_o      (c_ip),
         .src_port_o    (c_port),
@@ -191,7 +203,7 @@ module ob_core #(
     // configuration and sequence
     logic [31:0]          cfg_group, cfg_lo_price;
     logic [15:0]          cfg_port, cfg_locate;
-    logic                 cfg_mode, cfg_locate_valid;
+    logic                 cfg_mode, cfg_inject, cfg_locate_valid;
     logic [63:0]          cfg_symbol;
     logic [47:0]          dst_mac;
     logic [31:0]          dst_ip;
@@ -207,13 +219,14 @@ module ob_core #(
         .s_tvalid_i         (c_tvalid),
         .s_tready_o         (c_tready),
         .s_tlast_i          (c_tlast),
-        .s_tuser_i          (c_tuser),
+        .s_tuser_i          (c_tuser),  // cut-through: also "frame not yet ended good"
         .src_mac_i          (c_mac),
         .src_ip_i           (c_ip),
         .src_port_i         (c_port),
         .cfg_group_o        (cfg_group),
         .cfg_port_o         (cfg_port),
         .cfg_mode_o         (cfg_mode),
+        .cfg_inject_o       (cfg_inject),
         .cfg_locate_valid_o (cfg_locate_valid),
         .cfg_symbol_o       (cfg_symbol),
         .cfg_lo_price_o     (cfg_lo_price),
@@ -266,12 +279,65 @@ module ob_core #(
         .malformed_o   (u_mal)
     );
 
+    // Cut-through (ADR 0013): eth_rx delivers every frame as it arrives and marks a bad
+    // one with f_tuser on its tlast. A bad frame that put payload into the feed has
+    // moved the book: count it (cut_through_bad) and mark the feed stale until the next
+    // config. The feed udp_rx's status for that frame comes after the cycle its tlast
+    // leaves eth_rx (udp_rx registers it; asserted below), and before frame k+1 can
+    // enter udp_rx (frame k's last beat must leave it first), so bad_pend_q pairs them. A control datagram is accepted only if its
+    // frame has already ended good when its last payload beat leaves udp_rx, so a
+    // control datagram must end its frame (no padding: >= 18 payload bytes).
+    logic f_end, f_bad_end, u_status, u_beat, u_beat_q, bad_pend_q, ct_stale_q, ct_bad;
+    logic f_good_q;  // the last frame out of eth_rx ended good, and no frame has started
+    logic tail_q;    // the judged frame's last payload beat is still in udp_rx's output
+
+    always_comb begin
+        f_end     = f_tvalid && f_tready && f_tlast;
+        f_bad_end = CUT_THROUGH && f_end && f_tuser;
+        u_status  = u_ok || u_filt || u_csum || u_mal;
+        u_beat    = u_tvalid && u_tready;
+        ct_bad    = u_status && bad_pend_q && (u_beat_q || u_beat);
+        c_tuser   = c_tuser_rx || (CUT_THROUGH && !f_good_q);
+    end
+
+    always_ff @(posedge clk_i) begin
+        if (rst_i) begin
+            u_beat_q   <= 1'b0;
+            tail_q     <= 1'b0;
+            bad_pend_q <= 1'b0;
+            f_good_q   <= 1'b0;
+        end else begin
+            // At a status the frame is all in; udp_rx's output holds at most its last
+            // payload beat, which belongs to the judged frame, not the next one.
+            if (u_status)              u_beat_q <= 1'b0;
+            else if (u_beat && !tail_q) u_beat_q <= 1'b1;
+            if (u_status)                  tail_q <= u_tvalid && !u_beat;
+            else if (u_beat && u_tlast)    tail_q <= 1'b0;
+            if (u_status)       bad_pend_q <= 1'b0;
+            else if (f_bad_end) bad_pend_q <= 1'b1;
+            if (f_end)                                  f_good_q <= !f_tuser;
+            else if (f_tvalid && f_tready && f_first_q) f_good_q <= 1'b0;
+        end
+    end
+
+    always_ff @(posedge clk_i) begin
+        if (rst_i || feed_rst) ct_stale_q <= 1'b0;
+        else if (ct_bad)       ct_stale_q <= 1'b1;
+    end
+
+`ifndef SYNTHESIS
+    // the pairing above: udp_rx's status never shares a cycle with a frame's end
+    always_ff @(posedge clk_i) begin
+        if (!rst_i) assert (!(u_status && f_end));
+    end
+`endif
+
     pkt_gate #(
         .DATA_W (8)
     ) u_gate (
         .clk_i      (clk_i),
         .rst_i      (rst_i),
-        .block_i    (feed_rst),
+        .block_i    (feed_rst || cfg_inject),
         .s_tdata_i  (u_tdata),
         .s_tvalid_i (u_tvalid),
         .s_tready_o (u_tready),
@@ -291,7 +357,35 @@ module ob_core #(
     logic [31:0] r_shares, r_price;
     logic        m_pkt, m_hb, m_end, m_gap, m_dup, m_sess, m_mal_pkt, m_empty;
     logic        i_unknown, i_mal, i_other, i_dir, i_loc_chg, loc_valid, feed_stale;
+    logic        feed_stale_any;  // the decoder's stale, or a bad cut-through frame
+    assign feed_stale_any = feed_stale || ct_stale_q;
     logic [15:0] locate;
+
+    // injector (ADR 0014): runs in mode 2 from the first cycle of RUN, once
+    logic [7:0] i_tdata, fe_tdata;
+    logic       i_tvalid, i_tready, i_tlast, i_done_unused;
+    logic       fe_tvalid, fe_tready, fe_tlast, fe_tuser;
+
+    injector #(
+        .INIT_FILE (INJ_FILE)
+    ) u_inj (
+        .clk_i      (clk_i),
+        .rst_i      (feed_rst || !cfg_inject),
+        .m_tdata_o  (i_tdata),
+        .m_tvalid_o (i_tvalid),
+        .m_tready_i (i_tready),
+        .m_tlast_o  (i_tlast),
+        .done_o     (i_done_unused)
+    );
+
+    always_comb begin
+        fe_tdata  = cfg_inject ? i_tdata  : g_tdata;
+        fe_tvalid = cfg_inject ? i_tvalid : g_tvalid;
+        fe_tlast  = cfg_inject ? i_tlast  : g_tlast;
+        fe_tuser  = cfg_inject ? 1'b0     : g_tuser;
+        i_tready  = cfg_inject && fe_tready;
+        g_tready  = !cfg_inject && fe_tready;
+    end
 
     feed_frontend #(
         .DATA_W (8)
@@ -301,11 +395,11 @@ module ob_core #(
         .cfg_symbol_i       (cfg_symbol),
         .cfg_locate_valid_i (cfg_locate_valid),
         .cfg_locate_i       (cfg_locate),
-        .s_tdata_i          (g_tdata),
-        .s_tvalid_i         (g_tvalid),
-        .s_tready_o         (g_tready),
-        .s_tlast_i          (g_tlast),
-        .s_tuser_i          (g_tuser),
+        .s_tdata_i          (fe_tdata),
+        .s_tvalid_i         (fe_tvalid),
+        .s_tready_o         (fe_tready),
+        .s_tlast_i          (fe_tlast),
+        .s_tuser_i          (fe_tuser),
         .s_t0_i             (t0),  // the frame inside udp_rx: its payload's T0 (ADR 0011)
         .now_i              (now_q),
         .m_valid_o          (r_valid),
@@ -366,7 +460,7 @@ module ob_core #(
         .s_type_i          (r_type),
         .s_seq_i           (r_seq),
         .s_ts_i            (r_ts),
-        .s_user_i          ({feed_stale, r_t0, r_t1}),  // ride to the record's BBO
+        .s_user_i          ({feed_stale_any, r_t0, r_t1}),  // ride to the record's BBO
         .s_ref_i           (r_ref),
         .s_new_ref_i       (r_new_ref),
         .s_sell_i          (r_sell),
@@ -407,11 +501,29 @@ module ob_core #(
     assign b_t2  = b_new ? now_q : b_t2_q;
 
     // --------------------------------------------------------------- output
-    logic           o_valid, o_ready;
+    logic           o_valid, o_ready, ob_valid, ob_ready;
     logic [64*8-1:0] o_rec;
+    logic [63:0]    inj_cycles, inj_bbos, inj_digest;
+
+    // mode 2: every BBO record goes to the meter, which never stalls (ADR 0014)
+    assign ob_valid = o_valid && !cfg_inject;
+    assign o_ready  = cfg_inject || ob_ready;
+
+    inj_meter u_meter (
+        .clk_i       (clk_i),
+        .rst_i       (rst_i || stats_clear),
+        .now_i       (now_q),
+        .beat_i      (i_tvalid && i_tready),
+        .rec_valid_i (o_valid && cfg_inject),
+        .rec_i       (o_rec[511 -: 320]),  // the record before t0/t1/t2
+        .cycles_o    (inj_cycles),
+        .bbos_o      (inj_bbos),
+        .digest_o    (inj_digest)
+    );
 
     out_mux #(
-        .LEVEL_W (LEVEL_W)
+        .LEVEL_W     (LEVEL_W),
+        .CUT_THROUGH (CUT_THROUGH)
     ) u_mux (
         .mode_i         (cfg_mode),
         .f_valid_i      (r_valid),
@@ -490,13 +602,17 @@ module ob_core #(
         .price_oow_i               (k_oow),
         .price_subpenny_i          (k_subpenny),
         .bbo_oow_i                 (k_bbo_oow),
-        .feed_stale_i              (feed_stale),
+        .feed_stale_i              (feed_stale_any),
         .book_stale_i              (book_stale),
         .out_records_i             (dgram ? dgram_recs : 6'd0),
         .out_datagrams_i           (dgram),
         .ctrl_ok_i                 (ctrl_ok),
         .ctrl_bad_i                (ctrl_bad),
         .t0_lost_i                 (t0_lost),
+        .cut_through_bad_i         (ct_bad),
+        .inj_cycles_i              (inj_cycles),
+        .inj_bbos_i                (inj_bbos),
+        .inj_digest_i              (inj_digest),
         .stats_o                   (stats),
         .tick_o                    (tick)
     );
@@ -511,8 +627,8 @@ module ob_core #(
         .clk_i        (clk_i),
         .rst_i        (rst_i),
         .mode_i       (cfg_mode),
-        .s_valid_i    (o_valid),
-        .s_ready_o    (o_ready),
+        .s_valid_i    (ob_valid),
+        .s_ready_o    (ob_ready),
         .s_rec_i      (o_rec),
         .stats_req_i  (tick),
         .stats_i      (stats),
@@ -570,11 +686,11 @@ module ob_core #(
         if (rst_i) error_o <= 1'b0;
     end
     assign running_o = !feed_rst;
-    assign stale_o   = feed_stale || book_stale;
+    assign stale_o   = feed_stale_any || book_stale;
 
     logic unused;
     assign unused = ^{fifo_level_unused, c_dport_unused, c_ok_unused, c_filt_unused,
                       c_csum_unused, c_mal_unused, u_mac_unused, u_ip_unused,
-                      u_sport_unused, u_dport_unused, t0_valid_unused};
+                      u_sport_unused, u_dport_unused, t0_valid_unused, i_done_unused};
 endmodule
 `default_nettype wire

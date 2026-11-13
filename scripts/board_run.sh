@@ -4,7 +4,8 @@
 #   scripts/board_run.sh NAME MODE PPS COUNT [extra capture args...]
 # Needs: the board programmed (make prog), the host on 192.168.10.1 with a static neighbour
 # for the FPGA (docs/log.md 2026-11-09), ITCH=<length-prefixed ITCH file> (default: the
-# AAPL extract), LO_PRICE (window low edge for that day), SESSION (MoldUDP64 session).
+# AAPL extract), LO_PRICE (window low edge for that day), SESSION (MoldUDP64 session),
+# CUT_THROUGH=1 for a cut-through bitstream (ADR 0013).
 # Writes data/runs/NAME.{log,capture.txt,capture.err,replay.txt} and
 # data/runs/<ITCH stem>_slice<COUNT>.pkts (the feed as sent). Exit status: compare's.
 set -euo pipefail
@@ -14,6 +15,7 @@ lo=${LO_PRICE:-2140700}  # ADR 0002: base 23,455 ticks
 if_ip=${IF_IP:-192.168.10.1}
 R=data/runs; mkdir -p $R
 session=${SESSION:-20191018AA}
+ct_arg=; [ "${CUT_THROUGH:-0}" = 1 ] && ct_arg=--cut-through  # the bitstream's build mode
 pk=$R/$(basename "$itch" .itch)_slice$count.pkts  # per day: a count alone is ambiguous
 [ -f "$pk" ] || build/host-Release/replay --in "$itch" --out "$pk" --count "$count" --session "$session" >/dev/null
 rm -f $R/$name.ready
@@ -25,4 +27,4 @@ for _ in $(seq 100); do [ -f $R/$name.ready ] && break; kill -0 $cap 2>/dev/null
 build/host-Release/replay --in "$itch" --dst 239.1.1.1 --port 26400 --if-ip "$if_ip" \
   --count "$count" --session "$session" --pps "$pps" >$R/$name.replay.txt 2>/dev/null
 wait $cap
-.venv/bin/python -m analysis.compare --log $R/$name.log --packets "$pk"
+.venv/bin/python -m analysis.compare --log $R/$name.log --packets "$pk" ${ct_arg}
