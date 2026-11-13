@@ -823,3 +823,21 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   injected bridge bugs caught, eth-core `make ci` green, rx_stats WNS +0.502 ns (`ae88535`).
   Hardware confirmation [TBD]; P3 asked whether their top resets the MAC with rx_clk absent.
   Not yet bridged: eth_tx's FIFO has the same reset requirement on tx_clk.
+
+## 2026-11-12/13 — eth-core-v0.3 released; first cut-through full-chip build
+
+- v0.3 gate (`rx_stats`, `CUT_THROUGH=1`, rebuilt from a clean tree at `71097d9`, WNS +0.592 ns):
+  run 1 (host load 10-14) 4,862,465 / 4,880,000; run 2 (load 1-2) 4,879,984 / 4,880,000.
+  Every board RX error counter 0 in both, FIFO high-water mark 1 B. User accepted run 2 as a
+  pass; tagged `eth-core-v0.3` (`1661058`). Evidence: eth-core
+  `data/results/2026-11-12_v0.3_rx_stats_ct_sustained.md`.
+- Bug (harness): run 1 lost 13,787 datagrams that the board never counted as gaps →
+  the sender started right after programming, before link-up, and the host drops while
+  there is no carrier → wait for the board's UART uptime >= 3 s before sending (run 2).
+- Bug (host): in-stream single-datagram drops at line rate → `cdc_ncm` over usbip TX drops
+  (`ip -s link` TX dropped equals the missing count exactly), worse under host load → not
+  fixed (host path); accounted in the sidecar.
+- OrderBook submodule → v0.3 (`6ef629b`), `make ci` green. Full chip with the injector:
+  store-and-forward WNS +0.007 ns, 128 BRAM36; cut-through WNS -0.567 ns (rec_fifo → out_ctrl
+  → deframer `expected_q` adder, 23 levels). New critical warning: v0.3 pin XDC's `eth_mdio`
+  has no port in arty_top.
