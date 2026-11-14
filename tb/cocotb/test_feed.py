@@ -26,8 +26,8 @@ from tb_common import InOrderScoreboard, get_rng
 from tb_common.axis import AxisSource, bytes_to_beats
 
 from model import generator
-from model.itch import Add, Delete, Reduce, Replace
-from model.moldudp64 import FeedDecoder, heartbeat, packetize
+from model.itch import LENGTHS, Add, Delete, Reduce, Replace
+from model.moldudp64 import FeedDecoder, heartbeat, pack, packetize
 
 SYMBOL = generator.DEFAULT.stock
 LANES = int(os.environ.get("DATA_W", "8")) // 8
@@ -223,11 +223,8 @@ async def clean_stream(dut):
 async def adversarial_backpressure(dut):
     """Every MoldUDP64 and ITCH failure mode, with input gaps and output stalls."""
     rng = get_rng("feed_adv_gen")
-    starts: set[tuple[int, int]] = set()
+    starts: set[tuple[int, int]] = set()  # collected, not asserted: see every_alignment
     model = await run(dut, "feed_adv", adversarial_packets(rng, 8000), 0.7, 0.5, starts=starts)
-    # every alignment (buildplan §8.1): each book type entered the aligner at every lane
-    holes = [(chr(t), lane) for t in b"AFECXDU" for lane in range(LANES) if (t, lane) not in starts]
-    assert not holes, f"(type, start lane) never seen: {holes}"
     c, f = model.tracker.c, model.c
     for k in (
         "gaps",
@@ -239,6 +236,35 @@ async def adversarial_backpressure(dut):
     ):
         assert getattr(c, k) > 0, f"stimulus never produced {k}"
     assert f.unknown_types > 0 and f.malformed_messages > 0 and f.other_locate > 0
+
+
+FILLER = b"z"  # not an ITCH 5.0 type: skipped by its length prefix (unknown_types)
+
+
+@cocotb.test()
+async def every_alignment(dut):
+    """Every book type (A F E C X D U) enters the aligner at every start lane (buildplan
+    §8.1), by construction rather than by seed: each packet carries an unknown-type
+    filler of length L, then one book message, which starts at byte 24 + L, lane L mod 8.
+    L cycles 1..8 per type, so a type seen 8 times has covered every lane. Generator
+    messages keep the book's references valid; records and counters vs the model."""
+    rng = get_rng("feed_align_gen")
+    msgs = generator.generate(seed=rng.randrange(1 << 30), count=4000)
+    seen: dict[int, int] = {}
+    pkts, seq = [], 1
+    for m in msgs:
+        n = seen.get(m[0], 0)
+        seen[m[0]] = n + 1
+        filler = FILLER + bytes(n % 8)  # length 1..8: the message starts at lane L mod 8
+        pkts.append(pack(b"SESSIONALN", seq, [filler, m]))
+        seq += 2
+    assert all(seen.get(t, 0) >= 8 for t in b"AFECXDU"), f"type counts {seen}"
+    starts: set[tuple[int, int]] = set()
+    model = await run(dut, "feed_align", pkts, 0.8, 0.6, starts=starts)
+    unknown = sum(m[:1] not in LENGTHS for m in msgs)  # the generator's own
+    assert not model.stale and model.c.unknown_types == len(pkts) + unknown
+    holes = [(chr(t), lane) for t in b"AFECXDU" for lane in range(LANES) if (t, lane) not in starts]
+    assert not holes, f"(type, start lane) never seen: {holes}"
 
 
 @cocotb.test()
