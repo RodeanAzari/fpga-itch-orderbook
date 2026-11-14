@@ -123,6 +123,7 @@ def run_set(name: str, idx: int) -> int:
         test_module=name,
         test_dir=ROOT / "tb" / "cocotb",
         build_dir=build_dir,
+        results_xml=str(build_dir / "results.xml"),  # one per set: sets run in parallel
     )
     _, fails = get_results(results)
     return fails
