@@ -32,7 +32,12 @@
 // the message's last byte; T2 = now_q on the first cycle a BBO is valid at the book's
 // output. T0 and T1 ride the book's per-record sideband with the feed stale bit.
 // Latency: the sum of the blocks' (docs/latency.md).
+// DATA_W (ADR 0015): the feed path's width, 8 or 64. At 64, byte_packer packs the network
+// payload into 8-byte beats after pkt_gate (carrying the packet's T0), and the injector
+// replays 8 bytes per beat; the book and output are the same at both widths. T1 is taken
+// at the decoder, so at 64 the packer's wait for a beat's 8 bytes falls in T1 - T0.
 module ob_core #(
+    parameter int          DATA_W      = 8,                // feed path width (ADR 0015)
     parameter logic [47:0] OWN_MAC     = 48'h02_00_0A_0B_0C_0D,
     parameter logic [31:0] OWN_IP      = 32'hC0_A8_0A_02,  // 192.168.10.2
     parameter logic [15:0] CTRL_PORT   = 16'd7000,
@@ -42,7 +47,8 @@ module ob_core #(
     parameter int          SHARES_W    = 20,
     parameter int          WIN_BITS    = 12,               // price window (ADR 0002)
     parameter bit          CUT_THROUGH = 1'b0,             // eth_rx mode (ADR 0013)
-    parameter string       INJ_FILE    = "injector_aapl.mem"  // injector ROM (ADR 0014)
+    parameter string       INJ_FILE    = DATA_W == 64 ? "injector_aapl_w64.mem"
+                                                  : "injector_aapl.mem"  // ROM (ADR 0014)
 ) (
     input  wire logic       clk_i,
     input  wire logic       rst_i,
@@ -71,6 +77,7 @@ module ob_core #(
     localparam int LEVEL_W  = SHARES_W + SET_BITS + 1 + $clog2(WAYS);  // book_engine's
     localparam int N_STATS  = 45;
     localparam int USER_W   = 1 + 64 + 64;  // {feed stale, T0, T1} through the book
+    localparam int LANES    = DATA_W / 8;
 
     logic [63:0] now_q;
     always_ff @(posedge clk_i) begin
@@ -363,17 +370,58 @@ module ob_core #(
     assign feed_stale_any = feed_stale || ct_stale_q;
     logic [15:0] locate;
 
+    // network feed at the feed's width: at 64 the bytes are packed into beats, each
+    // packet's beats carrying its T0 (ADR 0015); reset with the feed, like the decoder
+    logic [DATA_W-1:0] n_tdata;
+    logic [LANES-1:0]  n_tkeep;
+    logic              n_tvalid, n_tready, n_tlast, n_tuser;
+    logic [63:0]       n_t0;
+
+    if (DATA_W == 8) begin : g_net8
+        assign n_tdata  = g_tdata;
+        assign n_tkeep  = 1'b1;
+        assign n_tvalid = g_tvalid;
+        assign g_tready = n_tready;
+        assign n_tlast  = g_tlast;
+        assign n_tuser  = g_tuser;
+        assign n_t0     = t0;  // the frame inside udp_rx: its payload's T0 (ADR 0011)
+    end else begin : g_net64
+        byte_packer #(
+            .LANES  (LANES),
+            .META_W (64)
+        ) u_pack (
+            .clk_i      (clk_i),
+            .rst_i      (feed_rst),
+            .s_tdata_i  (g_tdata),
+            .s_tvalid_i (g_tvalid),
+            .s_tready_o (g_tready),
+            .s_tlast_i  (g_tlast),
+            .s_tuser_i  (g_tuser),
+            .s_meta_i   (t0),
+            .m_tdata_o  (n_tdata),
+            .m_tkeep_o  (n_tkeep),
+            .m_tvalid_o (n_tvalid),
+            .m_tready_i (n_tready),
+            .m_tlast_o  (n_tlast),
+            .m_tuser_o  (n_tuser),
+            .m_meta_o   (n_t0)
+        );
+    end
+
     // injector (ADR 0014): runs in mode 2 from the first cycle of RUN, once
-    logic [7:0] i_tdata, fe_tdata;
-    logic       i_tvalid, i_tready, i_tlast, i_done_unused;
-    logic       fe_tvalid, fe_tready, fe_tlast, fe_tuser;
+    logic [DATA_W-1:0] i_tdata, fe_tdata;
+    logic [LANES-1:0]  i_tkeep, fe_tkeep;
+    logic              i_tvalid, i_tready, i_tlast, i_done_unused;
+    logic              fe_tvalid, fe_tready, fe_tlast, fe_tuser;
 
     injector #(
+        .DATA_W    (DATA_W),
         .INIT_FILE (INJ_FILE)
     ) u_inj (
         .clk_i      (clk_i),
         .rst_i      (feed_rst || !cfg_inject),
         .m_tdata_o  (i_tdata),
+        .m_tkeep_o  (i_tkeep),
         .m_tvalid_o (i_tvalid),
         .m_tready_i (i_tready),
         .m_tlast_o  (i_tlast),
@@ -381,16 +429,17 @@ module ob_core #(
     );
 
     always_comb begin
-        fe_tdata  = cfg_inject ? i_tdata  : g_tdata;
-        fe_tvalid = cfg_inject ? i_tvalid : g_tvalid;
-        fe_tlast  = cfg_inject ? i_tlast  : g_tlast;
-        fe_tuser  = cfg_inject ? 1'b0     : g_tuser;
+        fe_tdata  = cfg_inject ? i_tdata  : n_tdata;
+        fe_tkeep  = cfg_inject ? i_tkeep  : n_tkeep;
+        fe_tvalid = cfg_inject ? i_tvalid : n_tvalid;
+        fe_tlast  = cfg_inject ? i_tlast  : n_tlast;
+        fe_tuser  = cfg_inject ? 1'b0     : n_tuser;
         i_tready  = cfg_inject && fe_tready;
-        g_tready  = !cfg_inject && fe_tready;
+        n_tready  = !cfg_inject && fe_tready;
     end
 
     feed_frontend #(
-        .DATA_W (8)
+        .DATA_W (DATA_W)
     ) u_feed (
         .clk_i              (clk_i),
         .rst_i              (feed_rst),
@@ -398,12 +447,12 @@ module ob_core #(
         .cfg_locate_valid_i (cfg_locate_valid),
         .cfg_locate_i       (cfg_locate),
         .s_tdata_i          (fe_tdata),
-        .s_tkeep_i          (1'b1),
+        .s_tkeep_i          (fe_tkeep),
         .s_tvalid_i         (fe_tvalid),
         .s_tready_o         (fe_tready),
         .s_tlast_i          (fe_tlast),
         .s_tuser_i          (fe_tuser),
-        .s_t0_i             (t0),  // the frame inside udp_rx: its payload's T0 (ADR 0011)
+        .s_t0_i             (n_t0),  // the network packet's T0 (ADR 0011)
         .now_i              (now_q),
         .m_valid_o          (r_valid),
         .m_ready_i          (r_ready),

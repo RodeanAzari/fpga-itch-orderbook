@@ -52,6 +52,7 @@ CORE = [
     *ENGINE,
     *OUT[1:],
     "rtl/lib/pkt_gate.sv",
+    "rtl/lib/byte_packer.sv",
     "rtl/lib/cdc_pulse.sv",
     "rtl/meas/t0_track.sv",
     "rtl/meas/injector.sv",
@@ -62,9 +63,10 @@ CORE = [
     "rtl/top/ob_core.sv",
 ]
 
-# the injector ROM (ADR 0014; analysis/injector_image.py), a string parameter, so it is
-# left out of the build directory's name
+# the injector ROMs (ADR 0014, 0015; analysis/injector_image.py), string parameters, so
+# they are left out of the build directory's name
 INJ = {"INJ_FILE": f'"{ROOT / "data/samples/injector_aapl.mem"}"'}
+INJ64 = {"INJ_FILE": f'"{ROOT / "data/samples/injector_aapl_w64.mem"}"'}
 
 # test module -> (toplevel, sources, parameter sets)
 TESTS = {
@@ -81,6 +83,7 @@ TESTS = {
     "test_mux": ("out_mux", ["rtl/out/out_mux.sv"], [{"LEVEL_W": 36}]),
     "test_ctrl": ("out_ctrl", ["rtl/out/out_ctrl.sv"], [{}]),
     "test_pkt_gate": ("pkt_gate", ["rtl/lib/pkt_gate.sv"], [{}]),
+    "test_packer": ("byte_packer", ["rtl/lib/byte_packer.sv"], [{"LANES": 8}]),
     # real depths, and 8-entry queues that fill and wrap
     "test_t0_track": (
         "t0_track",
@@ -100,12 +103,18 @@ TESTS = {
         [
             {"TICK_CYCLES": 30_000, "CUT_THROUGH": 0, **INJ},
             {"TICK_CYCLES": 30_000, "CUT_THROUGH": 1, **INJ},
+            # the 64-bit feed path (ADR 0015): packer on the network feed, wide injector
+            {"DATA_W": 64, "TICK_CYCLES": 30_000, "CUT_THROUGH": 0, **INJ64},
+            {"DATA_W": 64, "TICK_CYCLES": 30_000, "CUT_THROUGH": 1, **INJ64},
         ],
     ),
     "test_injector": (
         "injector",
         ["rtl/meas/injector.sv"],
-        [{"INIT_FILE": INJ["INJ_FILE"]}],
+        [
+            {"DATA_W": 8, "INIT_FILE": INJ["INJ_FILE"]},
+            {"DATA_W": 64, "INIT_FILE": INJ64["INJ_FILE"]},
+        ],
     ),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 11}]),

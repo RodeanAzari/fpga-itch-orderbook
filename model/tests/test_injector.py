@@ -54,6 +54,58 @@ def test_rom_words_limits() -> None:
         rom_words([b""])
 
 
+def test_rom_words_8_lanes_layout() -> None:
+    """DATA_W 64 (ADR 0015), worked by hand: header word lanes 0, 1 = word count; each
+    payload starts at lane 0; padding lanes are 0 (no last bit)."""
+    w = rom_words([b"\x01\x02\x03", bytes(range(10))], lanes=8)
+    assert w[0] == 0 | 3 << 9  # 3 data words: lane 0 = 0x00, lane 1 = 0x03
+    assert w[1] == 0x01 | 0x02 << 9 | 0x103 << 18
+    assert w[2] == sum(i << (9 * i) for i in range(8))
+    assert w[3] == 0x08 | 0x109 << 9
+    assert len(w) == 4
+    assert rom_words([bytes(8 * 300)], lanes=8)[0] == 1 | 44 << 9
+
+
+def test_rom_words_8_lanes_limits() -> None:
+    depth = DEPTH // 8
+    assert len(rom_words([bytes(8 * (depth - 1))], lanes=8)) == depth
+    with pytest.raises(ValueError):
+        rom_words([bytes(8 * (depth - 1) + 1)], lanes=8)
+    # padding counts: depth - 1 one-byte payloads fit, one more does not
+    assert len(rom_words([b"\x07"] * (depth - 1), lanes=8)) == depth
+    with pytest.raises(ValueError):
+        rom_words([b"\x07"] * depth, lanes=8)
+    with pytest.raises(ValueError):
+        rom_words([b"\x01"], lanes=4)
+
+
+def _unpack_wide(words: list[int]) -> list[bytes]:
+    """Read an 8-lane image back as the RTL does: tlast = any last bit, kept lanes up to
+    and including the first last bit."""
+    n = (words[0] & 0xFF) << 8 | (words[0] >> 9) & 0xFF
+    assert len(words) == 1 + n
+    pkts, cur = [], bytearray()
+    for w in words[1:]:
+        lanes = [(w >> (9 * i)) & 0x1FF for i in range(8)]
+        for lane in lanes:
+            cur.append(lane & 0xFF)
+            if lane & 0x100:
+                pkts.append(bytes(cur))
+                cur.clear()
+                break
+    assert not cur
+    return pkts
+
+
+def test_image_fits_8_lanes(msgs: list[bytes]) -> None:
+    """The DATA_W 64 ROM holds the same packets as the DATA_W 8 one, so the two capacity
+    runs replay the same messages."""
+    img = build_image(msgs, SESSION, CFG, BoundedBook(base_ticks=BASE))
+    wide = rom_words(img.pkts, lanes=8)
+    assert len(wide) <= DEPTH // 8
+    assert _unpack_wide(wide) == img.pkts
+
+
 def _rec(i: int) -> bytes:
     return bytes((i * 7 + k) & 0xFF for k in range(64))
 

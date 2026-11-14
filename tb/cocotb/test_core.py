@@ -38,7 +38,7 @@ from analysis.injector_image import CONFIG as INJ_CFG  # noqa: E402
 from analysis.injector_image import image  # noqa: E402
 from model import generator  # noqa: E402
 from model.bounded import BoundedBook  # noqa: E402
-from model.injector import expected_run  # noqa: E402
+from model.injector import expected_run, rom_words  # noqa: E402
 from model.moldudp64 import FeedDecoder, heartbeat, pack, packetize  # noqa: E402
 from model.protocol import (  # noqa: E402
     BBO,
@@ -59,6 +59,7 @@ SET_BITS = int(os.environ.get("SET_BITS", "11"))
 WAYS = int(os.environ.get("WAYS", "16"))
 TICK_CYCLES = int(os.environ.get("TICK_CYCLES", "30000"))
 CUT = int(os.environ.get("CUT_THROUGH", "0"))  # eth_rx mode (ADR 0013)
+LANES = int(os.environ.get("DATA_W", "8")) // 8  # feed path width (ADR 0015)
 OWN_MAC, OWN_IP, CTRL_PORT = bytes.fromhex("02000a0b0c0d"), 0xC0A80A02, 7000
 GROUP, PORT = 0xEF010101, 26400
 GOOD_RESIDUE = 0x2144DF1C  # zlib.crc32 over data + a correct FCS
@@ -627,7 +628,8 @@ async def inject_capacity(dut):
                "feed_datagrams": len(noise) if k == 0 else 0}  # fmt: skip
         assert got == exp, f"run {k}: {got} vs {exp}"
         n_bytes = sum(map(len, img.pkts))
-        assert vals["inj_cycles"] >= n_bytes, "faster than one byte per cycle"
+        beats = len(rom_words(img.pkts, lanes=LANES)) - (2 if LANES == 1 else 1)
+        assert vals["inj_cycles"] >= beats, "faster than one injector beat per cycle"
         runs.append(vals["inj_cycles"])
     assert runs[0] == runs[1], f"spans differ: {runs}"
     # a normal config afterwards zeroes the meter
@@ -639,7 +641,7 @@ async def inject_capacity(dut):
     cyc = runs[0]
     cocotb.log.info(
         "inject: %d messages, %d payload bytes, %d BBOs, digest %#018x in %d cycles: "
-        "%.3f M msg/s at 125 MHz (%.3f bytes/cycle)",
+        "%.3f M msg/s at 125 MHz (%.3f bytes/cycle, DATA_W %d)",
         img.messages, n_bytes, want.bbos, want.digest, cyc, img.messages * 125 / cyc,
-        n_bytes / cyc,
+        n_bytes / cyc, 8 * LANES,
     )  # fmt: skip
