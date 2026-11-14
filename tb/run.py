@@ -28,6 +28,7 @@ ETH = [
         "rx_ovf_guard",
         "eth_fcs_check",
         "frame_buffer",
+        "rx_reset_bridge",
         "eth_rx",
         "udp_rx",
         "udp_tx",

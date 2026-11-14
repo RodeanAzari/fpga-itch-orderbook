@@ -84,12 +84,13 @@ module ob_core #(
     logic       e_ok, e_crc, e_rxerr, e_runt, e_over, e_ovf, e_emitted;
     logic [7:0] e_ovf_frames;
     logic [11:0] fifo_level_unused;
+    logic        in_reset_unused;  // eth_rx in reset; rst_i already covers our pipeline
 
     eth_rx #(
         .CUT_THROUGH (CUT_THROUGH)
     ) u_eth_rx (
         .mii_clk_i    (mii_rx_clk_i),
-        .mii_rst_i    (mii_rx_rst_i),
+        .mii_rst_i    (1'b0),  // eth-core-v0.4: eth_rx makes its rx reset from rst_i (0005)
         .mii_rxd_i    (mii_rxd_i),
         .mii_rx_dv_i  (mii_rx_dv_i),
         .mii_rx_er_i  (mii_rx_er_i),
@@ -109,7 +110,8 @@ module ob_core #(
         .ovf_o        (e_ovf),
         .ovf_frames_o (e_ovf_frames),
         .emitted_o    (e_emitted),
-        .fifo_level_o (fifo_level_unused)
+        .fifo_level_o (fifo_level_unused),
+        .in_reset_o   (in_reset_unused)
     );
 
     // T0 (ADR 0011): the SFD into the core domain, then matched to the frame as it
