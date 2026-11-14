@@ -398,6 +398,7 @@ module ob_core #(
         .cfg_locate_valid_i (cfg_locate_valid),
         .cfg_locate_i       (cfg_locate),
         .s_tdata_i          (fe_tdata),
+        .s_tkeep_i          (1'b1),
         .s_tvalid_i         (fe_tvalid),
         .s_tready_o         (fe_tready),
         .s_tlast_i          (fe_tlast),

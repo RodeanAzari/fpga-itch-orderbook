@@ -1,6 +1,7 @@
 `default_nettype none
 // feed_frontend: UDP payloads (MoldUDP64 packets) -> decoded book records for one symbol.
-//   mold_deframer (ADR 0003) -> itch_decoder (ADR 0004)
+//   mold_deframer (ADR 0003) -> [msg_aligner, DATA_W 64 only] -> itch_decoder (ADR 0004)
+// DATA_W 8 or 64 (ADR 0005, 0015); s_tkeep_i as mold_deframer's (tie to 1 at 8).
 // Golden model: model/moldudp64.py FeedDecoder.
 //
 // Ports are the union of the two blocks'; see their headers for meanings. Status pulses
@@ -11,8 +12,10 @@
 //   unknown_o other_locate_o dir_match_o locate_change_o -> FeedCounters
 //   malformed_msg_o + empty_msg_o -> FeedCounters.malformed_messages
 //   stale_o = SeqTracker.stale || any malformed message (FeedDecoder.stale)
-// Latency: 1 cycle (deframer) + 1 cycle (decoder) from a message's last byte at the
-// input to its record. Reset: synchronous, active-high.
+// Latency: DATA_W 8: 1 cycle (deframer) + 1 cycle (decoder) from a message's last byte
+// at the input to its record. DATA_W 64: 2 (deframer) + 1 (aligner) + 1 (decoder) from
+// the beat holding the message's last byte, when no step is queued in the deframer.
+// Reset: synchronous, active-high.
 module feed_frontend #(
     parameter int DATA_W = 8
 ) (
@@ -23,6 +26,7 @@ module feed_frontend #(
     input  wire logic [15:0]       cfg_locate_i,
     // packets in
     input  wire logic [DATA_W-1:0] s_tdata_i,
+    input  wire logic [DATA_W/8-1:0] s_tkeep_i,
     input  wire logic              s_tvalid_i,
     output logic                   s_tready_o,
     input  wire logic              s_tlast_i,
@@ -62,11 +66,12 @@ module feed_frontend #(
     output logic [15:0]            locate_o,
     output logic                   stale_o
 );
-    logic [DATA_W-1:0]   g_tdata;
-    logic [DATA_W/8-1:0] g_tkeep;
-    logic                unused_tkeep;
+    // g_*: deframer output; a_*: decoder input (aligned at DATA_W 64)
+    logic [DATA_W-1:0]   g_tdata, a_tdata;
+    logic [DATA_W/8-1:0] g_tkeep, a_tkeep;
     logic              g_tvalid, g_tready, g_tlast, g_tuser;
-    logic [63:0]       g_seq, g_t0;
+    logic              a_tvalid, a_tready, a_tlast, a_tuser;
+    logic [63:0]       g_seq, g_t0, a_seq, a_t0;
     logic              seq_stale, msg_bad_q;
 
     mold_deframer #(
@@ -75,7 +80,7 @@ module feed_frontend #(
         .clk_i            (clk_i),
         .rst_i            (rst_i),
         .s_tdata_i        (s_tdata_i),
-        .s_tkeep_i        ('1),        // DATA_W 8: one byte per beat
+        .s_tkeep_i        (s_tkeep_i),
         .s_tvalid_i       (s_tvalid_i),
         .s_tready_o       (s_tready_o),
         .s_tlast_i        (s_tlast_i),
@@ -101,6 +106,40 @@ module feed_frontend #(
         .stale_o          (seq_stale)
     );
 
+    if (DATA_W == 64) begin : g_align
+        msg_aligner #(
+            .DATA_W (DATA_W)
+        ) u_aligner (
+            .clk_i      (clk_i),
+            .rst_i      (rst_i),
+            .s_tdata_i  (g_tdata),
+            .s_tkeep_i  (g_tkeep),
+            .s_tvalid_i (g_tvalid),
+            .s_tready_o (g_tready),
+            .s_tlast_i  (g_tlast),
+            .s_tuser_i  (g_tuser),
+            .s_seq_i    (g_seq),
+            .s_t0_i     (g_t0),
+            .m_tdata_o  (a_tdata),
+            .m_tkeep_o  (a_tkeep),
+            .m_tvalid_o (a_tvalid),
+            .m_tready_i (a_tready),
+            .m_tlast_o  (a_tlast),
+            .m_tuser_o  (a_tuser),
+            .m_seq_o    (a_seq),
+            .m_t0_o     (a_t0)
+        );
+    end else begin : g_no_align  // one lane: every message already starts in lane 0
+        assign a_tdata  = g_tdata;
+        assign a_tkeep  = g_tkeep;
+        assign a_tvalid = g_tvalid;
+        assign g_tready = a_tready;
+        assign a_tlast  = g_tlast;
+        assign a_tuser  = g_tuser;
+        assign a_seq    = g_seq;
+        assign a_t0     = g_t0;
+    end
+
     itch_decoder #(
         .DATA_W (DATA_W)
     ) u_decoder (
@@ -109,13 +148,14 @@ module feed_frontend #(
         .cfg_symbol_i       (cfg_symbol_i),
         .cfg_locate_valid_i (cfg_locate_valid_i),
         .cfg_locate_i       (cfg_locate_i),
-        .s_tdata_i          (g_tdata),
-        .s_tvalid_i         (g_tvalid),
-        .s_tready_o         (g_tready),
-        .s_tlast_i          (g_tlast),
-        .s_tuser_i          (g_tuser),
-        .s_seq_i            (g_seq),
-        .s_t0_i             (g_t0),
+        .s_tdata_i          (a_tdata),
+        .s_tkeep_i          (a_tkeep),
+        .s_tvalid_i         (a_tvalid),
+        .s_tready_o         (a_tready),
+        .s_tlast_i          (a_tlast),
+        .s_tuser_i          (a_tuser),
+        .s_seq_i            (a_seq),
+        .s_t0_i             (a_t0),
         .now_i              (now_i),
         .m_valid_o          (m_valid_o),
         .m_ready_i          (m_ready_i),
@@ -138,9 +178,6 @@ module feed_frontend #(
         .locate_valid_o     (locate_valid_o),
         .locate_o           (locate_o)
     );
-
-    // The decoder takes one byte per beat until the 64-bit path (ADR 0015 steps 2-4).
-    assign unused_tkeep = &{1'b0, g_tkeep};
 
     // A malformed or empty message also makes the book untrustworthy (sticky).
     always_ff @(posedge clk_i) begin

@@ -1,4 +1,5 @@
-"""cocotb tests for rtl/feed (mold_deframer -> itch_decoder), scored against the golden model.
+"""cocotb tests for rtl/feed (mold_deframer -> [msg_aligner] -> itch_decoder), scored against
+the golden model, at DATA_W 8 and 64 (ADR 0015; the records must not depend on the width).
 
 Why these tests matter: this front end decides which messages the order book applies.
 Every packet sent to the DUT is also fed to model.moldudp64.FeedDecoder, and the DUT must
@@ -13,6 +14,7 @@ record or counter mismatch.
 
 from __future__ import annotations
 
+import os
 import struct
 from dataclasses import astuple
 
@@ -21,13 +23,14 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge, RisingEdge
 from feed_stim import adversarial_packets
 from tb_common import InOrderScoreboard, get_rng
-from tb_common.axis import AxisBeat, AxisSource
+from tb_common.axis import AxisSource, bytes_to_beats
 
 from model import generator
 from model.itch import Add, Delete, Reduce, Replace
 from model.moldudp64 import FeedDecoder, heartbeat, packetize
 
 SYMBOL = generator.DEFAULT.stock
+LANES = int(os.environ.get("DATA_W", "8")) // 8
 STATUS = {  # DUT pulse -> model counter
     "pkt_o": "packets",
     "heartbeat_o": "heartbeats",
@@ -66,8 +69,15 @@ def model_fields(rec) -> tuple:
 
 
 async def run(
-    dut, name: str, pkts: list[bytes], p_valid: float, p_ready: float, locate: int | None = None
+    dut,
+    name: str,
+    pkts: list[bytes],
+    p_valid: float,
+    p_ready: float,
+    locate: int | None = None,
+    starts: set[tuple[int, int]] | None = None,
 ) -> FeedDecoder:
+    """`starts` collects (type byte, start lane) of each message leaving the deframer."""
     rng = get_rng(name)
     cocotb.start_soon(Clock(dut.clk_i, 8, unit="ns").start())
     dut.cfg_symbol_i.value = int.from_bytes(SYMBOL.ljust(8).encode(), "big")
@@ -107,10 +117,19 @@ async def run(
     dec = dut.u_decoder
     counts = dict.fromkeys(STATUS, 0) | {"gap_msgs": 0, "t1": 0, "empty": 0, "mal_msg": 0}
 
+    dfr = dut.u_deframer
+
     async def monitor():
+        msg_first = True
         while True:
             await RisingEdge(dut.clk_i)
             nonlocal first
+            if int(dfr.m_tvalid_o.value) and int(dfr.m_tready_i.value):
+                if msg_first and starts is not None:
+                    keep = int(dfr.m_tkeep_o.value)
+                    lo = (keep & -keep).bit_length() - 1
+                    starts.add((int(dfr.m_tdata_o.value) >> (8 * lo) & 0xFF, lo))
+                msg_first = bool(int(dfr.m_tlast_o.value))
             if int(dut.s_tvalid_i.value) and int(dut.s_tready_o.value):
                 if first:
                     pkt_t0.append(int(dut.s_t0_i.value))
@@ -147,9 +166,7 @@ async def run(
 
     cocotb.start_soon(monitor())
     src = AxisSource(dut, dut.clk_i, "s_", rng=rng, p_valid=p_valid)
-    await src.send(
-        AxisBeat(b, last=(k == len(p) - 1), user=0) for p in pkts if p for k, b in enumerate(p)
-    )
+    await src.send(b for p in pkts if p for b in bytes_to_beats(p, LANES, user=0))
     # Drained = every packet has been counted by the DUT and every expected record seen.
     # Judged by the work, not a fixed delay: the last packet's pulses can trail the
     # source's return. Bounded, so a missing record or packet fails (check_done dumps
@@ -206,7 +223,11 @@ async def clean_stream(dut):
 async def adversarial_backpressure(dut):
     """Every MoldUDP64 and ITCH failure mode, with input gaps and output stalls."""
     rng = get_rng("feed_adv_gen")
-    model = await run(dut, "feed_adv", adversarial_packets(rng, 8000), 0.7, 0.5)
+    starts: set[tuple[int, int]] = set()
+    model = await run(dut, "feed_adv", adversarial_packets(rng, 8000), 0.7, 0.5, starts=starts)
+    # every alignment (buildplan §8.1): each book type entered the aligner at every lane
+    holes = [(chr(t), lane) for t in b"AFECXDU" for lane in range(LANES) if (t, lane) not in starts]
+    assert not holes, f"(type, start lane) never seen: {holes}"
     c, f = model.tracker.c, model.c
     for k in (
         "gaps",

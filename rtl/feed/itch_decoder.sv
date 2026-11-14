@@ -2,9 +2,11 @@
 // itch_decoder: ITCH 5.0 messages -> decoded book records for one symbol (ADR 0004).
 // Golden model: model/moldudp64.py FeedDecoder (records and counters).
 //
-// Input:  AXI-Stream, one byte per beat, one ITCH message per tlast (mold_deframer
-//         output). s_seq_i is the message's MoldUDP64 sequence number. s_tuser_i on
-//         tlast = discard the message (already counted upstream).
+// Input:  AXI-Stream, one ITCH message per tlast, DATA_W/8 byte lanes, message byte 0 in
+//         lane 0 of the first beat (DATA_W 8: mold_deframer output; DATA_W 64:
+//         msg_aligner output, ADR 0015): every beat full except the last, whose tkeep is
+//         contiguous from lane 0. s_seq_i is the message's MoldUDP64 sequence number.
+//         s_tuser_i on tlast = discard the message (already counted upstream).
 // Output: one record per accepted book message (A F E C X D U for the configured
 //         stock), valid/ready. Field meaning per type (ITCH 5.0, docs/buildplan.md §5.3):
 //           A/F  ref, side, shares, price      E/C/X  ref, shares
@@ -24,18 +26,20 @@
 //
 // Structure: every field offset in §5.3 is fixed from the start of the message, so each
 // byte is written to a fixed place in a capture register as it streams in, selected by
-// its byte index alone (no shifting, no length-dependent muxing). Five capture
+// its byte index alone (no shifting, no length-dependent muxing): byte k arrives in beat
+// k / LANES, lane k % LANES, so each capture byte has one fixed source lane. Five capture
 // registers cover every field of every subset type:
 //   loc   bytes 1..2      ts   bytes 5..10      w11  bytes 11..18 (ref; R: stock)
 //   w19   bytes 19..26 (A/F side 19, shares 20..23; E/C/X shares 19..22; U new ref)
 //   w27   bytes 27..35 (U shares 27..30, price 31..34; A/F price 32..35)
 // The type and length check are registered on the last byte (stage 1, the T1 event);
 // the locate/side checks and the record are formed one cycle later (stage 2), from
-// registers only. A byte of the next message may be accepted during stage 2: it can
-// only write the type and length registers, which stage 2 no longer reads.
+// registers only. The next message's first beat may be accepted during stage 2 (a beat
+// is accepted only when stage 2 may run, so stage 2 is never later than that): its
+// writes land at the end of the cycle in which stage 2 reads the old values.
 //
-// Latency: record valid 2 cycles after the message's last byte is accepted (t1_o pulses
-// 1 cycle after it). Throughput: 1 byte/cycle; the input stalls only while a record
+// Latency: record valid 2 cycles after the message's last beat is accepted (t1_o pulses
+// 1 cycle after it). Throughput: 1 beat/cycle; the input stalls only while a record
 // waits for m_ready_i.
 // Configuration: cfg_symbol_i (8 ASCII bytes, space padded, as in the R message);
 // cfg_locate_valid_i / cfg_locate_i preload the locate at reset (host fallback).
@@ -51,6 +55,7 @@ module itch_decoder #(
     input  wire logic [15:0]       cfg_locate_i,
     // messages in
     input  wire logic [DATA_W-1:0] s_tdata_i,
+    input  wire logic [DATA_W/8-1:0] s_tkeep_i,
     input  wire logic              s_tvalid_i,
     output logic                   s_tready_o,
     input  wire logic              s_tlast_i,
@@ -94,10 +99,20 @@ module itch_decoder #(
     localparam int OFF_W27 = 27;  // 9 bytes
     localparam logic [7:0] SIDE_B = 8'h42, SIDE_S = 8'h53;
     localparam int IDX_W = 6;     // byte index into the capture registers (< 64)
+    localparam int LANES = DATA_W / 8;
+    localparam int SH    = $clog2(LANES);   // byte index -> beat index
 
-    if (DATA_W != 8) begin : g_bad_width
-        $error("itch_decoder: only DATA_W = 8 is implemented (ADR 0005)");
+    if (DATA_W != 8 && DATA_W != 64) begin : g_bad_width
+        $error("itch_decoder: DATA_W must be 8 or 64 (ADR 0005, 0015)");
     end
+
+    // Capture byte at message offset o: its beat index and its lane.
+    function automatic logic [IDX_W-1:0] beat_of(input int o);
+        return IDX_W'(o >> SH);
+    endfunction
+    function automatic logic [7:0] byte_of(input logic [DATA_W-1:0] d, input int o);
+        return d[8 * (o % LANES) +: 8];
+    endfunction
 
     function automatic logic [15:0] spec_len(input logic [7:0] t);
         unique case (t)
@@ -115,7 +130,8 @@ module itch_decoder #(
     endfunction
 
     // ---------------------------------------------------------------- capture
-    logic [15:0] len_q;      // bytes of the current message accepted so far (saturating)
+    logic [15:0] len_q;      // bytes of the current message accepted so far (saturating;
+                             // a multiple of LANES until the last beat)
     logic [7:0]  type_q;
     // Capture registers (datapath, not reset). Byte k of a field lives at [(N-1-k)*8 +: 8].
     logic [15:0] loc_q;
@@ -125,31 +141,42 @@ module itch_decoder #(
 
     logic             fire, done;
     logic [7:0]       kind;
-    logic [IDX_W-1:0] idx;
+    logic [IDX_W-1:0] idx;   // beat index in the message
     logic             idx_ok;
+    logic [15:0]      nb, len_sum;
 
     always_comb begin
         s_tready_o = !m_valid_o || m_ready_i;
         fire       = s_tvalid_i && s_tready_o;
         done       = fire && s_tlast_i && !s_tuser_i;
-        kind       = (len_q == '0) ? s_tdata_i : type_q;
-        idx        = len_q[IDX_W-1:0];
+        kind       = (len_q == '0) ? s_tdata_i[7:0] : type_q;
+        idx        = IDX_W'(len_q >> SH);
         idx_ok     = len_q < 16'(1 << IDX_W);
+        nb         = '0;
+        for (int i = 0; i < LANES; i++) nb += 16'(s_tkeep_i[i]);
+        len_sum    = len_q + nb;   // bytes including this beat
     end
 
     always_ff @(posedge clk_i) begin
         if (fire) begin
-            if (len_q == '0) type_q <= s_tdata_i;
+            // Bytes past a short last beat's tkeep may be captured; they only matter in a
+            // message whose length check fails, and then no field is used.
+            if (len_q == '0) type_q <= s_tdata_i[7:0];
             for (int k = 0; k < 2; k++)
-                if (idx_ok && idx == IDX_W'(OFF_LOC + k)) loc_q[(1 - k) * 8 +: 8] <= s_tdata_i;
+                if (idx_ok && idx == beat_of(OFF_LOC + k))
+                    loc_q[(1 - k) * 8 +: 8] <= byte_of(s_tdata_i, OFF_LOC + k);
             for (int k = 0; k < 6; k++)
-                if (idx_ok && idx == IDX_W'(OFF_TS + k)) ts_q[(5 - k) * 8 +: 8] <= s_tdata_i;
+                if (idx_ok && idx == beat_of(OFF_TS + k))
+                    ts_q[(5 - k) * 8 +: 8] <= byte_of(s_tdata_i, OFF_TS + k);
             for (int k = 0; k < 8; k++) begin
-                if (idx_ok && idx == IDX_W'(OFF_W11 + k)) w11_q[(7 - k) * 8 +: 8] <= s_tdata_i;
-                if (idx_ok && idx == IDX_W'(OFF_W19 + k)) w19_q[(7 - k) * 8 +: 8] <= s_tdata_i;
+                if (idx_ok && idx == beat_of(OFF_W11 + k))
+                    w11_q[(7 - k) * 8 +: 8] <= byte_of(s_tdata_i, OFF_W11 + k);
+                if (idx_ok && idx == beat_of(OFF_W19 + k))
+                    w19_q[(7 - k) * 8 +: 8] <= byte_of(s_tdata_i, OFF_W19 + k);
             end
             for (int k = 0; k < 9; k++)
-                if (idx_ok && idx == IDX_W'(OFF_W27 + k)) w27_q[(8 - k) * 8 +: 8] <= s_tdata_i;
+                if (idx_ok && idx == beat_of(OFF_W27 + k))
+                    w27_q[(8 - k) * 8 +: 8] <= byte_of(s_tdata_i, OFF_W27 + k);
         end
     end
 
@@ -163,7 +190,7 @@ module itch_decoder #(
         if (done) begin
             d_kind_q   <= kind;
             d_known_q  <= spec_len(kind) != '0;
-            d_len_ok_q <= len_q + 16'd1 == spec_len(kind);
+            d_len_ok_q <= len_sum == spec_len(kind);
             d_seq_q    <= s_seq_i;
             d_t0_q     <= s_t0_i;   // constant within a message (one packet)
             d_t1_q     <= now_i;    // T1: the message's last byte accepted
@@ -230,7 +257,7 @@ module itch_decoder #(
             locate_change_o <= 1'b0;
             if (m_ready_i) m_valid_o <= 1'b0;
 
-            if (fire) len_q <= s_tlast_i ? '0 : (len_q == '1 ? len_q : len_q + 16'd1);
+            if (fire) len_q <= s_tlast_i ? '0 : (len_sum < len_q ? '1 : len_sum);
 
             if (go) begin
                 pend_q <= 1'b0;
@@ -261,6 +288,11 @@ module itch_decoder #(
             assert ($countones({unknown_o, malformed_o, other_locate_o, dir_match_o}) <= 1);
             // stage 2 must have run before another message can finish
             assert (!(done && pend_q && !go));
+            // input shape: tkeep contiguous from lane 0, full unless tlast
+            if (s_tvalid_i) begin
+                assert (s_tkeep_i[0] && (s_tkeep_i & (s_tkeep_i + 1'b1)) == '0);
+                assert (s_tlast_i || &s_tkeep_i);
+            end
         end
     end
 `endif

@@ -926,3 +926,16 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   condition (residual + last beat > 8 bytes).
 - Vivado `Synth 8-6901` (mold_deframer_w64: `in_data_q` used before declaration in the
   pf_ functions) → functions moved below the declarations; OOC report refreshed.
+
+## 2026-11-14 — ADR 0015 step 3: itch_decoder at 64, feed_frontend at 64
+
+- `itch_decoder`: capture byte o from beat o/8, lane o%8 (fixed lane; identical logic at
+  8); length from tkeep. `feed_frontend` gains `s_tkeep_i` and inserts `msg_aligner` at
+  64; `ob_core` ties tkeep to 1 (8 bits) until step 4.
+- `test_feed` at 8 and 64: 9/9 each; every book type at every aligner start lane at 64
+  (asserted). 5 injected bugs (lane, beat, count, index, aligner bypassed) all caught.
+- OOC feed_frontend: 64 WNS +0.460 ns (1,249 LUT, 2,518 FF); 8 WNS +1.577 ns (633 LUT,
+  1,857 FF). The committed 8-bit report dated from 2026-11-05 (before T0/T1), so it is
+  refreshed rather than compared. `syn/ooc_feed.tcl` takes DATA_W as a second argument.
+- Harness: a wait loop on `pgrep -f "<pattern>"` matched its own shell's command line and
+  never ended → check the Vivado logs instead (pgrep -x vivado, or wait on the PID).

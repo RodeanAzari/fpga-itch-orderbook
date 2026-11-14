@@ -75,4 +75,17 @@ one output beat leaves in two (one extra "flush" cycle).
   flush tkeep/tuser/seq, tready during flush, tail tkeep); every one fails the test.
 - Out-of-context at 125 MHz: WNS +2.403 ns, 528 LUT, 400 FF (`docs/reports/ooc_msg_aligner/`).
 
-Steps 3-5: [TBD].
+**Step 3, `itch_decoder` at 64 and `feed_frontend` at 64 (2026-11-14).** Each capture
+byte at message offset o is written from beat o / 8, lane o % 8 (one fixed source lane,
+no lane muxes); the byte count advances by the beat's tkeep. At `DATA_W` 8 this is the
+previous logic. `feed_frontend` inserts `msg_aligner` at 64 only.
+- `tb/cocotb/test_feed.py` now runs at 8 and 64 (9 tests each, records and counters vs
+  `FeedDecoder`). Coverage asserted at 64: each book type (A F E C X D U) entered the
+  aligner at all 8 lanes (buildplan §8.1 "every alignment").
+- Bug injection at 64: capture lane, capture beat, byte count, beat index and a bypassed
+  aligner; every one fails the test.
+- Out-of-context `feed_frontend` at 125 MHz: DATA_W 64 WNS +0.460 ns, 1,249 LUT,
+  2,518 FF, 0 BRAM (`docs/reports/ooc_feed_w64/`); DATA_W 8 WNS +1.577 ns, 633 LUT,
+  1,857 FF (`docs/reports/ooc_feed/`, refreshed; the previous report predated ADR 0011).
+
+Steps 4-5: [TBD].

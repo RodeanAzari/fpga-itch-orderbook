@@ -24,8 +24,10 @@ lint:
 	  verilator --lint-only -Wall --assert $(RTL) $(ETH_RTL) $(XIL_RTL) --top-module $$(basename $$f .sv) || exit 1; \
 	done
 	verilator --lint-only -Wall --assert $(RTL) $(ETH_RTL) $(XIL_RTL) --top-module ob_core -GCUT_THROUGH=1
-	verilator --lint-only -Wall --assert $(RTL) $(ETH_RTL) $(XIL_RTL) --top-module mold_deframer -GDATA_W=64
-	@echo "lint: $(words $(RTL)) modules clean, ob_core in cut-through (ADR 0013), mold_deframer at 64 (ADR 0015)"
+	@for t in mold_deframer itch_decoder feed_frontend; do \
+	  verilator --lint-only -Wall --assert $(RTL) $(ETH_RTL) $(XIL_RTL) --top-module $$t -GDATA_W=64 || exit 1; \
+	done
+	@echo "lint: $(words $(RTL)) modules clean, ob_core in cut-through (ADR 0013), feed at DATA_W 64 (ADR 0015)"
 
 # cocotb + Verilator regression (tb/run.py [test_module ...] for a subset); JOBS parameter
 # sets at once, each in its own process (build/sim/<test>_<n>.log).
