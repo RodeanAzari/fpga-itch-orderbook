@@ -370,6 +370,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
             want["rx_frames_ok"] += 1
             want["feed_filtered"] += 1
             ctrl_counts[1] += 1
+    sent_mark = len(b.mon.frames)  # TX frames complete when the last feed frame was sent
 
     # expected records and counters: the feed payloads that passed the gate
     flags = await release
@@ -392,23 +393,26 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     got: list[bytes] = []
     stats: list = []
     last_seq = 0
-    rec_done_seq = None  # pkt_seq of the datagram that completed the records
+    late_stats = 0  # stats datagrams whose TX frame completed after sent_mark
     timed_out = False
     for _ in range(150):  # 12 ms: all frames are already sent, so this is generous
         await ClockCycles(b.dut.clk_i, 10_000)
-        for d in b.datagrams(host):
+        first_idx = b.seen
+        for j, d in enumerate(b.datagrams(host)):
             assert d.pkt_seq == last_seq + 1, f"pkt_seq {d.pkt_seq} after {last_seq}"
             last_seq = d.pkt_seq
             if d.kind == STATS:
                 stats.append(d)
+                late_stats += first_idx + j >= sent_mark
             else:
                 assert d.kind == kind, f"datagram type {d.kind:#x} in mode {cfg.mode}"
                 got += d.records
-                if len(got) >= len(recs) and rec_done_seq is None:
-                    rec_done_seq = d.pkt_seq
-        # done: all records out and two stats datagrams after them (all frames were sent
-        # before this loop, so the second is a full tick after the last one arrived)
-        if rec_done_seq is not None and sum(s.pkt_seq > rec_done_seq for s in stats) >= 2:
+        # done: all records out and two stats datagrams finished after the last frame was
+        # sent. The first may have been snapshotted before it; the second is snapshotted
+        # a tick after the first, so after every frame. (Counting stats after the last
+        # record is not enough: if the last packets publish no BBO, those stats can
+        # predate their frames; seen with SEED=4225131820, cut-through.)
+        if len(got) >= len(recs) and late_stats >= 2:
             break
     else:
         timed_out = True
