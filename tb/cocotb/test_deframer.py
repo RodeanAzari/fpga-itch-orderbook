@@ -58,6 +58,7 @@ async def run(
     pkts: list[tuple[bytes, int]],
     p_valid: float,
     p_ready: float,
+    p_ext: float = 0.2,
 ) -> tuple[SeqTracker, Counter]:
     """Send (packet, tuser) pairs; returns the model and the DUT-side coverage."""
     rng = get_rng(name)
@@ -65,6 +66,7 @@ async def run(
     cocotb.start_soon(Clock(dut.clk_i, 8, unit="ns").start())
     dut.m_tready_i.value = 0
     dut.s_t0_i.value = 0
+    dut.s_stale_i.value = 0
     dut.rst_i.value = 1
     await ClockCycles(dut.clk_i, 3)
     dut.rst_i.value = 0
@@ -74,6 +76,10 @@ async def run(
     model = SeqTracker()
     sb = InOrderScoreboard(name, fmt=lambda x: f"seq={x[0]} len={len(x[1])}")
     exp_pkt: list[int] = []  # packet index of each expected message (for its T0)
+    # ADR 0016: each message's in-band stale, in stream order: the tracker's state as the
+    # packet's messages are delivered, or an empty message before it (the packet's
+    # sampled s_stale_i is ORed in below)
+    exp_stale: list[bool] = []
     n_empty = 0
     for k, (p, user) in enumerate(pkts):
         c = model.c
@@ -82,6 +88,7 @@ async def run(
             if msg:
                 sb.expect((seq, msg))
                 exp_pkt.append(k)
+                exp_stale.append(model.msg_stale or n_empty > 0)
             else:
                 n_empty += 1
         if user and before == (c.duplicates, c.malformed_packets):
@@ -89,6 +96,8 @@ async def run(
 
     pkt_t0: list[int] = []
     got_t0: list[int] = []
+    pkt_stale: list[int] = []
+    got_stale: list[int] = []
     counts = Counter()
     cov: Counter = Counter()
     cycles = {"first": None, "last": 0, "n": 0}
@@ -97,13 +106,14 @@ async def run(
         while True:
             await FallingEdge(dut.clk_i)
             dut.s_t0_i.value = rng.getrandbits(64)
+            dut.s_stale_i.value = int(rng.random() < p_ext)  # right only if sampled right
 
     cocotb.start_soon(drive_t0())
 
     async def monitor():
         first_in = True
         cur = bytearray()
-        cur_meta: tuple[int, int] | None = None
+        cur_meta: tuple[int, int, int] | None = None
         while True:
             await RisingEdge(dut.clk_i)
             cycles["n"] += 1
@@ -112,6 +122,7 @@ async def run(
                     cycles["first"] = cycles["n"]
                 if first_in:
                     pkt_t0.append(int(dut.s_t0_i.value))
+                    pkt_stale.append(int(dut.s_stale_i.value))
                 first_in = bool(int(dut.s_tlast_i.value))
             for s in STATUS:
                 counts[s] += int(getattr(dut, s).value)
@@ -129,8 +140,8 @@ async def run(
                     assert ln[0] == 0, f"{name}: middle/last beat starts at lane {ln[0]}"
                 if not last:
                     assert ln[-1] == LANES - 1, f"{name}: non-last beat ends at lane {ln[-1]}"
-                meta = (int(dut.m_seq_o.value), int(dut.m_t0_o.value))
-                assert cur_meta is None or meta == cur_meta, f"{name}: seq/t0 changed in message"
+                meta = (int(dut.m_seq_o.value), int(dut.m_t0_o.value), int(dut.m_stale_o.value))
+                assert cur_meta is None or meta == cur_meta, f"{name}: seq/t0/stale changed"
                 if not cur:
                     cov[f"start{ln[0]}"] += 1
                 cur_meta = meta
@@ -143,6 +154,7 @@ async def run(
                     else:
                         sb.observe((meta[0], bytes(cur)))
                         got_t0.append(meta[1])
+                        got_stale.append(meta[2])
                     cur = bytearray()
                     cur_meta = None
                 else:
@@ -182,6 +194,10 @@ async def run(
     assert int(dut.stale_o.value) == int(model.stale)
     for i, (t0, k) in enumerate(zip(got_t0, exp_pkt, strict=True)):
         assert t0 == pkt_t0[k], f"{name}: message {i}: t0 {t0:#x} != packet {k}'s"
+    for i, (st, k) in enumerate(zip(got_stale, exp_pkt, strict=True)):
+        want_st = int(exp_stale[i] or pkt_stale[k])
+        assert st == want_st, f"{name}: message {i} (packet {k}): stale {st}, want {want_st}"
+        cov[f"stale_model{int(exp_stale[i])}_ext{pkt_stale[k]}"] += 1
     cov["cycles"] = cycles["last"] - (cycles["first"] or 0) + 1
     cov["beats"] = len(beats)
     cov["msgs"] = sb.matched + counts["partial"] + n_empty
@@ -255,6 +271,8 @@ async def clean_stream(dut):
     pkts = [(p, 0) for p in packetize(msgs, b"SESSIONAAA")]
     model, cov = await run(dut, "dfr_clean", pkts, 1.0, 1.0)
     assert not model.stale and model.c.gaps == 0 and model.c.malformed_packets == 0
+    # in-band stale (ADR 0016): never from the model here, from s_stale_i on some packets
+    assert cov["stale_model0_ext0"] and cov["stale_model0_ext1"], cov
     bound = cov["beats"] + cov["msgs"] + len(pkts) + 4
     assert cov["cycles"] <= bound, f"{cov['cycles']} cycles > bound {bound}"
 
@@ -264,11 +282,42 @@ async def adversarial_backpressure(dut):
     """Every MoldUDP64 failure mode (feed_stim), with input gaps and output stalls."""
     rng = get_rng("dfr_adv_gen")
     pkts = [(p, 0) for p in adversarial_packets(rng, 8000)]
-    model, _ = await run(dut, "dfr_adv", pkts, 0.7, 0.5)
+    model, cov = await run(dut, "dfr_adv", pkts, 0.7, 0.5)
     c = model.c
+    # in-band stale from the model, with and without s_stale_i (model-0 bins: clean_stream)
+    assert cov["stale_model1_ext0"] and cov["stale_model1_ext1"], cov
     for k in ("gaps", "duplicates", "heartbeats", "end_of_session", "session_changes"):
         assert getattr(c, k) > 0, f"stimulus never produced {k}"
     assert c.malformed_packets > 0
+
+
+async def _tail_case(dut, name: str, tail: bytes, p: float) -> None:
+    rng = get_rng(f"{name}_gen")
+    msgs = generator.generate(seed=rng.randrange(1 << 30), count=30)
+    sess = b"SESSIONTAL"
+    pkts = [
+        (pack(sess, 1, msgs[0:10]), 0),
+        (pack(sess, 11, msgs[10:20]) + tail, 0),
+        (pack(sess, 21, msgs[20:30]), 0),  # the header count sets expected: no gap
+    ]
+    model, cov = await run(dut, name, pkts, p, p, p_ext=0.0)
+    assert model.c.malformed_packets == 1 and model.c.gaps == 0
+    assert cov["stale_model0_ext0"] == 20 and cov["stale_model1_ext0"] == 10, cov
+
+
+@cocotb.test()
+async def malformed_tail_trailing_byte(dut):
+    """ADR 0016: a packet's malformed tail is found after its intact messages, so they
+    stay unflagged and the next packet's are stale. External stale held at 0, so only
+    the in-band order decides. Here: one byte after the last message."""
+    await _tail_case(dut, "dfr_tail1", b"\x00", 0.8)
+
+
+@cocotb.test()
+async def malformed_tail_overrun(dut):
+    """As malformed_tail_trailing_byte, with a length prefix that overruns the packet
+    (the truncated message is discarded), at full rate."""
+    await _tail_case(dut, "dfr_tail2", b"\x00\x30\x41", 1.0)
 
 
 async def _every_lane(dut, name: str, p_valid: float, p_ready: float) -> None:

@@ -939,3 +939,26 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   refreshed rather than compared. `syn/ooc_feed.tcl` takes DATA_W as a second argument.
 - Harness: a wait loop on `pgrep -f "<pattern>"` matched its own shell's command line and
   never ended → check the Vivado logs instead (pgrep -x vivado, or wait on the PID).
+
+## 2026-11-14 — ADR 0015 step 4 (packer, injector at 64); ADR 0016 (in-band stale)
+
+- Step 4: `rtl/lib/byte_packer.sv` (network bytes to 8-byte beats, T0 per packet),
+  `injector` and `ob_core` with `DATA_W`; 64-bit ROM image = the same 22 packets.
+  `test_packer` (9 injected bugs caught), `test_injector` and `test_core` at 8 and 64.
+  Simulated inject span 9,059 cycles at 64 vs 31,703 at 8 (sim only; board in step 5).
+- Bug (test): `test_core` cut-through, SEED=4225131820: rx_frames_ok 266 vs 272 →
+  the stop rule took "two stats after the last record", but those stats can predate the
+  last frames when the last packets publish no BBO → count only stats whose TX frame
+  completed after the last feed frame was sent. On main (`02263c3`).
+- Bug (infra): a set that passed 9/9 reported "terminated abnormally" → parallel sets
+  shared `tb/cocotb/results.xml` → one results file per set. On main (`126debe`).
+- Bug (test): step 3's every-lane coverage held only for lucky seeds → `test_feed
+  every_alignment` places each type at every lane by construction.
+- Bug (RTL, on main since ADR 0013): `test_core ct_bad_frames`, SEED=1623422250: the bad
+  packet's own last BBO (seq 309) came out stale → `ob_core` sampled the live feed stale
+  when a record entered the book, and the FCS verdict arrives 1 cycle after the frame →
+  ADR 0016: the stale rides in-band (deframer stamps, aligner and decoder carry; the
+  cut-through stale enters per packet). The model changed too: a packet's malformed tail
+  no longer flags its own earlier messages (`SeqTracker.msg_stale`).
+- OOC `feed_frontend` after ADR 0016: 64 WNS +0.556 ns (1,315 LUT, 2,527 FF); 8 WNS
+  +1.175 ns (639 LUT, 1,863 FF).

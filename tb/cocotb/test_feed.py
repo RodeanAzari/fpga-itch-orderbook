@@ -76,8 +76,10 @@ async def run(
     p_ready: float,
     locate: int | None = None,
     starts: set[tuple[int, int]] | None = None,
+    p_ext: float = 0.1,
 ) -> FeedDecoder:
-    """`starts` collects (type byte, start lane) of each message leaving the deframer."""
+    """`starts` collects (type byte, start lane) of each message leaving the deframer.
+    p_ext: probability that s_stale_i is 1 on a cycle (sampled per packet)."""
     rng = get_rng(name)
     cocotb.start_soon(Clock(dut.clk_i, 8, unit="ns").start())
     dut.cfg_symbol_i.value = int.from_bytes(SYMBOL.ljust(8).encode(), "big")
@@ -91,16 +93,18 @@ async def run(
     model = FeedDecoder(SYMBOL, locate=locate)
     sb = InOrderScoreboard(name, fmt=lambda x: f"{x[0].__name__} seq={x[1]} ref={x[3]}")
     rec_pkt: list[int] = []  # packet index of each expected record (for its T0)
+    rec_stale: list[bool] = []  # model Record.stale, in stream order (ADR 0016)
     for k, p in enumerate(q for q in pkts if q):
         for rec in model.feed(p):
             sb.expect(model_fields(rec))
             rec_pkt.append(k)
+            rec_stale.append(rec.stale)
     # ADR 0011: s_t0_i changes every cycle, so T0 is right only if sampled at the
     # packet's first byte; T1 is now_i on the cycle the decoder took the message's last
     # byte (seen on its input, by sequence number).
     pkt_t0: list[int] = []
     last_bytes: list[tuple[int, int]] = []  # (seq, now) per message, in order
-    got_t: list[tuple[int, int, int]] = []  # (t0, t1, seq) per record
+    got_t: list[tuple[int, int, int, int]] = []  # (t0, t1, seq, stale) per record
 
     async def clocks():
         n = 0
@@ -109,9 +113,12 @@ async def run(
             n += 1
             dut.now_i.value = n
             dut.s_t0_i.value = rng.getrandbits(64)
+            dut.s_stale_i.value = int(rng.random() < p_ext)  # per packet, at its first beat
 
     dut.now_i.value = 0
     dut.s_t0_i.value = 0
+    dut.s_stale_i.value = 0
+    pkt_stale: list[int] = []
     cocotb.start_soon(clocks())
     first = True
     dec = dut.u_decoder
@@ -133,6 +140,7 @@ async def run(
             if int(dut.s_tvalid_i.value) and int(dut.s_tready_o.value):
                 if first:
                     pkt_t0.append(int(dut.s_t0_i.value))
+                    pkt_stale.append(int(dut.s_stale_i.value))
                 first = bool(int(dut.s_tlast_i.value))
             if (
                 int(dec.s_tvalid_i.value)
@@ -149,7 +157,14 @@ async def run(
             counts["empty"] += int(dut.empty_msg_o.value)
             counts["mal_msg"] += int(dut.malformed_msg_o.value)
             if int(dut.m_valid_o.value) and int(dut.m_ready_i.value):
-                got_t.append((int(dut.m_t0_o.value), int(dut.m_t1_o.value), int(dut.m_seq_o.value)))
+                got_t.append(
+                    (
+                        int(dut.m_t0_o.value),
+                        int(dut.m_t1_o.value),
+                        int(dut.m_seq_o.value),
+                        int(dut.m_stale_o.value),
+                    )
+                )
                 sb.observe(
                     (
                         TYPE_CLASS[int(dut.m_type_o.value)],
@@ -189,8 +204,10 @@ async def run(
     assert int(dut.stale_o.value) == int(model.stale)
     assert len(got_t) == len(rec_pkt)
     j = 0  # records are in message order: each takes the next message with its seq
-    for i, ((t0, t1, seq), k) in enumerate(zip(got_t, rec_pkt, strict=True)):
+    for i, ((t0, t1, seq, st), k) in enumerate(zip(got_t, rec_pkt, strict=True)):
         assert t0 == pkt_t0[k], f"record {i} (seq {seq}): t0 {t0:#x} != packet {k}'s"
+        want_st = int(rec_stale[i] or pkt_stale[k])
+        assert st == want_st, f"record {i} (seq {seq}, packet {k}): stale {st}, want {want_st}"
         while last_bytes[j][0] != seq:
             j += 1
         assert t1 == last_bytes[j][1], f"record {i} (seq {seq}): t1 {t1} != {last_bytes[j][1]}"
@@ -236,6 +253,20 @@ async def adversarial_backpressure(dut):
     ):
         assert getattr(c, k) > 0, f"stimulus never produced {k}"
     assert f.unknown_types > 0 and f.malformed_messages > 0 and f.other_locate > 0
+
+
+@cocotb.test()
+async def stale_per_packet(dut):
+    """ADR 0016: the external stale is per packet and must stay with that packet's
+    records through the deframer, aligner and decoder. Small packets (1-3 messages,
+    many boundaries), s_stale_i 1 half the time, full input rate, heavy output stalls
+    (the pipeline backs up across packet boundaries)."""
+    rng = get_rng("feed_ext_gen")
+    msgs = generator.generate(seed=rng.randrange(1 << 30), count=3000)
+    # 81: the longest message (59) + framing
+    pkts = list(packetize(msgs, b"SESSIONEXT", max_payload=81))
+    model = await run(dut, "feed_ext", pkts, 1.0, 0.2, p_ext=0.5)
+    assert not model.stale and len(pkts) > 1500
 
 
 FILLER = b"z"  # not an ITCH 5.0 type: skipped by its length prefix (unknown_types)

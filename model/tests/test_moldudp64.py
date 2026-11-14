@@ -210,3 +210,29 @@ def test_malformed_message_is_skipped_by_length_and_marks_stale() -> None:
     # Stale rides with each record: set from the first record after the bad one, not before.
     assert [x.stale for x in dec.records] == [x.seq > k + 1 for x in want]
     assert any(x.stale for x in dec.records) and not all(x.stale for x in dec.records)
+
+
+def test_stale_is_in_stream_order_around_a_malformed_tail() -> None:
+    """ADR 0016: a record's stale is the state when its message was delivered. A packet's
+    malformed tail (truncated, or bytes after `count` messages) is found after its intact
+    messages, so it flags the next packet's records, not its own; a gap is found at the
+    header, so it flags its own packet's records."""
+    cfg = generator.DEFAULT
+    msgs = generator.generate(seed=11, count=400, cfg=cfg)
+    adds = [i for i, m in enumerate(msgs) if m[:1] == b"A"]
+    a1, a2, a3 = adds[0], adds[1], adds[2]
+    for tail in (b"\x00", b"\x00\x05\x41"):  # trailing byte; a prefix overrunning the end
+        dec = FeedDecoder(cfg.stock)
+        bad = pack(S1, 1, msgs[: a1 + 1]) + tail
+        nxt = pack(S1, a1 + 2, msgs[a1 + 1 : a2 + 1])
+        recs = dec.feed(bad) + dec.feed(nxt)
+        assert dec.tracker.c.malformed_packets == 1 and dec.stale
+        own = [r for r in recs if r.seq <= a1 + 1]
+        later = [r for r in recs if r.seq > a1 + 1]
+        assert own and later
+        assert not any(r.stale for r in own), tail
+        assert all(r.stale for r in later), tail
+    dec = FeedDecoder(cfg.stock)
+    dec.feed(pack(S1, 1, msgs[: a1 + 1]))
+    gap = dec.feed(pack(S1, a2 + 1, msgs[a2 : a3 + 1]))  # messages a1+2 .. a2 lost
+    assert dec.tracker.c.gaps == 1 and gap and all(r.stale for r in gap)

@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
-| Date         : Sat Nov 14 13:00:37 2026
+| Date         : Sat Nov 14 16:15:54 2026
 | Host         : RodeanStation running 64-bit Ubuntu 26.04 LTS
 | Command      : report_utilization -hierarchical -file /home/rodea/OrderBook/docs/reports/ooc_feed/utilization_hier.rpt
 | Design       : feed_frontend
@@ -22,11 +22,11 @@ Table of Contents
 +-------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
 |      Instance     |      Module      | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
 +-------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
-| feed_frontend     |            (top) |        633 |        633 |       0 |    0 | 1857 |      0 |      0 |          0 |
+| feed_frontend     |            (top) |        639 |        639 |       0 |    0 | 1863 |      0 |      0 |          0 |
 |   (feed_frontend) |            (top) |          0 |          0 |       0 |    0 |    1 |      0 |      0 |          0 |
-|   u_decoder       |     itch_decoder |        197 |        197 |       0 |    0 |  956 |      0 |      0 |          0 |
-|   u_deframer      |    mold_deframer |        436 |        436 |       0 |    0 |  900 |      0 |      0 |          0 |
-|     g_w8.u_impl   | mold_deframer_w8 |        436 |        436 |       0 |    0 |  900 |      0 |      0 |          0 |
+|   u_decoder       |     itch_decoder |        201 |        201 |       0 |    0 |  959 |      0 |      0 |          0 |
+|   u_deframer      |    mold_deframer |        439 |        439 |       0 |    0 |  903 |      0 |      0 |          0 |
+|     g_w8.u_impl   | mold_deframer_w8 |        439 |        439 |       0 |    0 |  903 |      0 |      0 |          0 |
 +-------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
 * Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
 

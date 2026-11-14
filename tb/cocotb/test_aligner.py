@@ -78,10 +78,11 @@ async def run(dut, name: str, msgs, p_valid: float, p_ready: float) -> Counter:
     beats_in = []
     cov: Counter = Counter()
     for msg, off, seq, t0, user in msgs:
+        stale = rng.getrandbits(1)  # in-band stale (ADR 0016), constant in a message
         out = tuple((b.keep, b.data) for b in bytes_to_beats(msg, LANES))
-        sb.expect((seq, t0, user, out))
+        sb.expect((seq, t0, stale, user, out))
         bs = deframer_beats(rng, msg, off)
-        beats_in += [(d, k, last, seq, t0, user if last else 0) for d, k, last in bs]
+        beats_in += [(d, k, last, seq, t0, stale, user if last else 0) for d, k, last in bs]
         cov[f"off{off}_mod{len(msg) % LANES}"] += 1
         cov["single_beat"] += len(bs) == 1
         last_n = bin(bs[-1][1]).count("1")
@@ -101,8 +102,8 @@ async def run(dut, name: str, msgs, p_valid: float, p_ready: float) -> Counter:
                 keep = int(dut.m_tkeep_o.value)
                 data = int(dut.m_tdata_o.value)
                 mask = sum(0xFF << (8 * i) for i in range(LANES) if keep >> i & 1)
-                m = (int(dut.m_seq_o.value), int(dut.m_t0_o.value))
-                assert meta is None or m == meta, f"{name}: seq/t0 changed within a message"
+                m = (int(dut.m_seq_o.value), int(dut.m_t0_o.value), int(dut.m_stale_o.value))
+                assert meta is None or m == meta, f"{name}: seq/t0/stale changed in a message"
                 meta = m
                 cur.append((keep, data & mask))
                 last = int(dut.m_tlast_o.value)
@@ -116,7 +117,7 @@ async def run(dut, name: str, msgs, p_valid: float, p_ready: float) -> Counter:
     cocotb.start_soon(monitor())
 
     # Driver: tvalid holds with stable data until accepted.
-    for d, k, last, seq, t0, user in beats_in:
+    for d, k, last, seq, t0, stale, user in beats_in:
         while rng.random() >= p_valid:
             dut.s_tvalid_i.value = 0
             await RisingEdge(dut.clk_i)
@@ -126,6 +127,7 @@ async def run(dut, name: str, msgs, p_valid: float, p_ready: float) -> Counter:
         dut.s_tuser_i.value = user
         dut.s_seq_i.value = seq
         dut.s_t0_i.value = t0
+        dut.s_stale_i.value = stale
         dut.s_tvalid_i.value = 1
         await RisingEdge(dut.clk_i)
         while not int(dut.s_tready_o.value):

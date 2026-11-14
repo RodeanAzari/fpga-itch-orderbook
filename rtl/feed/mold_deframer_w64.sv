@@ -29,6 +29,9 @@
 // verdict and loaded one cycle later (the next verdict is >= 4 cycles away).
 // Backpressure: a step runs only when the output register is free; s_tready_o = holding
 // register empty, or its beat finishes this cycle.
+// In-band stale (ADR 0016): m_stale_o as in mold_deframer_w8 (s_stale_i sampled at the
+// packet's first beat). The verdict and an empty message are steps of their own, so a
+// later step's beat sees their stale.
 // Reset: synchronous, active-high; clears the session, expected and stale.
 module mold_deframer_w64 (
     input  wire logic        clk_i,
@@ -41,6 +44,7 @@ module mold_deframer_w64 (
     input  wire logic        s_tlast_i,
     input  wire logic        s_tuser_i,
     input  wire logic [63:0] s_t0_i,    // T0 of this packet's frame (ADR 0011)
+    input  wire logic        s_stale_i, // sampled at the packet's first beat (ADR 0016)
     // messages out
     output logic [63:0]      m_tdata_o,
     output logic [7:0]       m_tkeep_o,
@@ -50,6 +54,7 @@ module mold_deframer_w64 (
     output logic             m_tuser_o,
     output logic [63:0]      m_seq_o,
     output logic [63:0]      m_t0_o,    // s_t0_i at the packet's first beat
+    output logic             m_stale_o, // in-band stale (ADR 0016)
     // status (as mold_deframer_w8)
     output logic             pkt_o,
     output logic             heartbeat_o,
@@ -89,7 +94,8 @@ module mold_deframer_w64 (
     logic        in_v_q;                      // control
     logic [63:0] in_data_q, in_t0_q;          // datapath
     logic [3:0]  in_nb_q;                     // bytes in the beat, 1..8
-    logic        in_last_q, in_user_q;
+    logic        in_last_q, in_user_q, in_stale_q;
+    logic        pkt_stale_q, empty_seen_q;
 
     // Parser state (control, reset)
     state_t      state_q;
@@ -247,6 +253,7 @@ module mold_deframer_w64 (
             in_last_q <= s_tlast_i;
             in_user_q <= s_tuser_i;
             in_t0_q   <= s_t0_i;
+            in_stale_q <= s_stale_i;
             // in_data_q still holds the previous beat here (slot 7 needs its lane 7).
             for (int i = 0; i < LANES; i++) begin
                 pf_z_q[i]  <= pf_len(i) == '0;
@@ -260,7 +267,8 @@ module mold_deframer_w64 (
                     2'd0: begin
                         for (int i = 0; i < LANES; i++)
                             sess_hi_q[63-8*i -: 8] <= lane(in_data_q, 3'(i));
-                        pkt_t0_q <= in_t0_q;  // T0 at the packet's first beat (ADR 0011)
+                        pkt_t0_q    <= in_t0_q;  // T0 at the packet's first beat (ADR 0011)
+                        pkt_stale_q <= in_stale_q;
                     end
                     2'd1: begin
                         sess_full_q <= sess_in;
@@ -292,6 +300,7 @@ module mold_deframer_w64 (
                 m_tkeep_o <= keep;
                 m_seq_o   <= msg_seq_q;
                 m_t0_o    <= pkt_t0_q;
+                m_stale_o <= stale_o || empty_msg_o || empty_seen_q || pkt_stale_q;
             end
         end
         exp_sum_q <= seq_full_q + 64'(count_q);
@@ -310,6 +319,7 @@ module mold_deframer_w64 (
             upd_exp_q        <= 1'b0;
             upd_exp2_q       <= 1'b0;
             stale_o          <= 1'b0;
+            empty_seen_q     <= 1'b0;
             m_tvalid_o       <= 1'b0;
             m_tlast_o        <= 1'b0;
             m_tuser_o        <= 1'b0;
@@ -332,6 +342,7 @@ module mold_deframer_w64 (
             empty_msg_o      <= 1'b0;
             upd_exp_q        <= 1'b0;
             upd_exp2_q       <= upd_exp_q;
+            if (empty_msg_o) empty_seen_q <= 1'b1;
             // seq_full_q and count_q are stable until the next packet's header beat 2.
             if (upd_exp2_q) expected_q <= exp_sum_q;
 

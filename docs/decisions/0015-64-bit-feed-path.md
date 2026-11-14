@@ -88,4 +88,24 @@ previous logic. `feed_frontend` inserts `msg_aligner` at 64 only.
   2,518 FF, 0 BRAM (`docs/reports/ooc_feed_w64/`); DATA_W 8 WNS +1.577 ns, 633 LUT,
   1,857 FF (`docs/reports/ooc_feed/`, refreshed; the previous report predated ADR 0011).
 
-Steps 4-5: [TBD].
+**Step 4, packer, injector and `ob_core` at 64 (2026-11-14).** `rtl/lib/byte_packer`
+(bytes to 8-byte beats, the packet's T0 carried with its beats; one byte per cycle);
+`injector` with `DATA_W` (8 lanes of {last, byte} per ROM word, payloads start at lane 0;
+the 64-bit image holds the same 22 packets as the 8-bit one, 3,971 of 4,096 words, so both
+capacity runs replay the same 1,043 messages); `ob_core` with `DATA_W`.
+- `test_packer`: exact beats vs `bytes_to_beats` for lengths covering every final lane,
+  random gaps on both sides, T0 changed every cycle, tuser, reset mid-packet; one byte per
+  cycle at full rate. 9 injected bugs (lane, keep, meta sampling, valid, refill, tuser,
+  reset) each fail it.
+- `test_injector` at 8 and 64: the payloads exactly, tkeep shape, one ROM word per cycle,
+  replay after reset; first beat valid at the 5th rising edge after reset at 8, the 4th
+  at 64 (the header's previous "4 cycles" was off by one).
+- `test_core` at DATA_W 64, both eth_rx modes: frames to datagrams vs the model, the
+  inject run (248 BBOs, model digest). Simulated inject span 9,059 cycles at 64 vs 31,703
+  at 8: a simulation figure; the capacity result is step 5's board run.
+- Found on the way, fixed on main: `test_core`'s stop rule could read stats from before
+  the last frames (a test bug) and parallel sim sets shared one results.xml. Fixed on this
+  branch: the every-lane coverage now holds by construction (`test_feed every_alignment`).
+  A real ordering bug in the stale flag led to ADR 0016.
+
+Step 5: [TBD].

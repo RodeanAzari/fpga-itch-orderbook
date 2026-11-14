@@ -12,7 +12,8 @@
 //           A/F  ref, side, shares, price      E/C/X  ref, shares
 //           D    ref                            U      ref (original), new_ref, shares, price
 //         Unused fields are 0. C's execution price is not decoded: the book uses the
-//         resting price.
+//         resting price. m_stale_o (ADR 0016): s_stale_i of the message, or a malformed
+//         message decided before it (model Record.stale, in stream order).
 //
 // Checks, in the model's order:
 //   1. a type outside §5.3                     -> unknown_o (skipped by length)
@@ -62,6 +63,7 @@ module itch_decoder #(
     input  wire logic              s_tuser_i,
     input  wire logic [63:0]       s_seq_i,
     input  wire logic [63:0]       s_t0_i,    // T0 of the message's frame (ADR 0011)
+    input  wire logic              s_stale_i, // in-band stale, constant in a message (0016)
     input  wire logic [63:0]       now_i,     // timestamp counter
     // records out
     output logic                   m_valid_o,
@@ -77,6 +79,7 @@ module itch_decoder #(
     // status
     output logic [63:0]            m_t0_o,
     output logic [63:0]            m_t1_o,    // now_i when the last byte was accepted
+    output logic                   m_stale_o, // s_stale_i, or a malformed message before
     output logic                   t1_o,
     output logic                   unknown_o,
     output logic                   malformed_o,
@@ -185,6 +188,8 @@ module itch_decoder #(
     logic [7:0]  d_kind_q;
     logic        d_known_q, d_len_ok_q;
     logic [63:0] d_seq_q, d_t0_q, d_t1_q;
+    logic        d_stale_q;
+    logic        bad_q;  // a malformed message has been decided (sticky until reset)
 
     always_ff @(posedge clk_i) begin
         if (done) begin
@@ -193,6 +198,7 @@ module itch_decoder #(
             d_len_ok_q <= len_sum == spec_len(kind);
             d_seq_q    <= s_seq_i;
             d_t0_q     <= s_t0_i;   // constant within a message (one packet)
+            d_stale_q  <= s_stale_i;
             d_t1_q     <= now_i;    // T1: the message's last byte accepted
         end
     end
@@ -220,6 +226,10 @@ module itch_decoder #(
             m_seq_o     <= d_seq_q;
             m_t0_o      <= d_t0_q;
             m_t1_o      <= d_t1_q;
+            // stage 2 runs in message order. malformed_o: a malformed message's stage 2
+            // on the previous cycle (unreachable with ITCH's >= 19-byte book messages;
+            // kept so this does not rest on message lengths)
+            m_stale_o   <= d_stale_q || bad_q || malformed_o;
             m_ts_o      <= ts_q;
             m_ref_o     <= w11_q;
             m_new_ref_o <= is_u ? w19_q : '0;
@@ -243,6 +253,7 @@ module itch_decoder #(
             t1_o            <= 1'b0;
             unknown_o       <= 1'b0;
             malformed_o     <= 1'b0;
+            bad_q           <= 1'b0;
             other_locate_o  <= 1'b0;
             dir_match_o     <= 1'b0;
             locate_change_o <= 1'b0;
@@ -256,6 +267,7 @@ module itch_decoder #(
             dir_match_o     <= 1'b0;
             locate_change_o <= 1'b0;
             if (m_ready_i) m_valid_o <= 1'b0;
+            if (malformed_o) bad_q <= 1'b1;
 
             if (fire) len_q <= s_tlast_i ? '0 : (len_sum < len_q ? '1 : len_sum);
 

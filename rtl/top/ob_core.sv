@@ -291,7 +291,8 @@ module ob_core #(
     // Cut-through (ADR 0013): eth_rx delivers every frame as it arrives and marks a bad
     // one with f_tuser on its tlast. A bad frame that put payload into the feed has
     // moved the book: count it (cut_through_bad) and mark the feed stale until the next
-    // config. The feed udp_rx's status for that frame comes after the cycle its tlast
+    // config (ADR 0016: as s_stale_i it flags the packets that start after it). The
+    // feed udp_rx's status for that frame comes after the cycle its tlast
     // leaves eth_rx (udp_rx registers it; asserted below), and before frame k+1 can
     // enter udp_rx (frame k's last beat must leave it first), so bad_pend_q pairs them. A control datagram is accepted only if its
     // frame has already ended good when its last payload beat leaves udp_rx, so a
@@ -359,7 +360,7 @@ module ob_core #(
         .m_tuser_o  (g_tuser)
     );
 
-    logic        r_valid, r_ready, r_sell;
+    logic        r_valid, r_ready, r_sell, r_stale;
     logic [7:0]  r_type;
     logic [63:0] r_seq, r_ref, r_new_ref, gap_msgs, r_t0, r_t1;
     logic [47:0] r_ts;
@@ -453,6 +454,7 @@ module ob_core #(
         .s_tlast_i          (fe_tlast),
         .s_tuser_i          (fe_tuser),
         .s_t0_i             (n_t0),  // the network packet's T0 (ADR 0011)
+        .s_stale_i          (ct_stale_q),  // a bad cut-through frame before the packet
         .now_i              (now_q),
         .m_valid_o          (r_valid),
         .m_ready_i          (r_ready),
@@ -466,6 +468,7 @@ module ob_core #(
         .m_price_o          (r_price),
         .m_t0_o             (r_t0),
         .m_t1_o             (r_t1),
+        .m_stale_o          (r_stale),
         .t1_o               (t1_pulse_o),   // registered: T1 + 1
         .pkt_o              (m_pkt),
         .heartbeat_o        (m_hb),
@@ -512,7 +515,7 @@ module ob_core #(
         .s_type_i          (r_type),
         .s_seq_i           (r_seq),
         .s_ts_i            (r_ts),
-        .s_user_i          ({feed_stale_any, r_t0, r_t1}),  // ride to the record's BBO
+        .s_user_i          ({r_stale, r_t0, r_t1}),  // ride to the record's BBO (0016)
         .s_ref_i           (r_ref),
         .s_new_ref_i       (r_new_ref),
         .s_sell_i          (r_sell),

@@ -81,7 +81,8 @@ roughly the frame's serialization after each message).
 
 ## Consequences
 
-- BBOs produced from a frame that later fails its FCS go out unflagged; the BBOs after it
+- BBOs produced from a frame that later fails its FCS go out unflagged (made exact, whatever
+  the timing, by ADR 0016: the stale enters per packet); the BBOs after it
   are stale (sticky, ADR 0003). The host can tell which by the `cut_through_bad` counter.
 - On a clean link (no FCS errors in any run so far) the two builds produce the same records.
 - Hardware FCS-error testing needs a NIC that really sends bad FCS (`SO_NOFCS`); otherwise

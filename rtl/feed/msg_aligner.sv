@@ -5,11 +5,11 @@
 //
 // Input:  one message per tlast in mold_deframer's output shape: contiguous tkeep; only a
 //         message's first beat may start above lane 0, only its last may end below the
-//         top lane. s_seq_i, s_t0_i are constant through a message; s_tuser_i on tlast =
+//         top lane. s_seq_i, s_t0_i, s_stale_i are constant through a message; s_tuser_i on tlast =
 //         discard the message.
 // Output: the same bytes, packed: lane 0 of a message's first beat is its byte 0, every
 //         beat is full except the last, whose tkeep is contiguous from lane 0. m_seq_o,
-//         m_t0_o with every beat; m_tuser_o on tlast as at the input.
+//         m_t0_o, m_stale_o with every beat; m_tuser_o on tlast as at the input.
 //
 // How: up to LANES-1 bytes of the current message wait in a residual buffer. Each input
 // beat is shifted down to lane 0 and appended after the residual; once LANES bytes are
@@ -32,6 +32,7 @@ module msg_aligner #(
     input  wire logic                s_tuser_i,
     input  wire logic [63:0]         s_seq_i,
     input  wire logic [63:0]         s_t0_i,
+    input  wire logic                s_stale_i,  // constant through a message (ADR 0016)
     output logic [DATA_W-1:0]        m_tdata_o,
     output logic [DATA_W/8-1:0]      m_tkeep_o,
     output logic                     m_tvalid_o,
@@ -39,7 +40,8 @@ module msg_aligner #(
     output logic                     m_tlast_o,
     output logic                     m_tuser_o,
     output logic [63:0]              m_seq_o,
-    output logic [63:0]              m_t0_o
+    output logic [63:0]              m_t0_o,
+    output logic                     m_stale_o
 );
     localparam int LANES = DATA_W / 8;
     localparam int CNT_W = $clog2(2 * LANES);  // holds 0 .. 2*LANES-1
@@ -55,6 +57,7 @@ module msg_aligner #(
     logic [DATA_W-1:0]    res_q;
     logic                 res_user_q;
     logic [63:0]          res_seq_q, res_t0_q;
+    logic                 res_stale_q;
 
     logic                 take, full;
     logic [CNT_W-1:0]     lo, nb, tot;
@@ -89,18 +92,21 @@ module msg_aligner #(
             res_user_q <= s_tuser_i;
             res_seq_q  <= s_seq_i;
             res_t0_q   <= s_t0_i;
+            res_stale_q <= s_stale_i;
             if (full) res_q <= cat[2*DATA_W-1:DATA_W];
             else      res_q <= s_tlast_i ? '0 : cat[DATA_W-1:0];
             if (full || s_tlast_i) begin
                 m_tdata_o <= cat[DATA_W-1:0];
                 m_seq_o   <= s_seq_i;
                 m_t0_o    <= s_t0_i;
+                m_stale_o <= s_stale_i;
             end
         end else if (flush_q && (!m_tvalid_o || m_tready_i)) begin
             res_q     <= '0;
             m_tdata_o <= res_q;
             m_seq_o   <= res_seq_q;
             m_t0_o    <= res_t0_q;
+            m_stale_o <= res_stale_q;
         end
     end
 

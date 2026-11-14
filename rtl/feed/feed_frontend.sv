@@ -12,6 +12,8 @@
 //   unknown_o other_locate_o dir_match_o locate_change_o -> FeedCounters
 //   malformed_msg_o + empty_msg_o -> FeedCounters.malformed_messages
 //   stale_o = SeqTracker.stale || any malformed message (FeedDecoder.stale)
+//   m_stale_o = the record's stale in stream order (Record.stale; ADR 0016), with
+//     s_stale_i (an external per-packet stale, sampled at its first beat) ORed in
 // Latency: DATA_W 8: 1 cycle (deframer) + 1 cycle (decoder) from a message's last byte
 // at the input to its record. DATA_W 64: 2 (deframer) + 1 (aligner) + 1 (decoder) from
 // the beat holding the message's last byte, when no step is queued in the deframer.
@@ -32,6 +34,7 @@ module feed_frontend #(
     input  wire logic              s_tlast_i,
     input  wire logic              s_tuser_i,
     input  wire logic [63:0]       s_t0_i,     // T0 of the current packet's frame (ADR 0011)
+    input  wire logic              s_stale_i,  // external stale for the packet (ADR 0016)
     input  wire logic [63:0]       now_i,      // timestamp counter
     // records out
     output logic                   m_valid_o,
@@ -46,6 +49,7 @@ module feed_frontend #(
     output logic [31:0]            m_price_o,
     output logic [63:0]            m_t0_o,
     output logic [63:0]            m_t1_o,     // T1: now_i at the message's last byte
+    output logic                   m_stale_o,  // the record's stale (ADR 0016)
     // status
     output logic                   t1_o,
     output logic                   pkt_o,
@@ -72,6 +76,7 @@ module feed_frontend #(
     logic              g_tvalid, g_tready, g_tlast, g_tuser;
     logic              a_tvalid, a_tready, a_tlast, a_tuser;
     logic [63:0]       g_seq, g_t0, a_seq, a_t0;
+    logic              g_stale, a_stale;
     logic              seq_stale, msg_bad_q;
 
     mold_deframer #(
@@ -86,6 +91,7 @@ module feed_frontend #(
         .s_tlast_i        (s_tlast_i),
         .s_tuser_i        (s_tuser_i),
         .s_t0_i           (s_t0_i),
+        .s_stale_i        (s_stale_i),
         .m_tdata_o        (g_tdata),
         .m_tkeep_o        (g_tkeep),
         .m_tvalid_o       (g_tvalid),
@@ -94,6 +100,7 @@ module feed_frontend #(
         .m_tuser_o        (g_tuser),
         .m_seq_o          (g_seq),
         .m_t0_o           (g_t0),
+        .m_stale_o        (g_stale),
         .pkt_o            (pkt_o),
         .heartbeat_o      (heartbeat_o),
         .end_o            (end_o),
@@ -120,6 +127,7 @@ module feed_frontend #(
             .s_tuser_i  (g_tuser),
             .s_seq_i    (g_seq),
             .s_t0_i     (g_t0),
+            .s_stale_i  (g_stale),
             .m_tdata_o  (a_tdata),
             .m_tkeep_o  (a_tkeep),
             .m_tvalid_o (a_tvalid),
@@ -127,7 +135,8 @@ module feed_frontend #(
             .m_tlast_o  (a_tlast),
             .m_tuser_o  (a_tuser),
             .m_seq_o    (a_seq),
-            .m_t0_o     (a_t0)
+            .m_t0_o     (a_t0),
+            .m_stale_o  (a_stale)
         );
     end else begin : g_no_align  // one lane: every message already starts in lane 0
         assign a_tdata  = g_tdata;
@@ -138,6 +147,7 @@ module feed_frontend #(
         assign a_tuser  = g_tuser;
         assign a_seq    = g_seq;
         assign a_t0     = g_t0;
+        assign a_stale  = g_stale;
     end
 
     itch_decoder #(
@@ -156,6 +166,7 @@ module feed_frontend #(
         .s_tuser_i          (a_tuser),
         .s_seq_i            (a_seq),
         .s_t0_i             (a_t0),
+        .s_stale_i          (a_stale),
         .now_i              (now_i),
         .m_valid_o          (m_valid_o),
         .m_ready_i          (m_ready_i),
@@ -169,6 +180,7 @@ module feed_frontend #(
         .m_price_o          (m_price_o),
         .m_t0_o             (m_t0_o),
         .m_t1_o             (m_t1_o),
+        .m_stale_o          (m_stale_o),
         .t1_o               (t1_o),
         .unknown_o          (unknown_o),
         .malformed_o        (malformed_msg_o),

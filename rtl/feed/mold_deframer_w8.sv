@@ -28,6 +28,11 @@
 // Status pulses (one cycle): pkt_o (every packet, at tlast), heartbeat_o, end_o, gap_o
 // (with gap_msgs_o), dup_o, session_change_o, malformed_o, empty_msg_o. stale_o is a
 // level, sticky until reset.
+// In-band stale (ADR 0016): m_stale_o, valid with every beat, is the stale state as the
+// message is delivered: stale_o so far, or an empty message earlier, or s_stale_i
+// sampled at the packet's first byte (an external reason, e.g. a bad cut-through frame
+// before this packet). A packet's malformed tail is found after its messages, so it
+// flags only later ones (as model SeqTracker.msg_stale).
 //
 // Latency: 1 cycle from a message byte in to its output beat. Throughput 1 byte/cycle.
 // Timing: the header verdict's wide compares are precomputed at bytes 10, 11 and 18, and
@@ -48,6 +53,7 @@ module mold_deframer_w8 #(
     input  wire logic              s_tlast_i,
     input  wire logic              s_tuser_i,
     input  wire logic [63:0]       s_t0_i,    // T0 of this packet's frame (ADR 0011)
+    input  wire logic              s_stale_i, // sampled at the packet's first byte (0016)
     // messages out
     output logic [DATA_W-1:0]      m_tdata_o,
     output logic                   m_tvalid_o,
@@ -56,6 +62,7 @@ module mold_deframer_w8 #(
     output logic                   m_tuser_o,
     output logic [63:0]            m_seq_o,
     output logic [63:0]            m_t0_o,    // s_t0_i at the packet's first byte
+    output logic                   m_stale_o, // in-band stale (ADR 0016)
     // status
     output logic                   pkt_o,
     output logic                   heartbeat_o,
@@ -107,6 +114,7 @@ module mold_deframer_w8 #(
     logic [63:0] exp_sum_q;     // seq + count, from registers stable since the header
 
     logic [63:0] pkt_t0_q;
+    logic        pkt_stale_q, empty_seen_q;
     logic        fire, emit, hdr_last, last_msg, is_dup, end_ok, drop_pkt;
     logic [15:0] count, len;
 
@@ -163,11 +171,15 @@ module mold_deframer_w8 #(
             if (hdr_last && new_sess_q) session_q <= sess_in_q;
         end
         // T0 is sampled at the packet's first byte, when it is the frame's (ADR 0011).
-        if (fire && state_q == S_HDR && hcnt_q == '0) pkt_t0_q <= s_t0_i;
+        if (fire && state_q == S_HDR && hcnt_q == '0) begin
+            pkt_t0_q    <= s_t0_i;
+            pkt_stale_q <= s_stale_i;
+        end
         if (emit) begin
             m_tdata_o <= s_tdata_i;
             m_seq_o   <= msg_seq_q;
             m_t0_o    <= pkt_t0_q;
+            m_stale_o <= stale_o || empty_msg_o || empty_seen_q || pkt_stale_q;
         end
         gap_msgs_o <= gap_q;
         exp_sum_q  <= seq_in_q + 64'(count_q);
@@ -184,6 +196,7 @@ module mold_deframer_w8 #(
             upd_exp_q        <= 1'b0;
             upd_exp2_q       <= 1'b0;
             stale_o          <= 1'b0;
+            empty_seen_q     <= 1'b0;
             m_tvalid_o       <= 1'b0;
             m_tlast_o        <= 1'b0;
             m_tuser_o        <= 1'b0;
@@ -206,6 +219,7 @@ module mold_deframer_w8 #(
             empty_msg_o      <= 1'b0;
             upd_exp_q        <= 1'b0;
             upd_exp2_q       <= upd_exp_q;
+            if (empty_msg_o) empty_seen_q <= 1'b1;
             // seq_in_q and count_q are stable for >= 10 cycles after the header.
             if (upd_exp2_q) expected_q <= exp_sum_q;
 

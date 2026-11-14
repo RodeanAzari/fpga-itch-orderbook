@@ -1,3 +1,3 @@
 vivado 2025.2  part xc7a100tcsg324-1  top feed_frontend  DATA_W 8  (out of context)
-clock period 8.000 ns
-WNS 1.577 ns  WHS 0.109 ns
+clock period 8.0 ns
+WNS 1.175 ns  WHS 0.096 ns

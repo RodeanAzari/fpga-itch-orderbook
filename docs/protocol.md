@@ -71,11 +71,14 @@ message whose best price, size or out-of-window flag changed).
 | 56 | 8 | `t2` | cycle count when this update was valid at the book output; 0 until Phase E |
 
 Flags:
-- `stale`: the feed decoder was stale when it decoded the cause message (a gap or a
-  malformed message before it, ADR 0003), or the book is stale after applying it (a
-  capacity limit, ADR 0006). The feed's bit travels with the record through the book, so
-  a gap found while an earlier message is still in the book does not flag that earlier
-  update. Sticky until the next config. Golden model: `model.protocol.expected`.
+- `stale`: the feed was stale when the cause message was delivered, in stream order (a gap,
+  session change or malformed packet before its packet, a malformed message before it, or
+  in cut-through a bad frame before its packet; ADR 0003, 0013, 0016), or the book is stale
+  after applying it (a capacity limit, ADR 0006). The feed's bit travels in-band with the
+  message and its record (ADR 0016), so a gap found while an earlier message is still on
+  its way does not flag that earlier update, and a packet's malformed tail does not flag
+  that packet's own intact messages. Sticky until the next config. Golden model:
+  `model.protocol.expected`.
 - `crossed`: both sides non-empty and `bid_px > ask_px`. `locked`: both non-empty and
   `bid_px == ask_px`. Same definitions as `model.book.Bbo`.
 - `out_of_window`: ADR 0002. Set exactly when this BBO differs from the unbounded book.

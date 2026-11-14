@@ -26,6 +26,7 @@ module mold_deframer #(
     input  wire logic                s_tlast_i,
     input  wire logic                s_tuser_i,
     input  wire logic [63:0]         s_t0_i,
+    input  wire logic                s_stale_i,  // in-band stale (ADR 0016)
     // messages out
     output logic [DATA_W-1:0]        m_tdata_o,
     output logic [DATA_W/8-1:0]      m_tkeep_o,
@@ -35,6 +36,7 @@ module mold_deframer #(
     output logic                     m_tuser_o,
     output logic [63:0]              m_seq_o,
     output logic [63:0]              m_t0_o,
+    output logic                     m_stale_o,
     // status
     output logic                     pkt_o,
     output logic                     heartbeat_o,
@@ -64,6 +66,7 @@ module mold_deframer #(
             .s_tlast_i        (s_tlast_i),
             .s_tuser_i        (s_tuser_i),
             .s_t0_i           (s_t0_i),
+            .s_stale_i        (s_stale_i),
             .m_tdata_o        (m_tdata_o),
             .m_tvalid_o       (m_tvalid_o),
             .m_tready_i       (m_tready_i),
@@ -71,6 +74,7 @@ module mold_deframer #(
             .m_tuser_o        (m_tuser_o),
             .m_seq_o          (m_seq_o),
             .m_t0_o           (m_t0_o),
+            .m_stale_o        (m_stale_o),
             .pkt_o            (pkt_o),
             .heartbeat_o      (heartbeat_o),
             .end_o            (end_o),
@@ -93,6 +97,7 @@ module mold_deframer #(
             .s_tlast_i        (s_tlast_i),
             .s_tuser_i        (s_tuser_i),
             .s_t0_i           (s_t0_i),
+            .s_stale_i        (s_stale_i),
             .m_tdata_o        (m_tdata_o),
             .m_tkeep_o        (m_tkeep_o),
             .m_tvalid_o       (m_tvalid_o),
@@ -101,6 +106,7 @@ module mold_deframer #(
             .m_tuser_o        (m_tuser_o),
             .m_seq_o          (m_seq_o),
             .m_t0_o           (m_t0_o),
+            .m_stale_o        (m_stale_o),
             .pkt_o            (pkt_o),
             .heartbeat_o      (heartbeat_o),
             .end_o            (end_o),

@@ -85,6 +85,9 @@ class SeqTracker:
     session: bytes | None = None
     expected: int = FIRST_SEQ
     stale: bool = False
+    # stale as this packet's messages were delivered: after its header, before any tail
+    # malformation (the RTL streams the messages before it sees the tail; ADR 0016)
+    msg_stale: bool = False
     c: SeqCounters = field(default_factory=SeqCounters)
 
     def feed(self, pkt: bytes) -> list[tuple[int, bytes]]:
@@ -117,6 +120,7 @@ class SeqTracker:
                 self._malformed()
             return []
 
+        self.msg_stale = self.stale
         out: list[tuple[int, bytes]] = []
         off = HEADER_LEN
         for i in range(count):
@@ -144,7 +148,10 @@ class Record:
     seq: int  # MoldUDP64 sequence number of the message (the "cause" in BBO output)
     msg: Message
     kind: int  # ITCH type byte (A and F both decode to Add; E, C and X to Reduce)
-    stale: bool = False  # the decoder was stale when this record left it (rides with it)
+    # the decoder was stale when this record left it, in stream order (rides with it;
+    # ADR 0016): a gap, session change or malformed message before it, or a malformed
+    # packet before its own packet (not its own packet's tail, found after it)
+    stale: bool = False
 
 
 @dataclass(slots=True)
@@ -211,6 +218,7 @@ class FeedDecoder:
                 self.c.malformed_messages += 1  # e.g. a side that is not B or S
                 continue
             assert m is not None
-            new.append(Record(seq, m, kind[0], self.stale))
+            stale = self.tracker.msg_stale or self.c.malformed_messages > 0
+            new.append(Record(seq, m, kind[0], stale))
         self.records.extend(new)
         return new
