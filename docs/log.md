@@ -897,3 +897,19 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   +0.049 ns sf, +0.136 ns ct, 0 CW. Full AAPL day on the board, both builds: 831,842 /
   831,842 BBOs = model, 0 lost, T2-T1 and T2-T0 percentiles as on 2026-11-13 (logs
   `data/runs/e5_{sf,ct}.log`, local).
+
+## 2026-11-14 — ADR 0015 step 1: mold_deframer at DATA_W 64
+
+- `mold_deframer` is now a width selector: `mold_deframer_w8` (the old module, unchanged
+  logic) and new `mold_deframer_w64` (holding register + lane pointer, one element per
+  cycle; header in 3 beats + a verdict step). Ports gain `s_tkeep_i`/`m_tkeep_o`;
+  `feed_frontend` ties them off at 8 until the aligner/decoder (steps 2-3).
+- `test_deframer` (both widths) vs `SeqTracker`, every-lane coverage asserted; 16
+  injected bugs all caught. `adversarial_packets` moved to `tb/cocotb/feed_stim.py`.
+- Bug (timing): first OOC build WNS -1.493 ns → length-prefix lane mux, 16-bit compare and
+  `finished` on one path into tready → per-lane prefix verdicts precomputed as the beat
+  is accepted, SVA cross-checks them → WNS +0.664 ns (669 LUT, 1,161 FF).
+- Bug (dead logic, found by injection): sticky "trailing bytes" flag never changed a
+  verdict (a trailing byte keeps the parse in S_TRAIL to the end) → removed.
+- Test hole (found by injection): duplicate as a new session's first packet (expected must
+  restart at 1) never generated → added to the every-lane stimulus.

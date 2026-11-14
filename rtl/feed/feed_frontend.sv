@@ -62,7 +62,9 @@ module feed_frontend #(
     output logic [15:0]            locate_o,
     output logic                   stale_o
 );
-    logic [DATA_W-1:0] g_tdata;
+    logic [DATA_W-1:0]   g_tdata;
+    logic [DATA_W/8-1:0] g_tkeep;
+    logic                unused_tkeep;
     logic              g_tvalid, g_tready, g_tlast, g_tuser;
     logic [63:0]       g_seq, g_t0;
     logic              seq_stale, msg_bad_q;
@@ -73,12 +75,14 @@ module feed_frontend #(
         .clk_i            (clk_i),
         .rst_i            (rst_i),
         .s_tdata_i        (s_tdata_i),
+        .s_tkeep_i        ('1),        // DATA_W 8: one byte per beat
         .s_tvalid_i       (s_tvalid_i),
         .s_tready_o       (s_tready_o),
         .s_tlast_i        (s_tlast_i),
         .s_tuser_i        (s_tuser_i),
         .s_t0_i           (s_t0_i),
         .m_tdata_o        (g_tdata),
+        .m_tkeep_o        (g_tkeep),
         .m_tvalid_o       (g_tvalid),
         .m_tready_i       (g_tready),
         .m_tlast_o        (g_tlast),
@@ -134,6 +138,9 @@ module feed_frontend #(
         .locate_valid_o     (locate_valid_o),
         .locate_o           (locate_o)
     );
+
+    // The decoder takes one byte per beat until the 64-bit path (ADR 0015 steps 2-4).
+    assign unused_tkeep = &{1'b0, g_tkeep};
 
     // A malformed or empty message also makes the book untrustworthy (sticky).
     always_ff @(posedge clk_i) begin

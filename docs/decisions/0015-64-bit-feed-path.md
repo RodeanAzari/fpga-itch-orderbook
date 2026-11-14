@@ -46,4 +46,20 @@ As recommended above, in this order, each step verified before the next:
 
 ## Measured evidence
 
-[TBD]
+**Step 1, `mold_deframer` at 64 (2026-11-14).** Implemented as `mold_deframer_w64` behind a
+width-selecting `mold_deframer`; the 8-bit implementation is unchanged (`mold_deframer_w8`).
+- `tb/cocotb/test_deframer.py` at `DATA_W` 8 and 64, against `SeqTracker`: 4 tests per
+  width (clean, adversarial with backpressure, every lane at full rate and with
+  backpressure). Coverage asserted at 64: message start and end at all 8 lanes, packet
+  end at all 8 lanes, length prefix straddling two beats, every header truncation point.
+- Throughput at 64, clean 6,000-message stream: 31,874 cycles for 26,429 beats
+  (bound asserted: beats + messages + packets + 4).
+- Bug injection: 16 distinct bugs (lane, off-by-one, straddle, T0, duplicate on a new session,
+  precomputed-flag errors); every one fails the test. It found a stimulus hole (a new
+  session's first packet as a duplicate, now covered) and a dead sticky flag (removed).
+- Out-of-context at 125 MHz: WNS +0.664 ns, 669 LUT, 1,161 FF, 0 BRAM
+  (`docs/reports/ooc_mold_deframer_w64/`). The first version failed (-1.493 ns:
+  length-prefix lane mux -> 16-bit compare -> tready); fixed by computing each lane's
+  prefix verdicts as the beat is accepted.
+
+Steps 2-5: [TBD].
