@@ -878,3 +878,22 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
 - Injector on the board (`data/results/2026-11-13_injector_board.md`): 248 BBOs, model
   digest per build, **31,703 cycles = simulation exactly**, cut-through once and
   store-and-forward three times (identical). 4.11 M msg/s, input-bound at `DATA_W` 8.
+
+## 2026-11-14 — eth-core-v0.4 released (fpga-coord 0005); OrderBook on v0.4
+
+- 0005 on the board (eth-core `data/results/2026-11-13_0005_reset_cycles.md`): request's
+  acceptance test passes on the fix, 100/100 reprogram-then-stream cycles, FIFO
+  high-water mark <= 1 B. 100/100 DTR-restart cycles on the fix and on the v0.2 control.
+  A v0.2 build releasing the MAC 800 ms before the PHY (to stop rx_clk across the MAC
+  reset, the simulated mechanism) did not corrupt in 10/10: the fault still does not
+  reproduce on our board (RX_CLK likely runs during PHY reset; not verified). User chose to
+  tag `eth-core-v0.4` (`089d5b9`) with that limit stated; 0005 stays open for P3's check.
+- Harness: `reprogram_cycles.sh PROG=dtr` restarts the running design by pulsing UART DTR
+  (the Arty's ck_rst), keeping flop state, unlike reprogramming.
+- Bug (harness): v0.2 control lost 1,531-1,785 datagrams on every third DTR cycle → all
+  before the first received (seq_lost 0); its MAC starts 200 ms after reset regardless of
+  link, so sending began before link up → 3 s settle for the control (100/100).
+- OrderBook on v0.4 (`d920ac0`): `mii_rst_i` tied 0, bridge XDC read. make ci green; WNS
+  +0.049 ns sf, +0.136 ns ct, 0 CW. Full AAPL day on the board, both builds: 831,842 /
+  831,842 BBOs = model, 0 lost, T2-T1 and T2-T0 percentiles as on 2026-11-13 (logs
+  `data/runs/e5_{sf,ct}.log`, local).
