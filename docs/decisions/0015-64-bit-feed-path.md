@@ -1,6 +1,6 @@
 # 0015: 64-bit feed path for the capacity measurement
 
-**Status: Proposed 2026-11-14.** Buildplan §6.7 and the Phase E DoD ("injector: pipeline
+**Status: Accepted 2026-11-14** (user approved the plan as proposed). Buildplan §6.7 and the Phase E DoD ("injector: pipeline
 capacity in messages/s at `DATA_W` = 8 and 64"); carries out the plan in ADR 0005.
 
 ## Context
@@ -26,7 +26,7 @@ The MAC delivers one byte per core cycle and the link carries a tenth of that, s
 | Width selection | build parameter `DATA_W` (8 default, 64), elaboration error otherwise (as today) | One parameter; `make sim` runs both widths (CLAUDE.md §2), `syn/build_top.tcl` gains a width argument. |
 | Verification | golden model unchanged (the records are the same at any width); cocotb at both widths with random `tkeep`/backpressure; coverage bins for every message start lane and every header/length-prefix straddle (§8.1); bug injection; board: full day at 64 matches the model, then the injector run | as listed |
 
-## Decision (proposed)
+## Decision
 
 As recommended above, in this order, each step verified before the next:
 1. `mold_deframer` at `DATA_W` 64: header and length-prefix parsing across lanes; output
