@@ -62,4 +62,17 @@ width-selecting `mold_deframer`; the 8-bit implementation is unchanged (`mold_de
   length-prefix lane mux -> 16-bit compare -> tready); fixed by computing each lane's
   prefix verdicts as the beat is accepted.
 
-Steps 2-5: [TBD].
+**Step 2, message aligner `msg_aligner` (2026-11-14).** Residual buffer (up to 7 bytes);
+each input beat is shifted to lane 0 and appended; a message's last beat that overflows
+one output beat leaves in two (one extra "flush" cycle).
+- `tb/cocotb/test_aligner.py` (DATA_W 64): expected beats built independently
+  (`bytes_to_beats` of the message), compared beat by beat (tkeep and kept bytes) with
+  seq, T0 and tuser; garbage in unkept input lanes. Coverage asserted: every
+  (start lane, length mod 8) pair, single-beat messages, the flush. At full rate,
+  cycles <= input beats + flushes + 2 (asserted; measured 12,239 for 11,476 beats and 762
+  flushes).
+- Bug injection: 10 bugs (keep mask, shift lane, full/flush thresholds, residual clear,
+  flush tkeep/tuser/seq, tready during flush, tail tkeep); every one fails the test.
+- Out-of-context at 125 MHz: WNS +2.403 ns, 528 LUT, 400 FF (`docs/reports/ooc_msg_aligner/`).
+
+Steps 3-5: [TBD].

@@ -20,7 +20,7 @@ Architecture summary and sizing. The rationale for each choice lives in its ADR.
 | [0012](decisions/0012-record-fifo.md) | Record FIFO (512 × 512 bits) in front of out_builder's byte writer, so the book hands over a BBO in one cycle; partly supersedes 0008 | Accepted |
 | [0013](decisions/0013-cut-through.md) | Cut-through receive as an eth_rx build option; a delivered frame that later fails its FCS marks the book stale | Accepted; built, sim-verified (board: [TBD]) |
 | [0014](decisions/0014-injector.md) | On-chip injector (BRAM image of AAPL packets, config mode 2) and a never-stalling meter with an order-sensitive BBO digest, for the pipeline-capacity measurement | Accepted; sim-verified (board: [TBD]) |
-| [0015](decisions/0015-64-bit-feed-path.md) | 64-bit feed path: deframer at 64 (any start lane), aligner, decoder at 64, 8→64 packer for the network feed | Accepted; step 1 (deframer) sim-verified |
+| [0015](decisions/0015-64-bit-feed-path.md) | 64-bit feed path: deframer at 64 (any start lane), aligner, decoder at 64, 8→64 packer for the network feed | Accepted; steps 1-2 (deframer, aligner) sim-verified |
 
 Still to write: cut-through vs. store-and-forward, timestamp design.
 

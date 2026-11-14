@@ -85,15 +85,6 @@ module mold_deframer_w64 (
         return n;
     endfunction
 
-    // Length prefix and room after it for slot i of the beat being accepted (see pf_*).
-    function automatic logic [15:0] pf_len(input int i);
-        if (i == LANES - 1) return {in_data_q[63:56], s_tdata_i[7:0]};
-        return {s_tdata_i[8*i +: 8], s_tdata_i[8*(i+1) +: 8]};
-    endfunction
-    function automatic logic [3:0] pf_room(input int i);
-        return keep_bytes(s_tkeep_i) - (i == LANES - 1 ? 4'd1 : 4'(i + 2));
-    endfunction
-
     // Input holding register
     logic        in_v_q;                      // control
     logic [63:0] in_data_q, in_t0_q;          // datapath
@@ -123,6 +114,15 @@ module mold_deframer_w64 (
     // length is 0 (pf_z), the message ends in this beat (pf_le), it ends exactly at the
     // beat's last byte (pf_eq).
     logic [7:0]  pf_z_q, pf_le_q, pf_eq_q;
+
+    // Length prefix and room after it for slot i of the beat being accepted (see pf_*).
+    function automatic logic [15:0] pf_len(input int i);
+        if (i == LANES - 1) return {in_data_q[63:56], s_tdata_i[7:0]};
+        return {s_tdata_i[8*i +: 8], s_tdata_i[8*(i+1) +: 8]};
+    endfunction
+    function automatic logic [3:0] pf_room(input int i);
+        return keep_bytes(s_tkeep_i) - (i == LANES - 1 ? 4'd1 : 4'(i + 2));
+    endfunction
 
     // Step
     logic        run, finished, pkt_end, to_verd, seq_lt, seq_gt, is_cnt_end;

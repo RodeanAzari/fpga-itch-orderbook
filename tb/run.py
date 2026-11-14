@@ -65,6 +65,7 @@ INJ = {"INJ_FILE": f'"{ROOT / "data/samples/injector_aapl.mem"}"'}
 TESTS = {
     "test_feed": ("feed_frontend", FEED, [{"DATA_W": 8}]),
     "test_deframer": ("mold_deframer", DEFRAMER, [{"DATA_W": 8}, {"DATA_W": 64}]),
+    "test_aligner": ("msg_aligner", ["rtl/feed/msg_aligner.sv"], [{"DATA_W": 64}]),
     # 512 sets: the generator's bucket collisions overflow it; 2,048: ADR 0010's geometry.
     "test_order_table": ("order_table", BOOK, [{"SET_BITS": 9}, {"SET_BITS": 11}]),
     "test_book": ("book_engine", ENGINE, [{"SET_BITS": 9}, {"SET_BITS": 11}]),

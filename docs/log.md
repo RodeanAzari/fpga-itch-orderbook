@@ -913,3 +913,16 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   verdict (a trailing byte keeps the parse in S_TRAIL to the end) → removed.
 - Test hole (found by injection): duplicate as a new session's first packet (expected must
   restart at 1) never generated → added to the every-lane stimulus.
+
+## 2026-11-14 — ADR 0015 step 2: msg_aligner
+
+- `rtl/feed/msg_aligner.sv`: first byte of each message to lane 0, packed beats; residual
+  buffer, one extra cycle when a message's last beat overflows an output beat (762 of
+  3,192 messages in the full-rate test). `test_aligner` (64) exact beat-by-beat vs
+  `bytes_to_beats`; every (start lane, length mod 8) pair covered; 10 injected bugs caught.
+  OOC WNS +2.403 ns, 528 LUT, 400 FF.
+- Mistake (test): first flush-coverage metric counted messages with more output than input
+  beats, which never happens (shifting down never adds a beat) → counted from the tail
+  condition (residual + last beat > 8 bytes).
+- Vivado `Synth 8-6901` (mold_deframer_w64: `in_data_q` used before declaration in the
+  pf_ functions) → functions moved below the declarations; OOC report refreshed.
