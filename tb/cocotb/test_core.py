@@ -127,7 +127,6 @@ class Bench:
         cocotb.start_soon(Clock(dut.mii_rx_clk_i, 40, unit="ns").start())
         await Timer(13, unit="ns")  # tx_clk: same frequency, unrelated phase
         cocotb.start_soon(Clock(dut.mii_tx_clk_i, 40, unit="ns").start())
-        cocotb.start_soon(self.mon.run())
         cocotb.start_soon(self.watch_sfd())
         cocotb.start_soon(self.watch_t2())
         for name in self.pulses:
@@ -135,6 +134,10 @@ class Bench:
         for r in (dut.rst_i, dut.mii_rx_rst_i, dut.mii_tx_rst_i):
             r.value = 1
         await ClockCycles(dut.mii_rx_clk_i, 4)
+        # The previous test may have left a frame on the wire (periodic stats); reset has
+        # now ended it, so the monitor starts with tx_en low and sees only whole frames.
+        assert not int(dut.mii_tx_en_o.value), "tx_en high after 4 cycles of reset"
+        cocotb.start_soon(self.mon.run())
         for r in (dut.rst_i, dut.mii_rx_rst_i, dut.mii_tx_rst_i):
             r.value = 0
         await ClockCycles(dut.clk_i, 10)
