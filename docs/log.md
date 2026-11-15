@@ -962,3 +962,16 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   no longer flags its own earlier messages (`SeqTracker.msg_stale`).
 - OOC `feed_frontend` after ADR 0016: 64 WNS +0.556 ns (1,315 LUT, 2,527 FF); 8 WNS
   +1.175 ns (639 LUT, 1,863 FF).
+
+## 2026-11-15 — ADR 0015 step 5: full chip and board at DATA_W 64
+
+- `arty_top` and `syn/build_top.tcl` take `DATA_W` (`-tclargs <div> [ct|sf] [8|64]`).
+  Full chip sf at 64, 125 MHz: WNS +0.004 ns, WHS +0.051 ns, 127 BRAM tiles, 13,568 LUT,
+  21,232 FF, 0 critical warnings.
+- Injector on the board at 64, 3 runs: 9,059 cycles each (= sim), 248 BBOs, model digest
+  → 14.4 M msg/s, 3.50× DATA_W 8 (`data/results/2026-11-15_injector_board_w64.md`).
+- Full AAPL day at 64 (run `e5_w64`): 831,842/831,842 match; T2−T1 17/24/29 cycles,
+  unchanged; T2−T0 +2..+12 cycles vs `e3_sf` (`data/results/2026-11-15_w64_full_day_board.md`).
+- Host trap: the NCM aggregation timer is sysfs
+  (`/sys/class/net/<if>/cdc_ncm/tx_timer_usecs`), not `ethtool -C` (which says
+  "Operation not supported" on the AX88179).

@@ -1,0 +1,4 @@
+build,run,inj_cycles,inj_bbos,inj_digest,book_records,stale,feed_datagrams,model_bbos,model_digest
+sf_w64,1,9059,248,0x437daadd4849c4b8,987,0,0,248,0x437daadd4849c4b8
+sf_w64,2,9059,248,0x437daadd4849c4b8,987,0,0,248,0x437daadd4849c4b8
+sf_w64,3,9059,248,0x437daadd4849c4b8,987,0,0,248,0x437daadd4849c4b8

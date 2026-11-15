@@ -108,4 +108,15 @@ capacity runs replay the same 1,043 messages); `ob_core` with `DATA_W`.
   branch: the every-lane coverage now holds by construction (`test_feed every_alignment`).
   A real ordering bug in the stale flag led to ADR 0016.
 
-Step 5: [TBD].
+**Step 5, full chip and board at 64 (2026-11-15).** `arty_top` and `syn/build_top.tcl`
+take `DATA_W` (`-tclargs 8 sf 64`, reports in `docs/reports/arty_top_w64/`).
+- Full chip, store-and-forward, 125 MHz: WNS +0.004 ns, WHS +0.051 ns, 127 BRAM tiles,
+  13,568 LUTs, 21,232 FFs.
+- Injector on the board, 3 runs: 9,059 cycles each (= simulation), 248 BBOs, the model's
+  digest. **14.4 M messages/s, 3.50× DATA_W 8** on the same 1,043 messages
+  (`data/results/2026-11-15_injector_board_w64.md`). At 3.50 of 8 bytes per cycle the
+  input no longer sets the rate; which stage does is not measured.
+- Full AAPL day on the board: 831,842/831,842 BBOs match the model. T2−T1 unchanged
+  (p50 17 / p99 24 / max 29 cycles); T2−T0 2–12 cycles longer (packer and aligner sit
+  before T1) (`data/results/2026-11-15_w64_full_day_board.md`).
+- Not done: a cut-through build at 64.
