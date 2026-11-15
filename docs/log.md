@@ -995,3 +995,17 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   (`data/results/2026-11-15_t0_wire_board.md`). The −5 for the last message: `mii_rx`
   emits a frame's last byte 2 rx_clk after rx_dv falls, one nibble sooner than the rest,
   and that byte releases the last payload byte through the 4-byte FCS window.
+
+## 2026-11-15 — Line rate on the board, BBO mode (DATA_W 64 sf bitstream)
+
+- Full AAPL day unpaced (7,919 pps, 374 k msg/s): 35,310/35,313 frames, 3 MII FIFO
+  overflows (counted; book stale from seq ~81 k, every later BBO flagged). 6,000 and
+  5,000 pps: 2 and 1 overflows. 4,000 and 3,000 pps: 0 overflows, never stale
+  (`data/results/2026-11-15_line_rate_board.md`).
+- Cause (arithmetic, no stall counter yet): 64-byte BBO records need 1.05-1.37x the input
+  wire bytes on the 100 Mb/s TX, so the output stalls the book and the unbackpressurable
+  MII FIFO overflows.
+- Host: 2-2,437 output datagrams lost per run with no Linux counter moving (AX88179/usbip
+  or FPGA TX; undecided), so no run is match=1.
+- Trap: after a WSL restart usbipd attachments are gone even if Windows shows them;
+  `/sys/bus/usb` missing in WSL = nothing attached.
