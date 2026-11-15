@@ -983,3 +983,15 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   same 8,380 ns, fixed passes; removed after. `make ci` green.
 - Capacity plot (`make plots`): `docs/media/2026-11-15_phase-e_board-capacity-w8-vs-w64.png`;
   README capacity section and the buildplan's 100 Mbps wording with measured values.
+
+## 2026-11-15 — T0 on hardware, from the cut-through runs (no ILA)
+
+- `analysis/t0_wire.py`: per BBO, T1 − T0 − 10 cycles × (bytes after the SFD to the cause
+  message's last byte), from a cut-through log and the packets as sent. `test_core` logs the
+  same quantity in its cut-through sets.
+- Sim: 53 cycles for every BBO, 48 for a frame's last message. Board (`e3_ct`, `e5_ct`,
+  831,842 BBOs each): 52/53 (51 at the end of long frames), last message 46-48; slope
+  against position = host clock +68.2 / +67.1 ppm. No T0 off by an rx_clk (5 cycles)
+  (`data/results/2026-11-15_t0_wire_board.md`). The −5 for the last message: `mii_rx`
+  emits a frame's last byte 2 rx_clk after rx_dv falls, one nibble sooner than the rest,
+  and that byte releases the last payload byte through the 4-byte FCS window.

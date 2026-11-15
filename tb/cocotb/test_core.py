@@ -283,10 +283,19 @@ def check_times(b: Bench, cfg: Config, pkts: list[bytes], frames: list[int],
     dec = FeedDecoder(cfg.symbol, locate=cfg.locate if cfg.locate_valid else None)
     frame_of: dict[int, int] = {}  # cause message seq -> the frame that delivered it
     kind_of: dict[int, str] = {}
+    end_of: dict[int, int] = {}  # cause message seq -> bytes after the SFD to its last byte
+    last_of: set[int] = set()  # seqs that end their frame's payload
     for p, f in zip(pkts, frames, strict=True):
         for rec in dec.feed(p):
             frame_of.setdefault(rec.seq, f)
             kind_of.setdefault(rec.seq, type(rec.msg).__name__)
+        seq, cnt = struct.unpack(">QH", p[10:20])  # MoldUDP64 header (buildplan §5.2)
+        off = 20
+        for k in range(cnt if cnt != 0xFFFF else 0):
+            off += 2 + int.from_bytes(p[off : off + 2])
+            end_of.setdefault(seq + k, 14 + 20 + 8 + off)  # Ethernet, IPv4, UDP headers
+        if cnt and cnt != 0xFFFF and end_of[seq + cnt - 1] == 14 + 20 + 8 + len(p):
+            last_of.add(seq + cnt - 1)
     assert len(b.sfd_now) == b.frames_sent, (len(b.sfd_now), b.frames_sent)
     delays: dict[int, int] = {}
     last_t2 = 0
@@ -312,6 +321,14 @@ def check_times(b: Bench, cfg: Config, pkts: list[bytes], frames: list[int],
     assert n_t2 == len(t2s), f"{n_t2} T2 pulses for {len(t2s)} BBOs"
     cocotb.log.info("T0 - SFD (cycles: count) %s; T2 - T1 (cycles: type: count) %s",
                     dict(sorted(delays.items())), dict(sorted(lat.items())))  # fmt: skip
+    if CUT:  # docs/latency.md T0 check: compared with the board's cut-through runs
+        wire: dict[tuple[bool, int], int] = {}  # T1 - T0 - 10 cycles/byte (80 ns, 125 MHz)
+        for g in got:
+            seq, t0, t1 = struct.unpack(">QQQ", g[32:56])
+            key = (seq in last_of, t1 - t0 - 10 * end_of[seq])
+            wire[key] = wire.get(key, 0) + 1
+        cocotb.log.info("T1 - T0 - serialization ((frame's last message, cycles): count) %s",
+                        dict(sorted(wire.items())))  # fmt: skip
     assert max(delays) - min(delays) <= 1 and 0 < min(delays) < 12, delays
 
 

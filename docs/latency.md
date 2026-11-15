@@ -50,9 +50,17 @@ From the SFD's last nibble on the pins:
 |---|---|---|
 | `mii_rx`: input register, SFD register → `sfd_o` | 2 rx_clk (80 ns = 10 cycles) | eth-core `rtl/mii_rx.sv` header |
 | `cdc_pulse` + `t0_track` capture: `sfd_o` → counter captured | 8 cycles in simulation (fixed clock phases) | `test_core`, every BBO |
-| **Total** | **18 cycles (144 ns)** in simulation; on hardware the synchronizer adds 0 or 1 cycle of phase, to be checked with the ILA | |
+| **Total** | **18 cycles (144 ns)** in simulation; on hardware the synchronizer adds 0 or 1 cycle of phase (checked below) | |
 
 T0 as sent is the captured count. Subtracting the constant gives the SFD time.
+
+**Checked on hardware (cut-through, `data/results/2026-11-15_t0_wire_board.md`):** T1 − T0
+minus the wire time (10 cycles per byte) is 53 cycles in simulation for every BBO. On the
+board, over 1.66 M BBOs in two runs, it is 52 or 53, and 51 at the end of some long frames.
+That spread is one cycle of rx_clk phase plus a host clock about 68 ppm fast. A frame's last
+message is 5 cycles earlier in both (`mii_rx` emits a frame's last byte one nibble sooner).
+No BBO's T0 moved by an rx_clk. How the one cycle splits between the T0 synchronizer and the
+data FIFO would need the ILA; it bounds T2 − T0's error at one cycle.
 
 ## External cross-check (Pmod)
 
