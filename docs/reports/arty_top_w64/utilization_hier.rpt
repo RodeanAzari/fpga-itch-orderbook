@@ -1,0 +1,67 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Sun Nov 15 16:06:44 2026
+| Host         : RodeanStation running 64-bit Ubuntu 26.04 LTS
+| Command      : report_utilization -hierarchical -file /home/rodea/OrderBook/docs/reports/arty_top_w64/utilization_hier.rpt
+| Design       : arty_top
+| Device       : xc7a100tcsg324-1
+| Speed File   : -1
+| Design State : Physopt postRoute
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+|           Instance          |           Module           | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | DSP Blocks |
++-----------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+| arty_top                    |                      (top) |      13568 |      13092 |     430 |   46 | 21232 |    125 |      4 |         10 |
+|   (arty_top)                |                      (top) |         19 |         19 |       0 |    0 |    82 |      0 |      0 |          0 |
+|   u_core                    |                    ob_core |      13544 |      13068 |     430 |   46 | 21141 |    125 |      4 |         10 |
+|     (u_core)                |                    ob_core |         26 |         26 |       0 |    0 |   132 |      0 |      0 |          0 |
+|     g_net64.u_pack          |                byte_packer |        121 |        121 |       0 |    0 |   142 |      0 |      0 |          0 |
+|     u_book                  |                book_engine |       6441 |       6269 |     172 |    0 |  8561 |    108 |      0 |         10 |
+|       u_levels              |                book_levels |       1342 |       1170 |     172 |    0 |  1433 |      8 |      0 |          2 |
+|         (u_levels)          |                book_levels |       1280 |       1108 |     172 |    0 |  1421 |      0 |      0 |          2 |
+|         g_side[0].u_level   |    sdp_ram__parameterized0 |         79 |         79 |       0 |    0 |    11 |      4 |      0 |          0 |
+|       u_table               |                order_table |       5099 |       5099 |       0 |    0 |  7128 |    100 |      0 |          8 |
+|         (u_table)           |                order_table |       3404 |       3404 |       0 |    0 |  6153 |      0 |      0 |          8 |
+|         u_bank0             |                    sdp_ram |        843 |        843 |       0 |    0 |   488 |     50 |      0 |          0 |
+|         u_bank1             |                  sdp_ram_3 |        852 |        852 |       0 |    0 |   487 |     50 |      0 |          0 |
+|     u_builder               |                out_builder |       3488 |       3462 |       0 |   26 |  3751 |      7 |      2 |          0 |
+|       (u_builder)           |                out_builder |       3086 |       3060 |       0 |   26 |  3683 |      0 |      0 |          0 |
+|       u_fifo                |  sync_fifo__parameterized0 |         94 |         94 |       0 |    0 |    37 |      0 |      1 |          0 |
+|         (u_fifo)            |  sync_fifo__parameterized0 |         74 |         74 |       0 |    0 |    37 |      0 |      0 |          0 |
+|       u_rec_fifo            |                  sync_fifo |        310 |        310 |       0 |    0 |    31 |      7 |      1 |          0 |
+|         u_ram               |    sdp_ram__parameterized1 |        269 |        269 |       0 |    0 |     0 |      7 |      1 |          0 |
+|     u_ctrl                  |                   out_ctrl |        330 |        330 |       0 |    0 |   793 |      0 |      0 |          0 |
+|     u_eth_rx                |                     eth_rx |        247 |        243 |       0 |    4 |   281 |      2 |      0 |          0 |
+|       u_fifo                |                 async_fifo |         42 |         42 |       0 |    0 |   108 |      1 |      0 |          0 |
+|       g_store_forward.u_buf |               frame_buffer |         84 |         84 |       0 |    0 |    66 |      1 |      0 |          0 |
+|       u_fcs                 |              eth_fcs_check |         77 |         73 |       0 |    4 |    53 |      0 |      0 |          0 |
+|     u_eth_tx                |                     eth_tx |        127 |        127 |       0 |    0 |   168 |      0 |      1 |          0 |
+|       u_mii_tx              |                     mii_tx |         85 |         85 |       0 |    0 |    55 |      0 |      0 |          0 |
+|       u_fifo                | async_fifo__parameterized0 |         42 |         42 |       0 |    0 |   108 |      0 |      1 |          0 |
+|     u_feed                  |              feed_frontend |       1384 |       1384 |       0 |    0 |  2525 |      0 |      0 |          0 |
+|       u_deframer            |              mold_deframer |        916 |        916 |       0 |    0 |  1163 |      0 |      0 |          0 |
+|         g_w64.u_impl        |          mold_deframer_w64 |        907 |        907 |       0 |    0 |  1163 |      0 |      0 |          0 |
+|       g_align.u_aligner     |                msg_aligner |        191 |        191 |       0 |    0 |   402 |      0 |      0 |          0 |
+|       u_decoder             |               itch_decoder |        279 |        279 |       0 |    0 |   959 |      0 |      0 |          0 |
+|     u_inj                   |                   injector |        207 |        207 |       0 |    0 |   173 |      8 |      0 |          0 |
+|     u_meter                 |                  inj_meter |        130 |        130 |       0 |    0 |   635 |      0 |      0 |          0 |
+|     u_stats                 |                  out_stats |          8 |          8 |       0 |    0 |  2735 |      0 |      0 |          0 |
+|     u_t0                    |                   t0_track |        405 |        147 |     258 |    0 |   101 |      0 |      0 |          0 |
+|     u_udp_ctrl              |                     udp_rx |        204 |        204 |       0 |    0 |   447 |      0 |      0 |          0 |
+|     u_udp_feed              |                   udp_rx_2 |        199 |        199 |       0 |    0 |   261 |      0 |      0 |          0 |
+|     u_udp_tx                |                     udp_tx |        251 |        235 |       0 |   16 |   429 |      0 |      1 |          0 |
++-----------------------------+----------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+

@@ -1,8 +1,9 @@
 # Full-chip batch build of rtl/top/arty_top for the Arty A7-100T:
-#   vivado -mode batch -source syn/build_top.tcl [-tclargs <core_div> [ct]]
+#   vivado -mode batch -source syn/build_top.tcl [-tclargs <core_div> [ct|sf] [8|64]]
 # core_div: MMCM divider of the 1000 MHz VCO for the core clock (default 8 = 125 MHz).
 # ct: eth_rx in cut-through (CUT_THROUGH=1, ADR 0013); writes build/arty_top_ct/ and
-# docs/reports/arty_top_ct/ instead.
+# docs/reports/arty_top_ct/ instead; sf (or empty) is store-and-forward.
+# 8|64: feed path DATA_W (ADR 0015, default 8); 64 adds a _w64 suffix to both directories.
 # Non-project flow; writes build/arty_top/ and the reports in docs/reports/arty_top/.
 # The bitstream is written only if every timing path meets and no clock-domain crossing
 # is unconstrained or unsafe. Flow and gates follow fpga-eth-core's syn/build_example.tcl.
@@ -19,7 +20,11 @@ set top     arty_top
 set repo    [file normalize [file join [file dirname [info script]] ..]]
 set eth     [file join $repo rtl eth]
 set ct      [expr {[lindex $argv 1] eq "ct"}]
+set data_w  [lindex $argv 2]
+if {$data_w eq ""} { set data_w 8 }
+if {$data_w ni {8 64}} { error "DATA_W must be 8 or 64, got $data_w" }
 set tag     [expr {$ct ? "${top}_ct" : $top}]
+if {$data_w == 64} { append tag _w64 }
 set rundir  [file join $repo build $tag]
 set reports [file join $repo docs reports $tag]
 file mkdir $rundir $reports
@@ -32,7 +37,7 @@ foreach d {lib lib/xilinx feed book meas out top} {
 set sv [concat $sv [lsort [glob [file join $eth rtl *.sv]]]]
 read_verilog -sv $sv
 # injector ROM image (ADR 0014; analysis/injector_image.py), found by name by $readmemh
-read_mem [file join $repo data samples injector_aapl.mem]
+read_mem [file join $repo data samples [expr {$data_w == 64 ? "injector_aapl_w64.mem" : "injector_aapl.mem"}]]
 read_xdc [file join $eth constr arty_a7_100_pins.xdc]
 read_xdc [file join $eth constr arty_a7_100_pins_tx.xdc]
 read_xdc [file join $repo constr arty_timing.xdc]
@@ -42,7 +47,7 @@ read_xdc -ref rx_reset_bridge [file join $eth constr rx_reset_bridge.xdc]
 
 set clk_hz [expr {int(round(1.0e9 / $core_div))}]
 synth_design -top $top -part $part -generic CORE_DIV=$core_div -generic CLK_HZ=$clk_hz \
-    -generic CUT_THROUGH=$ct
+    -generic CUT_THROUGH=$ct -generic DATA_W=$data_w
 set bb [get_cells -hier -quiet -filter {IS_BLACKBOX == 1}]
 if {[llength $bb] > 0} { error "black boxes in the netlist: $bb" }
 
@@ -65,7 +70,7 @@ set whs [get_property SLACK [get_timing_paths -delay_type min -max_paths 1 -nwor
 set core_period [get_property PERIOD [get_clocks -of_objects [get_pins u_clk/u_bufg_core/O]]]
 set fh [open [file join $reports summary.txt] w]
 puts $fh "vivado [version -short]  part $part  top $top"
-puts $fh "core clock period ${core_period} ns (MMCM divider $core_div)"
+puts $fh "core clock period ${core_period} ns (MMCM divider $core_div)  DATA_W $data_w  CUT_THROUGH $ct"
 puts $fh "WNS ${wns} ns  WHS ${whs} ns"
 close $fh
 puts "RESULT: core $core_period ns, WNS $wns ns, WHS $whs ns"

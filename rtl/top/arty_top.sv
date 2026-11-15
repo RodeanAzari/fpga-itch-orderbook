@@ -27,7 +27,8 @@ module arty_top #(
     parameter logic [31:0] OWN_IP           = 32'hC0_A8_0A_02,    // 192.168.10.2
     parameter logic [15:0] CTRL_PORT        = 16'd7000,
     parameter int          PULSE_CYCLES     = 4,                   // 32 ns at 125 MHz
-    parameter bit          CUT_THROUGH      = 1'b0                 // eth_rx mode (ADR 0013)
+    parameter bit          CUT_THROUGH      = 1'b0,                // eth_rx mode (ADR 0013)
+    parameter int          DATA_W           = 8                    // feed path width (ADR 0015)
 ) (
     input  wire logic       CLK100MHZ,
     input  wire logic       ck_rst,        // active low
@@ -101,6 +102,7 @@ module arty_top #(
     logic running, stale, sent, error, sfd_unused, t1_pulse, t2_pulse;
 
     ob_core #(
+        .DATA_W      (DATA_W),
         .OWN_MAC     (OWN_MAC),
         .OWN_IP      (OWN_IP),
         .CTRL_PORT   (CTRL_PORT),
