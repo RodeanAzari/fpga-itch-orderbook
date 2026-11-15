@@ -52,7 +52,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Board / PHY** | Arty A7-100T (`xc7a100tcsg324-1`), TI DP83848J 10/100 MII |
 | **Pipeline** | MII MAC → CDC → IPv4/UDP filter → MoldUDP64 → ITCH decoder → order table → price levels → BBO |
 | **Pipeline latency T2−T1** | p50 / p99 / p99.9 / max: **136 / 192 / 232 / 232 ns** (17 / 24 / 29 / 29 cycles at 125 MHz), 831,842 BBOs on the board, AAPL 2019-10-18 ([CSV](data/results/2026-11-11_record_fifo_board.csv)) |
-| **Pipeline capacity** | **4.11 M msg/s** at `DATA_W` 8, input-bound (on-chip injector on the board: 1,043 messages in 31,703 cycles, = simulation, [CSV](data/results/2026-11-13_injector_board.csv)); `DATA_W` 64 `[TBD]` |
+| **Pipeline capacity** | **14.4 M msg/s** at `DATA_W` 64, **4.11 M msg/s** at `DATA_W` 8 (on-chip injector on the board, the same 1,043 messages: 9,059 vs 31,703 cycles, each = simulation; [64](data/results/2026-11-15_injector_board_w64.csv), [8](data/results/2026-11-13_injector_board.csv)) |
 | **Line-rate throughput** | `[TBD]` msg/s at 100 Mbps |
 | **Hardware full-day replay** | **0 mismatches on two days**: AAPL 2025-12-12, 916,429 / 916,429 BBO updates; AAPL 2019-10-18, 831,842 / 831,842; 0 frames lost, `table_overflow`/`unknown_ref` 0, never stale ([CSV](data/results/2026-11-10_full_day_board_16way.csv)) |
 | **Golden model, full day** | AAPL 2019-10-18: 1,669,591 messages, 0 unknown refs, 0 negative shares; peak 27,814 live orders ([CSV](data/results/2019-10-18_AAPL_summary.csv)) |
@@ -61,7 +61,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Functional coverage** | `[TBD]` |
 | **Formal proofs** | Async FIFO (in fpga-eth-core) and the price-level bitmap search (`tb/formal/bitmap_search.sby`), SymbiYosys |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
-| **Timing** | Full chip (with the injector) meets 125 MHz in both builds: WNS +0.048 ns store-and-forward, +0.172 ns cut-through, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt)) |
+| **Timing** | Full chip (with the injector) meets 125 MHz in every build: WNS +0.048 ns store-and-forward, +0.172 ns cut-through, +0.004 ns store-and-forward at `DATA_W` 64, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt), [sf 64](docs/reports/arty_top_w64/summary.txt)) |
 | **Utilization** | 12,351 LUT (19 %), 19,073 FF (15 %), 119 / 135 BRAM36 (88 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
 | **CI** | `make ci` locally: Verilator lint, cocotb regression, formal, model tests, host build + tests (ASan/UBSan), clang-tidy, ruff; the same `make ci` runs on GitHub Actions on every push ([workflow](.github/workflows/ci.yml)) |
 
@@ -73,7 +73,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; photo/ILA captures outstanding |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode: 198,084 / 198,084 decoded records match the model ([CSV](data/results/2026-11-09_first_board_run.csv)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
-| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8 |
+| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)) |
 | F — Stress, coverage closure, portfolio | Not started | |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
@@ -247,6 +247,30 @@ T2−T1; T2−T0 drops by 7.2 to 115.1 µs per BBO, never rising
 | store-and-forward | 74.2 | 126.7 | 133.1 | 133.7 | 133.8 |
 | cut-through | 7.2 | 64.2 | 120.5 | 121.6 | 121.7 |
 
+## Pipeline capacity
+
+An on-chip injector ([ADR 0014](docs/decisions/0014-injector.md)) replays a ROM of 22
+MoldUDP64 packets (1,043 AAPL messages, 31,679 payload bytes) straight into the feed path
+at full clock rate, with no Ethernet in the way. The board counts the cycles from the first
+byte to the last BBO and folds every BBO into a digest, which the host compares with the
+model's. The feed path is parameterized by width ([ADR 0015](docs/decisions/0015-64-bit-feed-path.md)):
+at `DATA_W` 8 it takes one byte per cycle; at 64, eight.
+
+[![Pipeline capacity on the board, DATA_W 8 vs 64](docs/media/2026-11-15_phase-e_board-capacity-w8-vs-w64.png)](docs/media/2026-11-15_phase-e_board-capacity-w8-vs-w64.png)
+
+| Board, store-and-forward, 125 MHz | cycles | M msg/s | bytes/cycle | BBOs, digest |
+|---|---|---|---|---|
+| `DATA_W` 8 | 31,703 | 4.11 | 1.00 | 248, = model |
+| `DATA_W` 64 | 9,059 | 14.4 | 3.50 | 248, = model |
+
+Each figure is the same on every board run and equal to simulation to the cycle
+([8](data/results/2026-11-13_injector_board.md), [64](data/results/2026-11-15_injector_board_w64.md)).
+At 8 the input sets the rate. At 64 it no longer does (3.5 of 8 bytes per cycle used); which
+later stage does is not measured yet. The full AAPL day also matches the model at 64
+(831,842 / 831,842), with T2−T1 unchanged: the wider path sits before T1
+([sidecar](data/results/2026-11-15_w64_full_day_board.md)). These are short bursts of
+one pre-market mix (mostly Add and Delete), not a sustained rate over a whole day.
+
 ## On the board, demos, in Vivado
 
 The host (WSL2) sends the day as MoldUDP64 multicast with `host/replay` (C++, busy-wait
@@ -285,12 +309,17 @@ pacing) and configures the board and logs its output with `host/capture`;
 | T2−T0, line-rate bound (board) | p50 126.7 µs, max 133.8 µs | same; store-and-forward | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
 | T2−T0, line-rate bound (board), cut-through | p50 64.2 µs, max 121.7 µs; 831,842 / 831,842 BBOs = model | same day; `CUT_THROUGH=1` | [sidecar](data/results/2026-11-13_ct_vs_sf_board.md) |
 | Pipeline capacity (on-chip injector, board) | 4.11 M msg/s: 1,043 msgs in 31,703 cycles, 248 BBOs, digest = model, = simulation | `DATA_W` 8 (input-bound), both builds | [sidecar](data/results/2026-11-13_injector_board.md) |
+| **Pipeline capacity (on-chip injector, board)** | **14.4 M msg/s**: same 1,043 msgs in 9,059 cycles (3.50× `DATA_W` 8), 248 BBOs, digest = model, = simulation | `DATA_W` 64, store-and-forward, 3 runs | [sidecar](data/results/2026-11-15_injector_board_w64.md) |
+| Hardware full day at `DATA_W` 64 | 831,842 / 831,842 BBOs = model; T2−T1 p50 / max 136 / 232 ns (unchanged); T2−T0 +16 to +96 ns vs `DATA_W` 8 | AAPL 2019-10-18, 500 pps, 1 run | [sidecar](data/results/2026-11-15_w64_full_day_board.md) |
+| Full-chip timing at `DATA_W` 64 | 125 MHz met, WNS +0.004 ns, 127 / 135 BRAM tiles | Vivado 2025.2, store-and-forward | [summary](docs/reports/arty_top_w64/summary.txt) |
 
 ## Limitations
 
-- **100 Mbps.** The Arty has no transceivers and cannot do 10GbE. The datapath is
-  parameterized by width, and an on-chip injector will measure the pipeline's real capacity.
-  The PHY, not the pipeline, will be the throughput limit.
+- **100 Mbps.** The Arty has no transceivers and cannot do 10GbE. Validated on Arty A7 at
+  100 Mbps. The datapath is parameterized by width; the on-chip injector sustains 14.4 M
+  msg/s through the pipeline (`DATA_W` 64, over a 1,043-message burst), so the 100 Mbps PHY,
+  not the pipeline, is the throughput limit. Pipeline latency (last message byte → BBO):
+  p50 136 ns / p99 192 ns / max 232 ns.
 - **One symbol; sizing from two days.** The order table is sized from AAPL on 2019-10-18
   and 2025-12-12; the busier day fills it to 84 % at its peak. Overflow is counted, not
   silent, if a busier day outgrows it.

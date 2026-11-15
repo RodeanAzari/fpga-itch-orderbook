@@ -67,3 +67,12 @@ BBO identical to the model in both builds). Done by Claude:
 `docs/media/2026-11-13_phase-e_board-t2-t0-ct-vs-sf.png` (`make plots`).
 - No physical capture needed. Optional: the scope setup above also works on the
   cut-through bitstream (`build/arty_top_ct/arty_top.bit`); T2 − T1 is the same there.
+
+## Phase E: pipeline capacity, DATA_W 8 vs 64 on the board (2026-11-15)
+
+Result: `data/results/2026-11-15_injector_board_w64.md` (14.4 M msg/s at 64, 3.50x at 8)
+and `data/results/2026-11-15_w64_full_day_board.md` (full day = model at 64). Done by
+Claude: `docs/media/2026-11-15_phase-e_board-capacity-w8-vs-w64.png` (`make plots`); the
+100 Mb/s line on it is computed from the same packets, not measured.
+- No physical capture needed. Still open for the §9 list: "messages/s at line rate"
+  measured on the board (README `[TBD]`).

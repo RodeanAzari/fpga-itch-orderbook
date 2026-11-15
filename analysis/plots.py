@@ -269,6 +269,51 @@ def ct_vs_sf(hist: Path, out: Path) -> None:
     print(f"wrote {out}")
 
 
+def capacity(w8: Path, w64: Path, out: Path) -> None:
+    """Injector capacity on the board (ADR 0014, 0015): messages/s at DATA_W 8 and 64 on
+    the same ROM image, against the 100 Mb/s wire limit for those same packets."""
+    from analysis.injector_image import image  # the committed fixture, deterministic
+
+    ns = 8  # 125 MHz core clock
+    im = image()
+    payload = sum(len(p) for p in im.pkts)
+    # per frame on the wire: preamble+SFD 8, Ethernet 14, IPv4 20, UDP 8, FCS 4, IFG 12
+    wire_bits = sum(8 * (max(len(p) + 42, 60) + 4 + 8 + 12) for p in im.pkts)
+    wire_mps = im.messages / (wire_bits / 100e6) / 1e6
+
+    def cycles(path: Path) -> int:
+        with open(path) as f:
+            runs = {int(r["inj_cycles"]) for r in csv.DictReader(f) if r["build"].startswith("sf")}
+        if len(runs) != 1:
+            raise ValueError(f"{path}: runs disagree on inj_cycles: {sorted(runs)}")
+        return runs.pop()
+
+    bars = [("DATA_W 8", cycles(w8)), ("DATA_W 64", cycles(w64))]
+    mps = [im.messages / (c * ns * 1e-9) / 1e6 for _, c in bars]
+    fig, ax = plt.subplots(figsize=(8, 4.6))
+    fig.patch.set_facecolor(SURFACE)
+    _style(ax)
+    xs = range(len(bars))
+    ax.bar(xs, mps, color=BID, width=0.5, edgecolor=SURFACE, linewidth=2)
+    for x, (_, c), m in zip(xs, bars, mps, strict=True):
+        note = f"{m:.2f} M msg/s\n{c:,} cycles, {payload / c:.2f} B/cycle"
+        ax.text(x, m + 0.3, note, ha="center", va="bottom", color=INK, fontsize=9)
+    ax.axhline(wire_mps, color=MUTED, linewidth=1.2, linestyle=(0, (4, 3)))
+    ax.text(0.5, wire_mps + 0.25, f"100 Mb/s wire limit, same packets:\n"
+            f"{wire_mps:.2f} M msg/s (computed)", ha="center", color=MUTED, fontsize=8)  # fmt: skip
+    ax.set_xticks(list(xs))
+    ax.set_xticklabels([f"{name}\n(feed path width, bits)" for name, _ in bars], color=INK)
+    ax.set_ylim(0, max(mps) * 1.25)
+    ax.set_ylabel("Messages per second (millions)", color=INK)
+    title = (f"Pipeline capacity on the Arty A7: on-chip injector, {im.messages:,} AAPL "
+             f"messages ({payload:,} B), store-and-forward")  # fmt: skip
+    ax.set_title(title, color=INK, loc="left", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main() -> None:
     bbo_day(
         str(RESULTS / "2019-10-18_AAPL"),
@@ -296,6 +341,11 @@ def main() -> None:
     ct_vs_sf(
         RESULTS / "2026-11-13_ct_vs_sf_board_hist.csv",
         MEDIA / "2026-11-13_phase-e_board-t2-t0-ct-vs-sf.png",
+    )
+    capacity(
+        RESULTS / "2026-11-13_injector_board.csv",
+        RESULTS / "2026-11-15_injector_board_w64.csv",
+        MEDIA / "2026-11-15_phase-e_board-capacity-w8-vs-w64.png",
     )
 
 

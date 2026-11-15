@@ -975,3 +975,11 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
 - Host trap: the NCM aggregation timer is sysfs
   (`/sys/class/net/<if>/cdc_ncm/tx_timer_usecs`), not `ethtool -C` (which says
   "Operation not supported" on the AX88179).
+- Bug (test): `make ci`, `test_core ct_bad_frames` (DATA_W 64, cut-through), first datagram
+  "bad preamble/nibble framing" 8.38 µs into the test → `Bench.start()` started the TX
+  monitor before reset, so a stats frame left on the wire by the previous test was caught
+  mid-burst → start the monitor after reset has ended it (asserts tx_en low). Proven with
+  two temporary tests (one ends mid-frame, the next sends a config): old bench fails at the
+  same 8,380 ns, fixed passes; removed after. `make ci` green.
+- Capacity plot (`make plots`): `docs/media/2026-11-15_phase-e_board-capacity-w8-vs-w64.png`;
+  README capacity section and the buildplan's 100 Mbps wording with measured values.
