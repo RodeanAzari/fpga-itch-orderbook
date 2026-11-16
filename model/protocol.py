@@ -73,6 +73,8 @@ STATS_NAMES = (
     "inj_cycles",
     "inj_bbos",
     "inj_digest",
+    "rx_stall_cycles",
+    "out_stall_cycles",
 )
 N_STATS = len(STATS_NAMES)
 

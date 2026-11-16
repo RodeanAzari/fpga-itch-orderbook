@@ -26,7 +26,7 @@ from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, Edge, FallingEdge, ReadOnly, RisingEdge, Timer
+from cocotb.triggers import ClockCycles, Edge, FallingEdge, First, ReadOnly, RisingEdge, Timer
 from cocotb.utils import get_sim_time
 from tb_common import get_rng
 
@@ -120,6 +120,8 @@ class Bench:
         self.t2_mark = 0
         self.pulses: dict[str, set[int]] = {"t1": set(), "t2": set()}  # now_q at each rise
         self.straddles = 0  # payloads the feed's release fell inside
+        # stall cycles since the last stats clear, by the bench's own count (stats 45, 46)
+        self.stalls = {"rx_stall_cycles": 0, "out_stall_cycles": 0}
 
     async def start(self) -> None:
         dut = self.dut
@@ -129,6 +131,8 @@ class Bench:
         cocotb.start_soon(Clock(dut.mii_tx_clk_i, 40, unit="ns").start())
         cocotb.start_soon(self.watch_sfd())
         cocotb.start_soon(self.watch_t2())
+        cocotb.start_soon(self.watch_stall("rx_stall_cycles", dut.f_tvalid, dut.f_tready))
+        cocotb.start_soon(self.watch_stall("out_stall_cycles", dut.b_m_valid, dut.b_m_ready))
         for name in self.pulses:
             cocotb.start_soon(self.watch_pulse(name))
         for r in (dut.rst_i, dut.mii_rx_rst_i, dut.mii_tx_rst_i):
@@ -173,6 +177,26 @@ class Bench:
             await RisingEdge(self.dut.sfd_o)
             await ReadOnly()
             self.sfd_now.append(int(self.dut.now_q.value))
+
+    async def watch_stall(self, name: str, valid, ready) -> None:
+        """Cycles with valid && !ready, counted per episode on signal edges (a wake-up per
+        core cycle would double the run): a stall seen at now_q = s and ended at now_q = e
+        was sampled by e - s rising edges. A stats clear restarts the count."""
+        dut = self.dut
+        since = None
+        while True:
+            await First(Edge(valid), Edge(ready), Edge(dut.stats_clear))
+            await ReadOnly()
+            now = int(dut.now_q.value)
+            if int(dut.stats_clear.value):
+                self.stalls[name] = 0
+                since = None if since is None else now + 1  # the clear cycle is dropped
+            on = bool(int(valid.value)) and not int(ready.value)
+            if on and since is None:
+                since = now
+            elif not on and since is not None:
+                self.stalls[name] += now - since
+                since = None
 
     async def watch_t2(self) -> None:
         """T2's reference: b_t2_q changes exactly when a new BBO first becomes valid (the
@@ -451,6 +475,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
         "out_datagrams": stats[-1].pkt_seq,
         "stale": int(dec.stale) | (0 if cfg.mode else int(book.stale)) << 1,
         "ctrl_ok": ctrl_counts[0], "ctrl_bad": ctrl_counts[1],
+        **b.stalls,
     }  # fmt: skip
     if not cfg.mode:
         want |= {
@@ -468,6 +493,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     del vals["uptime_cycles"], want["uptime_cycles"]
     bad_vals = {n: (vals[n], want[n]) for n in want if vals[n] != want[n]}
     assert not bad_vals, f"stats (got, want): {bad_vals}"
+    cocotb.log.info("stall cycles, stats = bench: %s", b.stalls)
     assert not timed_out, f"timeout: {len(got)} of {len(recs)} records"
     if kind == BBO:
         check_times(b, cfg, pkts, frames, got)
@@ -582,6 +608,58 @@ async def ct_bad_frames(dut):
     diff = [i for i, (g, w) in enumerate(zip(got, recs, strict=True)) if g != w]
     assert not diff, f"first diff at {diff[0]}: {got[diff[0]].hex()} vs {recs[diff[0]].hex()}"
     cocotb.log.info("ct bad frames: %d BBOs, %d stale after the bad frame", len(got), n_bad)
+
+
+@cocotb.test()
+async def stall_counters(dut):
+    """Stats 45 and 46 count the cycles the feed waits at eth_rx's output and the book waits
+    at its own, which name the stage that limits a run on hardware. Frames packed with Adds
+    that each raise the best bid (one BBO per message), spaced so no FIFO overflows. With
+    a small record FIFO (REC_ADDR_W 2) the book outruns out_builder inside every frame, so
+    both counters must be non-zero; in every set they must equal the bench's own count,
+    and the BBOs must equal the model's."""
+    rng = get_rng("stall_counters")
+    b = Bench(dut)
+    await b.start()
+    host = Host(rng)
+    g = generator.DEFAULT
+    cfg = Config(GROUP, PORT, 0, False, g.stock, window_lo_price(BASE_TICKS), 0)
+    await b.send(host.ctrl_frame(packet(CONFIG, 1, [cfg.record()])))
+    await b.wait_frames(1, 2_000)
+    assert b.datagrams(host)[0].kind == CONFIG_ACK
+    stock = g.stock.ljust(8).encode()
+    msgs = [b"R" + struct.pack(">HH", g.locate, 0) + (1).to_bytes(6) + stock + bytes(20)]
+    for k in range(150):  # bids from 1,000 ticks under base, one tick higher each
+        body = struct.pack(">QcI8sI", k + 1, b"B", 100, stock, g.base_price - (1000 - k) * 100)
+        msgs.append(b"A" + struct.pack(">HH", g.locate, 0) + (k + 2).to_bytes(6) + body)
+    pkts = list(packetize(msgs, b"SESSIONSTL"))
+    for p in pkts:
+        await b.send(b.feed(p), 2.0)  # a gap of two frame times: the output catches up
+    book = BoundedBook(
+        base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS, ways=WAYS
+    )
+    recs, _ = expected(pkts, cfg, book, cut_through=bool(CUT))
+    assert len(recs) == 150, f"{len(recs)} BBOs: the stimulus no longer moves the bid"
+    got: list[bytes] = []
+    stats: list = []
+    for i in range(100):
+        await ClockCycles(dut.clk_i, 10_000)
+        for d in b.datagrams(host):
+            if d.kind == STATS:
+                if (i + 1) * 10_000 > 2 * TICK_CYCLES:
+                    stats.append(d)
+            else:
+                got.extend(d.records)
+        if len(got) >= len(recs) and len(stats) >= 2:  # the last after every record
+            break
+    vals = {n: int.from_bytes(r) for n, r in zip(STATS_NAMES, stats[-1].records, strict=True)}
+    assert vals["rx_fifo_overflow"] == 0, "the stimulus overflowed the MII FIFO"
+    got_stalls = {n: vals[n] for n in b.stalls}
+    assert got_stalls == b.stalls, f"stall cycles, stats {got_stalls} vs bench {b.stalls}"
+    if int(os.environ.get("REC_ADDR_W", "9")) <= 2:
+        assert all(b.stalls.values()), f"a small record FIFO must stall both: {b.stalls}"
+    assert [without_times(r) for r in got] == recs
+    cocotb.log.info("stall cycles, stats = bench: %s", b.stalls)
 
 
 async def inject_run(b: Bench, host: Host, cfg: Config, pkt_seq: int, noise: list[bytes]):

@@ -33,7 +33,7 @@
 //   2**REC_ADDR_W x 512 sync_fifo (about 7.5 BRAM36 at the default).
 // Reset: synchronous, active-high.
 module out_builder #(
-    parameter int N_STATS     = 45,
+    parameter int N_STATS     = 47,
     parameter int FIFO_ADDR_W = 11,
     parameter int REC_ADDR_W  = 9,     // record FIFO depth 2**N (ADR 0012)
     parameter int MAX_PAYLOAD = 1472  // udp_tx's limit

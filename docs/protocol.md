@@ -104,7 +104,7 @@ not fed in trace mode.
 ## Stats (type 0x03)
 
 One datagram per second of core clock, and none before the first config. `count` =
-`N_STATS` = 45; each record is one u64 counter, in this order. All counters are snapshotted
+`N_STATS` = 47; each record is one u64 counter, in this order. All counters are snapshotted
 on the same cycle, and all are cleared by a config. Each is a count of events since the
 last config, except where noted.
 
@@ -155,6 +155,8 @@ last config, except where noted.
 | 42 | `inj_cycles` | mode 2 (ADR 0014), a value: core cycles from the injector's first byte to the last BBO record of the run (0 until one) |
 | 43 | `inj_bbos` | mode 2, a value: BBO records the book produced from the injector's image (not sent) |
 | 44 | `inj_digest` | mode 2, a value: digest of those records in order, t0/t1/t2 zeroed (`model.injector.digest`) |
+| 45 | `rx_stall_cycles` | core cycles with a received byte waiting that the feed pipeline did not take (`eth_rx` `m_tvalid_o && !m_tready_i`); the MII input cannot wait, so these use up its FIFO |
+| 46 | `out_stall_cycles` | core cycles with a BBO at the book's output that the output path did not take (out_builder's record FIFO full: the 100 Mb/s TX is behind). 0 in mode 2 (the meter never stalls) |
 
 ## Config (type 0x10, host → FPGA) and config ack (type 0x11)
 

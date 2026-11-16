@@ -107,14 +107,15 @@ def test_parse_round_trip_and_rejects() -> None:
 
 
 def test_stats() -> None:
-    # cut_through_bad (ADR 0013); inj_cycles, inj_bbos, inj_digest (ADR 0014)
-    assert N_STATS == 45 and len(set(STATS_NAMES)) == 45
+    # cut_through_bad (ADR 0013); inj_cycles, inj_bbos, inj_digest (ADR 0014); stalls
+    assert N_STATS == 47 and len(set(STATS_NAMES)) == 47
     assert STATS_NAMES[0] == "uptime_cycles" and STATS_NAMES[39] == "ctrl_bad"
     assert STATS_NAMES[40] == "t0_lost"
     assert STATS_NAMES[41] == "cut_through_bad"
-    assert STATS_NAMES[42:] == ("inj_cycles", "inj_bbos", "inj_digest")
+    assert STATS_NAMES[42:45] == ("inj_cycles", "inj_bbos", "inj_digest")
+    assert STATS_NAMES[45:] == ("rx_stall_cycles", "out_stall_cycles")
     p = packet(STATS, 3, stats_records(list(range(N_STATS))))
-    assert len(p) == 12 + 8 * 45 and be(p[12 + 8 * 39 : 12 + 8 * 40]) == 39
+    assert len(p) == 12 + 8 * 47 and be(p[12 + 8 * 39 : 12 + 8 * 40]) == 39
     assert be(p[12 + 8 * 40 : 12 + 8 * 41]) == 40
     assert be(p[12 + 8 * 41 : 12 + 8 * 42]) == 41
     assert be(p[12 + 8 * 44 : 12 + 8 * 45]) == 44

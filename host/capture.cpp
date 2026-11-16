@@ -11,7 +11,7 @@
 // model.protocol.parse splits it), flushed per datagram so it can be followed live. Not
 // logged, only counted: datagrams before the ack,
 // datagrams from any other source, and malformed ones (header, type, record_len or length
-// wrong; a config type; stats without all 45 counters).
+// wrong; a config type; stats without all 47 counters).
 //
 // pkt_seq must rise by 1 per datagram after the ack (0). A jump counts seq_gaps and the
 // datagrams lost (seq_lost); a lower or equal value counts seq_backwards (reordered or
@@ -56,7 +56,7 @@ constexpr uint8_t kBbo = 0x01, kTrace = 0x02, kStats = 0x03, kConfig = 0x10, kAc
 constexpr size_t kConfigLen = 24;
 
 // docs/protocol.md, "Stats": the counters in record order.
-constexpr std::array<const char*, 45> kStatsNames = {"uptime_cycles",
+constexpr std::array<const char*, 47> kStatsNames = {"uptime_cycles",
                                                      "rx_frames_ok",
                                                      "rx_crc_err",
                                                      "rx_err",
@@ -100,7 +100,9 @@ constexpr std::array<const char*, 45> kStatsNames = {"uptime_cycles",
                                                      "cut_through_bad",
                                                      "inj_cycles",
                                                      "inj_bbos",
-                                                     "inj_digest"};
+                                                     "inj_digest",
+                                                     "rx_stall_cycles",
+                                                     "out_stall_cycles"};
 
 size_t record_len(uint8_t type) {
     switch (type) {

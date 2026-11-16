@@ -47,6 +47,7 @@ module ob_core #(
     parameter int          SHARES_W    = 20,
     parameter int          WIN_BITS    = 12,               // price window (ADR 0002)
     parameter bit          CUT_THROUGH = 1'b0,             // eth_rx mode (ADR 0013)
+    parameter int          REC_ADDR_W  = 9,                // out_builder record FIFO (ADR 0012)
     parameter string       INJ_FILE    = DATA_W == 64 ? "injector_aapl_w64.mem"
                                                   : "injector_aapl.mem"  // ROM (ADR 0014)
 ) (
@@ -75,7 +76,7 @@ module ob_core #(
     output logic            t2_pulse_o
 );
     localparam int LEVEL_W  = SHARES_W + SET_BITS + 1 + $clog2(WAYS);  // book_engine's
-    localparam int N_STATS  = 45;
+    localparam int N_STATS  = 47;
     localparam int USER_W   = 1 + 64 + 64;  // {feed stale, T0, T1} through the book
     localparam int LANES    = DATA_W / 8;
 
@@ -668,6 +669,8 @@ module ob_core #(
         .inj_cycles_i              (inj_cycles),
         .inj_bbos_i                (inj_bbos),
         .inj_digest_i              (inj_digest),
+        .rx_stall_cycles_i         (f_tvalid && !f_tready),
+        .out_stall_cycles_i        (b_m_valid && !b_m_ready),
         .stats_o                   (stats),
         .tick_o                    (tick)
     );
@@ -677,7 +680,8 @@ module ob_core #(
     logic       t_over, t_underrun;
 
     out_builder #(
-        .N_STATS (N_STATS)
+        .N_STATS    (N_STATS),
+        .REC_ADDR_W (REC_ADDR_W)
     ) u_builder (
         .clk_i        (clk_i),
         .rst_i        (rst_i),

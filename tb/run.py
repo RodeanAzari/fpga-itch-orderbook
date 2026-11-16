@@ -103,6 +103,9 @@ TESTS = {
         [
             {"TICK_CYCLES": 30_000, "CUT_THROUGH": 0, **INJ},
             {"TICK_CYCLES": 30_000, "CUT_THROUGH": 1, **INJ},
+            # a 4-record output FIFO: the book stalls on its output and the feed behind it,
+            # so both stall counters (stats 45, 46) are non-zero and must equal the bench's
+            {"TICK_CYCLES": 30_000, "CUT_THROUGH": 0, "REC_ADDR_W": 2, **INJ},
             # the 64-bit feed path (ADR 0015): packer on the network feed, wide injector
             {"DATA_W": 64, "TICK_CYCLES": 30_000, "CUT_THROUGH": 0, **INJ64},
             {"DATA_W": 64, "TICK_CYCLES": 30_000, "CUT_THROUGH": 1, **INJ64},
