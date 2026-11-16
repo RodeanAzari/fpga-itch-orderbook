@@ -1009,3 +1009,16 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   or FPGA TX; undecided), so no run is match=1.
 - Trap: after a WSL restart usbipd attachments are gone even if Windows shows them;
   `/sys/bus/usb` missing in WSL = nothing attached.
+
+## 2026-11-16 — Stall counters, on the board
+
+- Stats 45 `rx_stall_cycles`, 46 `out_stall_cycles` (`f81a9f6`). `test_core stall_counters`
+  checks them against the bench's edge-based count. Traffic in the existing tests never
+  stalled (both 0 everywhere), so a set with `REC_ADDR_W` 2 forces both non-zero
+  (2,350 / 5,924); 3 injected wiring bugs caught. Full chip DATA_W 8 sf: WNS +0.012 ns,
+  128 BRAM tiles (the +9 since the README's 119 came with ADR 0015/0016, not the counters).
+- Board, full day: unpaced (309 k msg/s, host load 12) out_stall 248,625, rx_stall 239,413,
+  2 MII overflows; 4,000 pps both 0, no overflow, never stale
+  (`data/results/2026-11-16_stall_counters_board.md`). Confirms the output-bound diagnosis.
+- Test lesson: a counter checked only against 0 == 0 proves nothing. Check that the
+  stimulus moves it, then inject bugs.

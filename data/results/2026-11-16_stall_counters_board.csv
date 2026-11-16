@@ -1,0 +1,3 @@
+run,target_pps,achieved_pps,achieved_msgs_per_s,replay_max_lag_ms,rx_frames_ok,rx_fifo_overflow,stale,out_records,rx_stall_cycles,out_stall_cycles,lost_datagrams,unflagged_wrong,match
+m1_flat,0,6532.9,308875.0,,35311,2,3,416020,239413,248625,44020,0,0
+m2_p4000,4000,4000.2,189128.9,18.255,35313,0,0,831842,0,0,1089,0,0

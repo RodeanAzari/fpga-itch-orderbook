@@ -53,7 +53,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Pipeline** | MII MAC → CDC → IPv4/UDP filter → MoldUDP64 → ITCH decoder → order table → price levels → BBO |
 | **Pipeline latency T2−T1** | p50 / p99 / p99.9 / max: **136 / 192 / 232 / 232 ns** (17 / 24 / 29 / 29 cycles at 125 MHz), 831,842 BBOs on the board, AAPL 2019-10-18 ([CSV](data/results/2026-11-11_record_fifo_board.csv)) |
 | **Pipeline capacity** | **14.4 M msg/s** at `DATA_W` 64, **4.11 M msg/s** at `DATA_W` 8 (on-chip injector on the board, the same 1,043 messages: 9,059 vs 31,703 cycles, each = simulation; [64](data/results/2026-11-15_injector_board_w64.csv), [8](data/results/2026-11-13_injector_board.csv)) |
-| **Line-rate throughput** | `[TBD]` msg/s at 100 Mbps |
+| **Line-rate throughput** | Input at the full 100 Mbps: 35,310 of 35,313 frames, **374 k msg/s** offered (unpaced, AAPL day). With every BBO sent, the 100 Mbps *output* is the limit (64-byte records need 1.05-1.37× the input bytes): full day at **189 k msg/s** with 0 stall cycles and 0 drops; unpaced, the stall counters show the output stalling the feed and 2-3 frames overflow, counted and flagged stale ([line rate](data/results/2026-11-15_line_rate_board.md), [stall counters](data/results/2026-11-16_stall_counters_board.md)) |
 | **Hardware full-day replay** | **0 mismatches on two days**: AAPL 2025-12-12, 916,429 / 916,429 BBO updates; AAPL 2019-10-18, 831,842 / 831,842; 0 frames lost, `table_overflow`/`unknown_ref` 0, never stale ([CSV](data/results/2026-11-10_full_day_board_16way.csv)) |
 | **Golden model, full day** | AAPL 2019-10-18: 1,669,591 messages, 0 unknown refs, 0 negative shares; peak 27,814 live orders ([CSV](data/results/2019-10-18_AAPL_summary.csv)) |
 | **Order table** | 2-bank d-left, 2 × 2,048 × 16 = 65,536 entries, 100 BRAM36; **0 overflows** on both days, including a 54,981-live-order peak that overflowed a 4-way table of the same size 14,717 times ([CSV](data/results/2025-12-12_AAPL_bounded.csv)) |
@@ -61,8 +61,8 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Functional coverage** | `[TBD]` |
 | **Formal proofs** | Async FIFO (in fpga-eth-core) and the price-level bitmap search (`tb/formal/bitmap_search.sby`), SymbiYosys |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
-| **Timing** | Full chip (with the injector) meets 125 MHz in every build: WNS +0.048 ns store-and-forward, +0.172 ns cut-through, +0.004 ns store-and-forward at `DATA_W` 64, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt), [sf 64](docs/reports/arty_top_w64/summary.txt)) |
-| **Utilization** | 12,351 LUT (19 %), 19,073 FF (15 %), 119 / 135 BRAM36 (88 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
+| **Timing** | Full chip (with the injector) meets 125 MHz in every build: WNS +0.012 ns store-and-forward, +0.172 ns cut-through, +0.004 ns store-and-forward at `DATA_W` 64, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt), [sf 64](docs/reports/arty_top_w64/summary.txt)) |
+| **Utilization** | 12,818 LUT (20 %), 20,451 FF (16 %), 128 / 135 BRAM36 (95 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
 | **CI** | `make ci` locally: Verilator lint, cocotb regression, formal, model tests, host build + tests (ASan/UBSan), clang-tidy, ruff; the same `make ci` runs on GitHub Actions on every push ([workflow](.github/workflows/ci.yml)) |
 
 ## Status
@@ -73,7 +73,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; photo/ILA captures outstanding |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode: 198,084 / 198,084 decoded records match the model ([CSV](data/results/2026-11-09_first_board_run.csv)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
-| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)) |
+| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)). Left: scope cross-check |
 | F — Stress, coverage closure, portfolio | Not started | |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
@@ -283,7 +283,10 @@ pacing) and configures the board and logs its output with `host/capture`;
   the board's output (64-byte BBO records) needs more wire time than its input, so
   backpressure fills the 2 KB MII FIFO and frames are dropped. Every drop is counted and
   every later BBO is flagged stale: never a silently wrong book. On a quiet host there are
-  no drops.
+  no drops. Since 2026-11-16 two stall counters (stats 45, 46) measure this on the board.
+- **Host output loss:** in the line-rate runs the host lost a few to thousands of output
+  datagrams with no Linux counter moving (the USB adapter, usbip or the FPGA TX; not yet
+  told apart), so those runs show only that every received BBO is right.
 - **Live demo:** `analysis/bbo_view.py` (the GIF above).
 - **Vivado:** batch Tcl only (`syn/`), reports per build in [`docs/reports/`](docs/reports/).
 
@@ -304,7 +307,7 @@ pacing) and configures the board and logs its output with `host/capture`;
 | RTL sim, random records vs model | 1,009,900, 0 mismatches | seeded generator | [sim](data/results/2026-11-07_sim_random_1m.csv) |
 | **Hardware day 2: BBO updates identical to the model** | **916,429 / 916,429** | AAPL 2025-12-12 (3.5 M AAPL messages), 500 pps, 2 runs | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
 | Hardware runs at host load 15 to 22 | 2 of 4 clean; failures were host receive loss and an MII FIFO overflow, both detected (0 unflagged wrong BBOs) | 16-way bitstream | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
-| Full-chip timing (with the injector) | 125 MHz met, WNS +0.048 ns store-and-forward, +0.172 ns cut-through | Vivado 2025.2 | [sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt) |
+| Full-chip timing (with the injector) | 125 MHz met, WNS +0.012 ns store-and-forward, +0.172 ns cut-through | Vivado 2025.2 | [sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt) |
 | **Pipeline latency T2−T1 (board)** | **p50 136 ns, p99 192 ns, max 232 ns** | AAPL 2019-10-18, 831,842 BBOs, 500 pps | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
 | T2−T0, line-rate bound (board) | p50 126.7 µs, max 133.8 µs | same; store-and-forward | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
 | T2−T0, line-rate bound (board), cut-through | p50 64.2 µs, max 121.7 µs; 831,842 / 831,842 BBOs = model | same day; `CUT_THROUGH=1` | [sidecar](data/results/2026-11-13_ct_vs_sf_board.md) |
@@ -312,13 +315,18 @@ pacing) and configures the board and logs its output with `host/capture`;
 | **Pipeline capacity (on-chip injector, board)** | **14.4 M msg/s**: same 1,043 msgs in 9,059 cycles (3.50× `DATA_W` 8), 248 BBOs, digest = model, = simulation | `DATA_W` 64, store-and-forward, 3 runs | [sidecar](data/results/2026-11-15_injector_board_w64.md) |
 | Hardware full day at `DATA_W` 64 | 831,842 / 831,842 BBOs = model; T2−T1 p50 / max 136 / 232 ns (unchanged); T2−T0 +16 to +96 ns vs `DATA_W` 8 | AAPL 2019-10-18, 500 pps, 1 run | [sidecar](data/results/2026-11-15_w64_full_day_board.md) |
 | Full-chip timing at `DATA_W` 64 | 125 MHz met, WNS +0.004 ns, 127 / 135 BRAM tiles | Vivado 2025.2, store-and-forward | [summary](docs/reports/arty_top_w64/summary.txt) |
+| Line rate, input (board) | 35,310 / 35,313 frames, 374 k msg/s offered; 3 MII FIFO overflows, counted, book flagged stale, 0 unflagged wrong BBOs | unpaced full day, `DATA_W` 64 | [sidecar](data/results/2026-11-15_line_rate_board.md) |
+| **Line rate with every BBO sent (board)** | **189 k msg/s** (4,000 pps): 0 overflows, never stale (`DATA_W` 64 and 8), 0 stall cycles (`DATA_W` 8); at 5,000 and 6,000 pps 1 and 2 frames overflowed, flagged | full day, 2 runs at 4,000 pps | [line rate](data/results/2026-11-15_line_rate_board.md), [stalls](data/results/2026-11-16_stall_counters_board.md) |
+| Output stall at line rate (board) | `out_stall_cycles` 248,625, `rx_stall_cycles` 239,413 (unpaced, 309 k msg/s): the 100 Mbps TX stalls the book, the book stalls the feed | `DATA_W` 8 | [sidecar](data/results/2026-11-16_stall_counters_board.md) |
 
 ## Limitations
 
 - **100 Mbps.** The Arty has no transceivers and cannot do 10GbE. Validated on Arty A7 at
   100 Mbps. The datapath is parameterized by width; the on-chip injector sustains 14.4 M
   msg/s through the pipeline (`DATA_W` 64, over a 1,043-message burst), so the 100 Mbps PHY,
-  not the pipeline, is the throughput limit. Pipeline latency (last message byte → BBO):
+  not the pipeline, is the throughput limit. With every BBO sent, the output side of that
+  link binds first: 64-byte records need more bytes than the input carried, so a full day
+  runs clean at 189 k msg/s, not at the 374 k msg/s the input link delivers. Pipeline latency (last message byte → BBO):
   p50 136 ns / p99 192 ns / max 232 ns.
 - **One symbol; sizing from two days.** The order table is sized from AAPL on 2019-10-18
   and 2025-12-12; the busier day fills it to 84 % at its peak. Overflow is counted, not
