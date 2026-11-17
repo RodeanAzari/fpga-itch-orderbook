@@ -10,5 +10,5 @@ strict = true
 files = ["model"]
 
 [tool.pytest.ini_options]
-testpaths = ["model/tests", "analysis"]
+testpaths = ["model/tests", "analysis", "tb/unit"]
 pythonpath = ["."]

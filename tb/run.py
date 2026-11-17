@@ -106,6 +106,7 @@ TESTS = {
             # a 4-record output FIFO: the book stalls on its output and the feed behind it,
             # so both stall counters (stats 45, 46) are non-zero and must equal the bench's
             {"TICK_CYCLES": 30_000, "CUT_THROUGH": 0, "REC_ADDR_W": 2, **INJ},
+            {"DATA_W": 64, "TICK_CYCLES": 30_000, "CUT_THROUGH": 0, "REC_ADDR_W": 2, **INJ64},
             # the 64-bit feed path (ADR 0015): packer on the network feed, wide injector
             {"DATA_W": 64, "TICK_CYCLES": 30_000, "CUT_THROUGH": 0, **INJ64},
             {"DATA_W": 64, "TICK_CYCLES": 30_000, "CUT_THROUGH": 1, **INJ64},
@@ -142,6 +143,9 @@ def run_set(name: str, idx: int) -> int:
     )
     os.environ.update({k: str(v) for k, v in params.items()})
     os.environ["PYTHONPATH"] = f"{ROOT}:{os.environ.get('PYTHONPATH', '')}"
+    # functional coverage of this set, written at simulator exit (tb/cocotb/cov.py)
+    (ROOT / "build" / "cov").mkdir(parents=True, exist_ok=True)
+    os.environ["COV_FILE"] = str(ROOT / "build" / "cov" / f"{name}_{tag}.json")
     results = runner.test(
         hdl_toplevel=top,
         test_module=name,

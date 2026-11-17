@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 
 import cocotb
+import cov
 from book_stim import (
     FIXTURE,
     HALF,
@@ -150,6 +151,7 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
     )
     if stats is not None:
         stats["bbo_updates"] = sb.matched
+    cov.sample_book(recs, base, HALF, 1 << SET_BITS, WAYS)
     return book
 
 

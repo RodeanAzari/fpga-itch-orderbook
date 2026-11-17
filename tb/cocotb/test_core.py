@@ -25,6 +25,7 @@ import zlib
 from pathlib import Path
 
 import cocotb
+import cov
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, Edge, FallingEdge, First, ReadOnly, RisingEdge, Timer
 from cocotb.utils import get_sim_time
@@ -33,6 +34,7 @@ from tb_common import get_rng
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "rtl" / "eth" / "tb"))
 from eth import MiiDriver, MiiFrame, MiiTxMonitor, UdpFrame, ip_checksum, with_fcs  # noqa: E402
 
+from analysis.compare import unflagged_wrong  # noqa: E402
 from analysis.injector_image import BASE_TICKS as INJ_BASE  # noqa: E402
 from analysis.injector_image import CONFIG as INJ_CFG  # noqa: E402
 from analysis.injector_image import image  # noqa: E402
@@ -59,6 +61,7 @@ SET_BITS = int(os.environ.get("SET_BITS", "11"))
 WAYS = int(os.environ.get("WAYS", "16"))
 TICK_CYCLES = int(os.environ.get("TICK_CYCLES", "30000"))
 CUT = int(os.environ.get("CUT_THROUGH", "0"))  # eth_rx mode (ADR 0013)
+REC_ADDR_W = int(os.environ.get("REC_ADDR_W", "9"))  # out_builder record FIFO (ADR 0012)
 LANES = int(os.environ.get("DATA_W", "8")) // 8  # feed path width (ADR 0015)
 OWN_MAC, OWN_IP, CTRL_PORT = bytes.fromhex("02000a0b0c0d"), 0xC0A80A02, 7000
 GROUP, PORT = 0xEF010101, 26400
@@ -131,6 +134,7 @@ class Bench:
         cocotb.start_soon(Clock(dut.mii_tx_clk_i, 40, unit="ns").start())
         cocotb.start_soon(self.watch_sfd())
         cocotb.start_soon(self.watch_t2())
+        cocotb.start_soon(cov.watch_dut(dut, 8 * LANES))
         cocotb.start_soon(self.watch_stall("rx_stall_cycles", dut.f_tvalid, dut.f_tready))
         cocotb.start_soon(self.watch_stall("out_stall_cycles", dut.b_m_valid, dut.b_m_ready))
         for name in self.pulses:
@@ -399,6 +403,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
     want["rx_frames_ok"] = want["feed_datagrams"] = 1  # the straddle frame, after the clear
     for k, p in enumerate(pkts):
         await b.send(b.feed(p, host.mac), slack)
+        cov.sample_fcs(bool(CUT), False)
         want["rx_frames_ok"] += 1
         want["feed_datagrams"] += 1
         if k % 9 == 4:  # same group, other port: filtered
@@ -409,6 +414,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
             f = bytearray(with_fcs(UdpFrame(p, GROUP, PORT).build()))
             f[rng.randrange(len(f))] ^= 1 << rng.randrange(8)
             await b.send(bytes(f))
+            cov.sample_fcs(False, True)
             want["rx_crc_err"] += 1
         if k % 17 == 8:  # control garbage: rejected, filtered by the feed udp_rx
             await b.send(host.ctrl_frame(rng.randbytes(rng.randint(1, 50))))
@@ -510,6 +516,10 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
         cfg.mode, len(pkts), len(recs), last_seq, len(stats), want["stale"],
         {n: vals[n] for n in ("mold_gaps", "mold_duplicates", "unknown_ref", "price_oow")},
     )  # fmt: skip
+    cov.sample_feed(pkts, 8 * LANES)
+    if kind == BBO:
+        cov.sample_book([(r.kind, r.msg) for r in dec.records], BASE_TICKS, 2048,
+                        1 << SET_BITS, WAYS)  # fmt: skip
 
 
 @cocotb.test()
@@ -569,6 +579,7 @@ async def ct_bad_frames(dut):
             await b.send(bad_fcs(with_fcs(UdpFrame(p, GROUP, PORT + 1).build())))
             await b.send(bad_fcs(host.ctrl_frame(packet(CONFIG, 2, [cfg.record()]))))
         await b.send(bad_fcs(b.feed(p)) if k == k_bad else b.feed(p), 0.2)
+        cov.sample_fcs(True, k == k_bad)
     book = BoundedBook(
         base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS, ways=WAYS
     )
@@ -656,10 +667,76 @@ async def stall_counters(dut):
     assert vals["rx_fifo_overflow"] == 0, "the stimulus overflowed the MII FIFO"
     got_stalls = {n: vals[n] for n in b.stalls}
     assert got_stalls == b.stalls, f"stall cycles, stats {got_stalls} vs bench {b.stalls}"
-    if int(os.environ.get("REC_ADDR_W", "9")) <= 2:
+    if REC_ADDR_W <= 2:
         assert all(b.stalls.values()), f"a small record FIFO must stall both: {b.stalls}"
     assert [without_times(r) for r in got] == recs
     cocotb.log.info("stall cycles, stats = bench: %s", b.stalls)
+    cov.sample_feed(pkts, 8 * LANES)
+    _, dec = book_records(cfg, pkts)
+    cov.sample_book([(r.kind, r.msg) for r in dec.records], BASE_TICKS, 2048, 1 << SET_BITS, WAYS)
+
+
+@cocotb.test(skip=REC_ADDR_W > 2)
+async def mii_overflow(dut):
+    """The board's line-rate failure (data/results/2026-11-16_stall_counters_board.md) in
+    simulation: BBO-dense frames back to back, more output than the TX can send, so the
+    book stalls, the feed stalls behind it, and the MII input (which cannot wait) overflows.
+    The rules: every overflow is counted, the book goes stale, and no BBO is wrong without
+    the stale flag (analysis.compare.unflagged_wrong, the board runs' own check). Only with
+    a small record FIFO, which makes the overflow come within a few frames."""
+    rng = get_rng("mii_overflow")
+    b = Bench(dut)
+    await b.start()
+    host = Host(rng)
+    g = generator.DEFAULT
+    cfg = Config(GROUP, PORT, 0, False, g.stock, window_lo_price(BASE_TICKS), 0)
+    await b.send(host.ctrl_frame(packet(CONFIG, 1, [cfg.record()])))
+    await b.wait_frames(1, 2_000)
+    assert b.datagrams(host)[0].kind == CONFIG_ACK
+    stock = g.stock.ljust(8).encode()
+    msgs = [b"R" + struct.pack(">HH", g.locate, 0) + (1).to_bytes(6) + stock + bytes(20)]
+    # every Add joins one bid level, so each BBO's size counts every Add before it: a lost
+    # Add makes every later BBO differ from the model's, which only the stale flag excuses
+    for k in range(1200):
+        body = struct.pack(">QcI8sI", k + 1, b"B", 100, stock, g.base_price - 1000 * 100)
+        msgs.append(b"A" + struct.pack(">HH", g.locate, 0) + (k + 2).to_bytes(6) + body)
+    pkts = list(packetize(msgs, b"SESSIONOVF"))
+    for p in pkts:
+        await b.send(b.feed(p))  # minimum gap
+    book = BoundedBook(
+        base_ticks=BASE_TICKS, half_window=2048, sets_per_bank=1 << SET_BITS, ways=WAYS
+    )
+    want, _ = expected(pkts, cfg, book, cut_through=bool(CUT))
+    got: list[bytes] = []
+    stats: list = []
+    last = -1
+    for _ in range(400):  # drained: no new record for 2 stats ticks
+        await ClockCycles(dut.clk_i, TICK_CYCLES)
+        for d in b.datagrams(host):
+            if d.kind == STATS:
+                stats.append(d)
+            else:
+                got.extend(d.records)
+        if len(got) == last and len(stats) >= 2:
+            break
+        last = len(got)
+    vals = {n: int.from_bytes(r) for n, r in zip(STATS_NAMES, stats[-1].records, strict=True)}
+    assert vals["rx_fifo_overflow"] >= 1, "no MII overflow: the stimulus no longer stresses it"
+    assert vals["rx_stall_cycles"] > 0 and vals["out_stall_cycles"] > 0, vals
+    assert vals["stale"] & 1, "feed not stale after lost frames"
+    assert vals["mold_gaps"] >= 1, vals["mold_gaps"]
+    got = [without_times(r) for r in got]
+    bad = unflagged_wrong(got, want)
+    assert bad == 0, f"{bad} BBOs wrong without the stale flag"
+    by_seq = {struct.unpack_from(">Q", w, 32)[0]: w for w in want}
+    differ = sum(1 for r in got if r != by_seq.get(struct.unpack_from(">Q", r, 32)[0]))
+    assert differ > 0, "no BBO differs from the model: the loss is invisible to this check"
+    cocotb.log.info(
+        "mii overflow: %d frames lost, %d gaps, %d of %d BBOs out (%d differ, all stale), "
+        "stalls rx %d out %d",
+        vals["rx_fifo_overflow"], vals["mold_gaps"], len(got), len(want), differ,
+        vals["rx_stall_cycles"], vals["out_stall_cycles"],
+    )  # fmt: skip
 
 
 async def inject_run(b: Bench, host: Host, cfg: Config, pkt_seq: int, noise: list[bytes]):

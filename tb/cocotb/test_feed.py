@@ -21,6 +21,7 @@ from dataclasses import astuple
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge, RisingEdge
+from cov import sample_feed
 from feed_stim import adversarial_packets
 from tb_common import InOrderScoreboard, get_rng
 from tb_common.axis import AxisSource, bytes_to_beats
@@ -223,6 +224,7 @@ async def run(
         astuple(t),
         int(model.stale),
     )
+    sample_feed(pkts, 8 * LANES)
     return model
 
 

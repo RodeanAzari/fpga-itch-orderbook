@@ -22,6 +22,7 @@ import os
 from collections import Counter, deque
 
 import cocotb
+import cov
 from book_stim import (
     FIXTURE,
     HALF,
@@ -160,6 +161,7 @@ async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_vali
     assert counts == want, f"{name}: counters\n DUT   {counts}\n model {want}"
     assert int(dut.stale_o.value) == int(book.stale), "stale flag"
     cocotb.log.info("%s: %d messages, counters %s, stale %d", name, len(recs), want, book.stale)
+    cov.sample_book(recs, base, HALF, 1 << SET_BITS, WAYS)
     return book
 
 

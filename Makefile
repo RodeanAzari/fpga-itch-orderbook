@@ -11,7 +11,7 @@ ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, 
 # Vendor wrappers, with eth-core's simulation models of the primitives they use
 XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
-.PHONY: demo-gif demo-gif-day2 prog setup lint sim sim-full formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: demo-gif demo-gif-day2 prog setup lint sim cov sim-full formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -35,6 +35,13 @@ lint:
 JOBS ?= 4
 sim:
 	JOBS=$(JOBS) $(PY) tb/run.py
+
+# Functional coverage (buildplan 8.2): the make sim regression from clean coverage files,
+# then the merged report in docs/reports/coverage/ (fails on any unwaived hole).
+cov:
+	rm -rf build/cov
+	JOBS=$(JOBS) $(PY) tb/run.py
+	$(PY) tb/cov_report.py
 
 # SymbiYosys proofs (buildplan §8.3).
 formal:

@@ -58,7 +58,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Golden model, full day** | AAPL 2019-10-18: 1,669,591 messages, 0 unknown refs, 0 negative shares; peak 27,814 live orders ([CSV](data/results/2019-10-18_AAPL_summary.csv)) |
 | **Order table** | 2-bank d-left, 2 × 2,048 × 16 = 65,536 entries, 100 BRAM36; **0 overflows** on both days, including a 54,981-live-order peak that overflowed a 4-way table of the same size 14,717 times ([CSV](data/results/2025-12-12_AAPL_bounded.csv)) |
 | **Events verified in sim** | 1,009,900 random ITCH records plus both full days through the RTL book, 0 mismatches ([CSV](data/results/2026-11-10_sim_full_book.csv)) |
-| **Functional coverage** | `[TBD]` |
+| **Functional coverage** | **178 / 178 bins (100 %), 0 exclusions**, merged over 28 regression parameter sets: ITCH type × side, MoldUDP64 paths, d-left bucket fill 0-15 and full, bitmap search by L2 group, both FCS modes, every message lane at `DATA_W` 64, MII and record FIFO occupancy (MII overflow included), backpressure on every `ob_core` interface (buildplan §8.2; `make cov`, [report](docs/reports/coverage/index.html)) |
 | **Formal proofs** | Async FIFO (in fpga-eth-core) and the price-level bitmap search (`tb/formal/bitmap_search.sby`), SymbiYosys |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
 | **Timing** | Full chip (with the injector) meets 125 MHz in every build: WNS +0.012 ns store-and-forward, +0.172 ns cut-through, +0.004 ns store-and-forward at `DATA_W` 64, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt), [sf 64](docs/reports/arty_top_w64/summary.txt)) |
@@ -116,8 +116,8 @@ flowchart LR
 
 RTL testbenches use [tb-common](https://github.com/RodeanAzari/tb-common), a shared
 cocotb library (AXI-Stream driver and monitor, an in-order scoreboard that dumps context
-on the first mismatch, seeded random with logged seeds). It's pinned at tag
-`tb-common-v0.1`. The Ethernet layer's own verification (formal FIFO proof, 21 cocotb
+on the first mismatch, seeded random with logged seeds, and the functional-coverage merge
+behind `make cov`). It's pinned at tag `tb-common-v0.2`. The Ethernet layer's own verification (formal FIFO proof, 21 cocotb
 tests, planted bugs) is described in the
 [fpga-eth-core README](https://github.com/RodeanAzari/fpga-eth-core#verification-by-layer).
 
@@ -384,7 +384,7 @@ This project owns two shared repos, built here and consumed only at release tags
 | Repo | What it is | Used here as |
 |---|---|---|
 | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) | Payload-agnostic 10/100 Ethernet MAC + IPv4/UDP RX/TX for 7-series FPGAs, with two non-ITCH example designs and C++ host test tools | Git submodule at `rtl/eth/`, tag `eth-core-v0.4` |
-| [tb-common](https://github.com/RodeanAzari/tb-common) | Shared cocotb helpers: AXI-Stream driver/monitor, in-order scoreboard, seeded RNG | `pip` dependency pinned at `tb-common-v0.1` in `requirements.txt` |
+| [tb-common](https://github.com/RodeanAzari/tb-common) | Shared cocotb helpers: AXI-Stream driver/monitor, in-order scoreboard, seeded RNG, coverage merge/report | `pip` dependency pinned at `tb-common-v0.2` in `requirements.txt` |
 
 ## Roadmap
 

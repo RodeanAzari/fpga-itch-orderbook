@@ -27,6 +27,7 @@ from dataclasses import asdict
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge, RisingEdge
+from cov import sample_feed
 from feed_stim import adversarial_packets
 from tb_common import InOrderScoreboard, get_rng
 from tb_common.axis import AxisBeat, AxisSource, bytes_to_beats
@@ -212,6 +213,7 @@ async def run(
         asdict(c),
         dict(sorted(cov.items())),
     )
+    sample_feed([p for p, _ in pkts], DATA_W)
     return model, cov
 
 

@@ -1022,3 +1022,22 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   (`data/results/2026-11-16_stall_counters_board.md`). Confirms the output-bound diagnosis.
 - Test lesson: a counter checked only against 0 == 0 proves nothing. Check that the
   stimulus moves it, then inject bugs.
+
+## 2026-11-17 — Functional coverage closure (Phase F)
+
+- `tb-common-v0.2` (P2-owned; user-approved release): `tb_common.coverage` merges each
+  simulator process's cocotb-coverage bins, lists holes, writes the HTML report. 8 new
+  pytest cases; 3 injected bugs caught.
+- `tb/cocotb/cov.py`: 17 items, 178 bins (buildplan §8.2). Transaction bins are sampled
+  from scoreboard-checked stimulus replayed on the model; FIFO and backpressure bins on
+  DUT signals (FIFO levels every 16 cycles, stalls on edges). `tb/unit/test_cov.py` pins
+  the samplers against hand-worked cases; 4 injected sampler bugs caught.
+- First pass: 5 holes: the 64-bit packer never backpressured, and the MII input FIFO
+  never above a quarter full in any test. The second is a real gap: the board's
+  line-rate failure (MII overflow) had no `ob_core`-level test.
+- New: `test_core mii_overflow` (BBO-dense frames back to back, 4-record output FIFO):
+  11 frames lost, 3 gaps, 403 of 782 BBOs differ from the model and all are flagged
+  stale; `unflagged_wrong` 0. Plus a `DATA_W` 64 small-FIFO set. Then 0 holes.
+- Bug (test): the first `mii_overflow` stimulus (each Add a new best price) made a lost
+  Add invisible, so dropping the stale flag passed → every Add joins one level (size
+  counts all Adds) and the test asserts some BBOs differ. Found by bug injection.
