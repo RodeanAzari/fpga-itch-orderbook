@@ -51,6 +51,7 @@ from model.protocol import (  # noqa: E402
     TRACE,
     Config,
     expected,
+    feed_stats,
     packet,
     parse,
     window_lo_price,
@@ -467,16 +468,7 @@ async def run_phase(b: Bench, rng, host: Host, cfg: Config, n_msgs: int, session
             break
     else:
         timed_out = True
-    c, t = dec.c, dec.tracker.c
-    want |= {
-        "mold_packets": t.packets, "mold_heartbeats": t.heartbeats,
-        "mold_end_of_session": t.end_of_session, "mold_gaps": t.gaps,
-        "mold_gap_messages": t.gap_messages, "mold_duplicates": t.duplicates,
-        "mold_session_changes": t.session_changes, "mold_malformed_packets": t.malformed_packets,
-        "itch_unknown_types": c.unknown_types, "itch_malformed_messages": c.malformed_messages,
-        "itch_other_locate": c.other_locate, "itch_directory_matches": c.directory_matches,
-        "itch_locate_changes": c.locate_changes,
-        "locate": (1 << 16 | dec.locate) if dec.locate is not None else 0,
+    want |= feed_stats(dec) | {
         "book_records": n_book, "out_records": len(recs),
         "out_datagrams": stats[-1].pkt_seq,
         "stale": int(dec.stale) | (0 if cfg.mode else int(book.stale)) << 1,

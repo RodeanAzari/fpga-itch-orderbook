@@ -12,6 +12,12 @@ BBO/trace records, in pkt_seq order, are compared with it record by record.
 In BBO mode `unflagged_wrong` counts BBOs that are wrong without the stale flag (CLAUDE.md:
 never silently produce a wrong book); it must be 0 even when a run lost data.
 
+The log's last stats snapshot is also checked against the model's feed counters
+(MoldUDP64 sequencing, the ITCH type/locate filter, the learned locate; model.protocol.
+feed_stats): `feed_counters_match` is 1 or 0, or -1 when the log has no stats. It is
+reported beside `match`, not folded into it: it shows the filter on messages that make
+no record (a whole-day replay's other symbols, buildplan §8.4).
+
 Output: a key=value summary on stdout for the results sidecar; the first mismatch with the
 N records before it, decoded, on stderr. Exit 0 on a full match, 1 otherwise. A run with
 lost output datagrams (pkt_seq gaps) cannot match and says so; datagrams the host reordered
@@ -104,7 +110,7 @@ def compare(
     got = [r for d in dgs if d.kind == kind for r in d.records]
     if kind == P.BBO:  # t0/t1/t2 are measured (ADR 0011); every other byte must match
         got = [P.without_times(r) for r in got]
-    want, _ = P.expected(
+    want, dec = P.expected(
         iter_raw(packets.open("rb")), cfg, BoundedBook(base_ticks=base_ticks(cfg)), cut_through
     )
 
@@ -132,6 +138,15 @@ def compare(
             w = decode(kind, want[i]) if i < len(want) else "(none)"
             report.append(f"  [{i}] fpga  {g}")
             report.append(f"  [{i}] model {w}")
+    stats = [d for d in dgs if d.kind == P.STATS]
+    summary["feed_counters_match"] = -1  # no stats in the log
+    if stats:  # the last snapshot, by pkt_seq: capture's --idle >= 2 takes it after the feed
+        # Older bitstreams sent fewer counters (later ones are appended): zip to the shorter.
+        vals = (int.from_bytes(r) for r in stats[-1].records)
+        board = dict(zip(P.STATS_NAMES, vals, strict=False))
+        diff = [(k, board[k], v) for k, v in P.feed_stats(dec).items() if board[k] != v]
+        summary["feed_counters_match"] = int(not diff)
+        report += [f"counter {k}: fpga {b} model {m}" for k, b, m in diff]
     return summary, report
 
 

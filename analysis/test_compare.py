@@ -65,7 +65,12 @@ def datagrams(cfg: P.Config, recs: list[bytes], seed: int = 1) -> list[bytes]:
 
 def run(tmp_path: Path, pkts: Path, dgs: list[bytes], ct: bool = False) -> dict[str, int]:
     summary, report = compare(write_framed(tmp_path / "log.bin", dgs), pkts, cut_through=ct)
-    assert bool(report) == (summary["first_mismatch"] >= 0)
+    first = summary["first_mismatch"]  # the record report leads; counter lines follow it
+    assert (
+        report[:1] == [f"first mismatch at record {first}:"]
+        if first >= 0
+        else not any("mismatch" in x for x in report)
+    )
     return summary
 
 
@@ -211,3 +216,50 @@ def test_cut_through_flag_follows_the_stated_build(tmp_path: Path) -> None:
     one = [*ct_recs[:k], recs[k], *ct_recs[k + 1 :]]
     s = run(tmp_path, pkts, datagrams(cfg, one), ct=True)
     assert (s["match"], s["first_mismatch"], s["mismatched_positions"]) == (0, k, 1)
+
+
+def stats_packet(pkt_seq: int, values: dict[str, int]) -> bytes:
+    return P.packet(P.STATS, pkt_seq, [values.get(k, 0).to_bytes(8) for k in P.STATS_NAMES])
+
+
+def test_feed_counters(tmp_path: Path) -> None:
+    """The board's last stats snapshot must equal the model's feed counters: that is the
+    hardware evidence for the locate filter on messages that make no record (a whole-day
+    replay is mostly other symbols). The expected values are counted here from the feed as
+    built, independently of model.protocol.feed_stats."""
+    msgs = generator.generate(seed=11, count=2000)
+    feed: list[bytes] = []
+    other = 0
+    unknown = sum(m[:1] not in b"SRAFECXDU" for m in msgs)  # the ITCH subset (ADR 0004)
+    for k, m in enumerate(msgs):
+        feed.append(m)
+        if k % 5 == 1 and m[:1] in (b"A", b"D"):  # the same message for another stock
+            feed.append(m[:1] + (7).to_bytes(2) + m[3:])
+            other += 1
+    assert other > 50 and unknown > 10
+    pkts = list(packetize(feed, b"TESTSESS01", max_payload=600))
+    pkt_path = write_framed(tmp_path / "pkts.bin", pkts)
+    cfg = P.Config(symbol=generator.DEFAULT.stock, lo_price=P.window_lo_price(BASE_TICKS))
+    recs, _ = P.expected(pkts, cfg, BoundedBook(base_ticks=BASE_TICKS))
+    want = {
+        "mold_packets": len(pkts),
+        "itch_unknown_types": unknown,
+        "itch_other_locate": other,
+        "itch_directory_matches": 1,
+        "locate": 1 << 16 | generator.DEFAULT.locate,
+    }
+    dgs = [d for d in datagrams(cfg, recs) if P.parse(d).kind != P.STATS]
+    dgs = [P.packet(P.parse(d).kind, i, P.parse(d).records) for i, d in enumerate(dgs)]
+    # No stats in the log: unknown, not a pass.
+    assert run(tmp_path, pkt_path, dgs)["feed_counters_match"] == -1
+    # The right snapshot last by pkt_seq wins over a wrong one that arrived after it.
+    n = len(dgs)
+    s = run(tmp_path, pkt_path, [*dgs, stats_packet(n + 1, want), stats_packet(n, {})])
+    assert (s["match"], s["feed_counters_match"]) == (1, 1)
+    # One counter off by one fails and is named; the records still match.
+    for k in want:
+        bad = want | {k: want[k] + 1}
+        log = write_framed(tmp_path / "log.bin", [*dgs, stats_packet(n, bad)])
+        summary, report = compare(log, pkt_path)
+        assert (summary["match"], summary["feed_counters_match"]) == (1, 0)
+        assert report == [f"counter {k}: fpga {want[k] + 1} model {want[k]}"]

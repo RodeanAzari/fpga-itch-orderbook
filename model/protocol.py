@@ -231,3 +231,19 @@ def expected(
                     bbo_record(bbo, rec.seq, rec.stale or book.stale, cut_through=cut_through)
                 )
     return out, dec
+
+
+def feed_stats(dec: FeedDecoder) -> dict[str, int]:
+    """The stats counters (docs/protocol.md) the feed path must report after `dec` has
+    decoded the same packets: MoldUDP64 sequencing, the ITCH filter, the learned locate."""
+    c, t = dec.c, dec.tracker.c
+    return {
+        "mold_packets": t.packets, "mold_heartbeats": t.heartbeats,
+        "mold_end_of_session": t.end_of_session, "mold_gaps": t.gaps,
+        "mold_gap_messages": t.gap_messages, "mold_duplicates": t.duplicates,
+        "mold_session_changes": t.session_changes, "mold_malformed_packets": t.malformed_packets,
+        "itch_unknown_types": c.unknown_types, "itch_malformed_messages": c.malformed_messages,
+        "itch_other_locate": c.other_locate, "itch_directory_matches": c.directory_matches,
+        "itch_locate_changes": c.locate_changes,
+        "locate": (1 << 16 | dec.locate) if dec.locate is not None else 0,
+    }  # fmt: skip
