@@ -1041,3 +1041,42 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
 - Bug (test): the first `mii_overflow` stimulus (each Add a new best price) made a lost
   Add invisible, so dropping the stale flag passed → every Add joins one level (size
   counts all Adds) and the test asserts some BBOs differ. Found by bug injection.
+
+## 2026-11-19 — Formal targets of buildplan §8.3 (Phase F)
+
+- `make formal` now runs 5 proofs, all unbounded (k-induction) with covers reached
+  (1 min 42 s): `bitmap_search` (existing), `mold_deframer`, `order_table`, `sdp_ram`,
+  `streams`.
+- MoldUDP64 sequence/gap (`mold_deframer_w8`, `ifdef FORMAL`): a shadow of model
+  `SeqTracker.feed` built from the input bytes alone (no precompute) must match the
+  gap/dup/session-change/heartbeat/end pulses, `gap_msgs`, the expected sequence, the
+  stale level, the header-decided malformed cases, and "a duplicate delivers nothing",
+  for any byte stream, tlast/tuser, backpressure and mid-run reset. Invariants tie the
+  timing precompute (bytes 10/11/18, the two-cycle expected update) to the shadow.
+- Order table: one tracked ref R (an un-initialised held register = any constant). A
+  lookup of R hits exactly when the spec says R is live (never after its delete, full
+  reduce or U) and returns R's shares and side; R is stored once while live, nowhere
+  otherwise. Geometry 4 sets × 2 ways, hash multipliers 1 and 5 (new parameters
+  `HASH_M0/1`, defaults unchanged; the table relies only on the hash being a bijection).
+  The RAM rows are assumed equal to a write shadow (sdp_ram's read contract), which
+  `sdp_ram.sby` proves; the base case runs on the real RAM.
+- AXI-Stream: `axis_hold` (valid and payload held until ready) on the deframer, order
+  table, `pkt_gate` and `byte_packer` outputs; `pkt_gate`'s whole-packet rule;
+  `byte_packer`'s simulation SVA now proved (one accumulator invariant added).
+- Bug injection: deframer 6 (gap off-by-one, dup keeps expected, heartbeat expected+1,
+  seq+count−1, first session counted as change, gap sign), order table 7 (delete keeps
+  valid, removal to the other bank, match ignores valid, full-reduce off-by-one, U keeps
+  the order, 64-bit ref aliasing, clear skips a set), sdp_ram 2, streams 4: all 19 caught.
+  Confirmed as reachable traces (bounded run without the internal invariants) for the
+  deframer gap bug (step 21), three order-table bugs (delete keeps valid step 20, match
+  ignores valid step 11, clear skips a set step 4) and all sdp_ram and streams bugs; the
+  other 9 fail the proof's induction step on the invariants (a bounded run long enough
+  to show them at the ports took > 15 min each and was stopped).
+- Tooling: Yosys's reader rejects `return` in functions and `mold_deframer_w64`, has no
+  hierarchical references or `bind`; the newer proofs use the bundled yosys-slang
+  plugin, which drops `(* anyconst *)` (hence the held register) and defines SYNTHESIS
+  unless `--no-synthesis-define`. An undriven black-box output became `x`, which the
+  solver may read differently at each use: an unsound stub, replaced by the real RAM.
+- Bug (proof, mine): a 2-bit sum in the order-table invariant wrapped (2 + 2 = 0) and
+  gave a false induction counterexample → widened.
+- Not proved: the `DATA_W` 64 deframer (simulation only).

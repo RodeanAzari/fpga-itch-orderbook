@@ -44,8 +44,9 @@ cov:
 	$(PY) tb/cov_report.py
 
 # SymbiYosys proofs (buildplan §8.3).
+FORMAL_PROOFS := bitmap_search mold_deframer order_table sdp_ram streams
 formal:
-	cd tb/formal && sby -f bitmap_search.sby
+	cd tb/formal && for p in $(FORMAL_PROOFS); do sby -f $$p.sby || exit 1; done
 
 # Phase D stress: book_engine on 1M+ events and the whole real day (minutes). Appends one
 # row per passing test to SIM_FULL_CSV; SEED makes it reproducible.
@@ -116,4 +117,5 @@ plots:
 	$(PY) -m analysis.plots
 
 clean:
-	rm -rf build .mypy_cache .ruff_cache .pytest_cache tb/formal/*_prove tb/formal/*_cover
+	rm -rf build .mypy_cache .ruff_cache .pytest_cache \
+		$(addprefix tb/formal/,$(FORMAL_PROOFS)) tb/formal/*_prove tb/formal/*_cover

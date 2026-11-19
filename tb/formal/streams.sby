@@ -1,0 +1,27 @@
+# buildplan §8.3: AXI-Stream handshake properties at the small stream blocks (pkt_gate,
+# byte_packer); the deframer's and order table's outputs are checked in their own
+# harnesses. Properties: streams_fv.sv, axis_hold.sv, pkt_gate (FORMAL), byte_packer's
+# simulation SVA (read here without SYNTHESIS defined). Run: make formal
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 10
+cover: mode cover
+cover: depth 16
+
+[engines]
+smtbmc bitwuzla
+
+[script]
+plugin -i slang
+read_slang -D FORMAL --no-synthesis-define --top streams_fv pkt_gate.sv byte_packer.sv axis_hold.sv streams_fv.sv
+prep -top streams_fv
+
+[files]
+../../rtl/lib/pkt_gate.sv
+../../rtl/lib/byte_packer.sv
+axis_hold.sv
+streams_fv.sv

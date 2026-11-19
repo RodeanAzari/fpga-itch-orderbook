@@ -59,7 +59,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Order table** | 2-bank d-left, 2 × 2,048 × 16 = 65,536 entries, 100 BRAM36; **0 overflows** on both days, including a 54,981-live-order peak that overflowed a 4-way table of the same size 14,717 times ([CSV](data/results/2025-12-12_AAPL_bounded.csv)) |
 | **Events verified in sim** | 1,009,900 random ITCH records plus both full days through the RTL book, 0 mismatches ([CSV](data/results/2026-11-10_sim_full_book.csv)) |
 | **Functional coverage** | **178 / 178 bins (100 %), 0 exclusions**, merged over 28 regression parameter sets: ITCH type × side, MoldUDP64 paths, d-left bucket fill 0-15 and full, bitmap search by L2 group, both FCS modes, every message lane at `DATA_W` 64, MII and record FIFO occupancy (MII overflow included), backpressure on every `ob_core` interface (buildplan §8.2; `make cov`, [report](docs/reports/coverage/index.html)) |
-| **Formal proofs** | Async FIFO (in fpga-eth-core) and the price-level bitmap search (`tb/formal/bitmap_search.sby`), SymbiYosys |
+| **Formal proofs** | Every buildplan §8.3 target, unbounded (k-induction), SymbiYosys: async FIFO (in fpga-eth-core); bitmap search returns the best level; MoldUDP64 sequence and gap logic matches the model's tracker for any byte stream; the order table never returns an order after its delete (any ref, any record sequence); AXI-Stream handshake at the deframer, order table, packet gate and 64-bit byte packer. 19 injected bugs, all caught (`make formal`, [`tb/formal/`](tb/formal/)) |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
 | **Timing** | Full chip (with the injector) meets 125 MHz in every build: WNS +0.012 ns store-and-forward, +0.172 ns cut-through, +0.004 ns store-and-forward at `DATA_W` 64, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt), [sf 64](docs/reports/arty_top_w64/summary.txt)) |
 | **Utilization** | 12,818 LUT (20 %), 20,451 FF (16 %), 128 / 135 BRAM36 (95 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
@@ -111,7 +111,7 @@ flowchart LR
 |---|---|
 | Golden model | 24 pytest tests; full-day self-consistency on real data; per-message flag contract checked on 1,669,591 messages |
 | cocotb vs. golden model | Every block and the whole chip (`ob_core`, frames in → datagrams out) scored against the model; injected bugs caught in each test (counts in the [lab notebook](docs/log.md)) |
-| Formal (SymbiYosys) | Async FIFO; price-level bitmap search |
+| Formal (SymbiYosys) | Async FIFO; bitmap search; MoldUDP64 sequence/gap logic (a shadow of the model's `SeqTracker` inside `mold_deframer_w8`); order table (one tracked ref against the spec, RAM by its proved read contract); AXI-Stream handshake at four block boundaries. Proofs that need internal state keep it in an `ifdef FORMAL` block next to the RTL. Not proved: the `DATA_W` 64 deframer (simulation only) |
 | Hardware scoreboard | `analysis/compare.py` over a captured day: record by record, plus `unflagged_wrong` (a BBO wrong without its stale flag): 0 on every run, including 4 runs that lost input ([CSV](data/results/2026-11-09_board_loss_diagnosis.csv)) |
 
 RTL testbenches use [tb-common](https://github.com/RodeanAzari/tb-common), a shared

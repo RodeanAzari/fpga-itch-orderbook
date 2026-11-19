@@ -300,5 +300,139 @@ module mold_deframer_w8 #(
         end
     end
 `endif
+
+`ifdef FORMAL
+    // ---------------------------------------------------------------- formal (§8.3)
+    // tb/formal/mold_deframer.sby. f_* is a shadow of ADR 0003 (model SeqTracker.feed):
+    // the header parsed from the input bytes alone and judged on its last byte with no
+    // precompute or pipelining. The DUT's verdict pulses, expected sequence, stale level,
+    // duplicate drop and the malformed cases decided by the header alone must match it.
+    // The f_inv assertions tie the DUT's precomputed header registers to the shadow so
+    // k-induction closes; they are what the timing comment above promises.
+    logic        f_past = 1'b0;
+    logic [4:0]  f_pos;               // byte index in the packet, saturating at HDR_LEN
+    logic [79:0] f_sess, f_session;
+    logic [63:0] f_seq, f_expected, f_gapn_q;
+    logic [7:0]  f_cnt_hi;
+    logic        f_have, f_stale, f_mal_seen, f_drop, f_hbpkt;
+    logic        f_gap_q, f_dup_q, f_sc_q, f_hb_q, f_end_q, f_pkt_q, f_must_q, f_never_q;
+    logic [15:0] f_count;
+    logic        f_hdr, f_new, f_dup, f_gap, f_hbish, f_this_dup;
+    logic [63:0] f_exp;
+
+    always_comb begin
+        f_hdr      = fire && f_pos == 5'(HDR_LEN - 1);
+        f_count    = {f_cnt_hi, s_tdata_i};
+        f_new      = !f_have || f_sess != f_session;
+        f_exp      = f_new ? FIRST_SEQ : f_expected;
+        f_dup      = f_seq < f_exp;
+        f_gap      = f_seq > f_exp;
+        f_hbish    = f_count == CNT_HB || f_count == CNT_END;
+        f_this_dup = f_drop || (f_hdr && f_dup);
+    end
+
+    always_ff @(posedge clk_i) begin
+        f_past <= 1'b1;
+        if (fire && f_pos < 5'(SEQ_OFF)) f_sess <= {f_sess[71:0], s_tdata_i};
+        if (fire && f_pos >= 5'(SEQ_OFF) && f_pos < 5'(CNT_OFF))
+            f_seq <= {f_seq[55:0], s_tdata_i};
+        if (fire && f_pos == 5'(CNT_OFF)) f_cnt_hi <= s_tdata_i;
+        f_gapn_q <= f_seq - f_exp;
+        if (rst_i) begin
+            f_pos      <= '0;
+            f_have     <= 1'b0;
+            f_expected <= FIRST_SEQ;
+            f_stale    <= 1'b0;
+            f_mal_seen <= 1'b0;
+            f_drop     <= 1'b0;
+            f_hbpkt    <= 1'b0;
+            {f_gap_q, f_dup_q, f_sc_q, f_hb_q, f_end_q, f_pkt_q, f_must_q, f_never_q} <= '0;
+        end else begin
+            f_gap_q   <= f_hdr && !f_dup && f_gap;
+            f_dup_q   <= f_hdr && f_dup;
+            f_sc_q    <= f_hdr && f_new && f_have;
+            f_hb_q    <= f_hdr && !f_dup && f_count == CNT_HB;
+            f_end_q   <= f_hdr && !f_dup && f_count == CNT_END;
+            f_pkt_q   <= fire && s_tlast_i;
+            // Malformed by the header alone: shorter than the header, a heartbeat / end
+            // of session with a body, or truncated (tuser). Never for a duplicate, never
+            // for a heartbeat / end of session that ends on its header.
+            f_must_q  <= fire && s_tlast_i && !f_this_dup
+                         && (f_pos < 5'(HDR_LEN - 1) || f_hbpkt || s_tuser_i);
+            f_never_q <= fire && s_tlast_i
+                         && (f_this_dup || (f_hdr && f_hbish && !s_tuser_i));
+            if (malformed_o) f_mal_seen <= 1'b1;
+            if (fire) f_pos <= s_tlast_i ? '0
+                             : f_pos == 5'(HDR_LEN) ? f_pos : f_pos + 5'd1;
+            if (f_hdr) begin
+                f_have <= 1'b1;
+                if (f_new) f_session <= f_sess;
+                if ((f_new && f_have) || (!f_dup && f_gap)) f_stale <= 1'b1;
+                f_expected <= f_dup ? f_exp : f_hbish ? f_seq : f_seq + 64'(f_count);
+                f_drop     <= f_dup && !s_tlast_i;
+                f_hbpkt    <= !f_dup && f_hbish && !s_tlast_i;
+            end else if (fire && s_tlast_i) begin
+                f_drop  <= 1'b0;
+                f_hbpkt <= 1'b0;
+            end
+        end
+    end
+
+    always_comb begin
+        if (f_past) begin
+            // Spec: the verdict pulses one cycle after the header's last byte.
+            assert (gap_o == f_gap_q);
+            assert (dup_o == f_dup_q);
+            assert (session_change_o == f_sc_q);
+            assert (heartbeat_o == f_hb_q);
+            assert (end_o == f_end_q);
+            assert (pkt_o == f_pkt_q);
+            if (gap_o) assert (gap_msgs_o == f_gapn_q);
+            if (f_must_q) assert (malformed_o);
+            if (f_never_q || !f_pkt_q) assert (!malformed_o);
+            assert (stale_o == (f_stale || f_mal_seen || malformed_o));
+            // A duplicate packet delivers nothing.
+            if (f_drop) assert (!emit);
+            if (f_hdr && f_dup) assert (!emit);
+
+            // f_inv: the DUT's header registers agree with the shadow.
+            assert (state_q == S_HDR || state_q == S_LEN || state_q == S_MSG
+                    || state_q == S_TRAIL || state_q == S_DROP);
+            assert (f_pos <= 5'(HDR_LEN));
+            assert ((state_q == S_HDR) == (f_pos < 5'(HDR_LEN)));
+            if (state_q == S_HDR) assert (hcnt_q == f_pos);
+            assert (f_drop == (state_q == S_DROP));
+            assert (have_session_q == f_have);
+            if (f_have) assert (session_q == f_session);
+            assert (!(upd_exp_q && upd_exp2_q));
+            if (!upd_exp_q && !upd_exp2_q) assert (expected_q == f_expected);
+            if (upd_exp_q) assert (seq_in_q + 64'(count_q) == f_expected
+                                   && (state_q != S_HDR || hcnt_q == '0));
+            if (upd_exp2_q) assert (exp_sum_q == f_expected
+                                    && (state_q != S_HDR || hcnt_q <= 5'd1));
+            if (upd_exp_q || upd_exp2_q) assert (!f_hbpkt && !f_drop);
+            if (state_q == S_HDR && hcnt_q >= 5'(SEQ_OFF)) assert (sess_in_q == f_sess);
+            if (state_q == S_HDR && hcnt_q > 5'(SEQ_OFF))
+                assert (new_sess_q == (!have_session_q || sess_in_q != session_q));
+            if (state_q == S_HDR && hcnt_q > 5'(SEQ_OFF + 1))
+                assert (exp_q == (new_sess_q ? FIRST_SEQ : expected_q));
+            if ((state_q == S_HDR && hcnt_q >= 5'(CNT_OFF)) || upd_exp_q)
+                assert (seq_in_q == f_seq);
+            // Part-way through a field, the bytes shifted in so far agree.
+            if (state_q == S_HDR && hcnt_q < 5'(SEQ_OFF))
+                assert (((sess_in_q ^ f_sess) & ((80'd1 << (8 * hcnt_q)) - 80'd1)) == '0);
+            if (state_q == S_HDR && hcnt_q >= 5'(SEQ_OFF) && hcnt_q < 5'(CNT_OFF))
+                assert (((seq_in_q ^ f_seq)
+                         & ((64'd1 << (8 * (hcnt_q - 5'(SEQ_OFF)))) - 64'd1)) == '0);
+            if (state_q == S_HDR && hcnt_q > 5'(CNT_OFF)) begin
+                assert (cnt_hi_q == f_cnt_hi);
+                assert (seq_lt_q == (seq_in_q < exp_q));
+                assert (seq_gt_q == (seq_in_q > exp_q));
+                assert (gap_q == seq_in_q - exp_q);
+            end
+            if (f_hbpkt) assert (state_q == S_TRAIL);
+        end
+    end
+`endif
 endmodule
 `default_nettype wire

@@ -31,5 +31,31 @@ module sdp_ram #(
     end else begin : g_no_out_reg
         assign rdata_o = rd_q;
     end
+
+`ifdef FORMAL
+    // tb/formal/sdp_ram.sby: the read contract that order_table's proof assumes. For one
+    // address A (any constant): once A is written, a read of A returns the last data
+    // written to A before the read cycle (a same-cycle write is not seen), 1 + OUT_REG
+    // cycles after the read address is presented.
+    logic [ADDR_W-1:0] f_addr;  // no initial value and held: any constant
+    logic              f_written = 1'b0, f_rd_q = 1'b0, f_rd2_q = 1'b0;
+    logic [DATA_W-1:0] f_data, f_exp_q, f_exp2_q;
+    always_ff @(posedge clk_i) begin
+        f_addr   <= f_addr;
+        if (we_i && waddr_i == f_addr) begin
+            f_written <= 1'b1;
+            f_data    <= wdata_i;
+        end
+        f_rd_q   <= f_written && raddr_i == f_addr;
+        f_exp_q  <= f_data;
+        f_rd2_q  <= f_rd_q;
+        f_exp2_q <= f_exp_q;
+    end
+    always_comb begin
+        if (f_written) assert (mem[f_addr] == f_data);
+        if (OUT_REG ? f_rd2_q : f_rd_q) assert (rdata_o == (OUT_REG ? f_exp2_q : f_exp_q));
+        if (OUT_REG ? f_rd2_q : f_rd_q) cover (rdata_o != '0);
+    end
+`endif
 endmodule
 `default_nettype wire

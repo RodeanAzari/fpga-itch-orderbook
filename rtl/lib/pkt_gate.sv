@@ -47,5 +47,21 @@ module pkt_gate #(
             pass_q <= 1'b0;
         end
     end
+
+`ifdef FORMAL
+    // tb/formal/streams.sby: the whole-packet rule. f_c_mid = the consumer is inside a
+    // packet (it is reset with block_i). Every beat it sees continues exactly what it
+    // has seen: a packet start when the source starts one, a continuation otherwise.
+    logic f_c_mid;
+    always_ff @(posedge clk_i) begin
+        if (m_tvalid_o && m_tready_i) f_c_mid <= !m_tlast_o;
+        if (rst_i || block_i) f_c_mid <= 1'b0;
+    end
+    always_comb if (!rst_i) begin
+        if (m_tvalid_o) assert (f_c_mid == mid_q);
+        assert (f_c_mid == (mid_q && pass_q));  // invariant
+        cover (mid_q && !pass_q && !block_i && s_tvalid_i);  // an interrupted tail drains
+    end
+`endif
 endmodule
 `default_nettype wire

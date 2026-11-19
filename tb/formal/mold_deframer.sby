@@ -1,0 +1,26 @@
+# buildplan §8.3: MoldUDP64 sequence / gap logic (ADR 0003) and the deframer's output
+# handshake, at DATA_W 8. Properties: rtl/feed/mold_deframer_w8.sv (FORMAL) and
+# mold_deframer_fv.sv. Run: make formal
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 4
+cover: mode cover
+cover: depth 48
+
+[engines]
+smtbmc bitwuzla
+
+[script]
+read -formal -sv mold_deframer_w8.sv
+read -formal -sv axis_hold.sv
+read -formal -sv mold_deframer_fv.sv
+prep -top mold_deframer_fv
+
+[files]
+../../rtl/feed/mold_deframer_w8.sv
+axis_hold.sv
+mold_deframer_fv.sv

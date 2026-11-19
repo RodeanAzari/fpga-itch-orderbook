@@ -1,0 +1,27 @@
+# buildplan §8.3: the order table never returns a stale entry after a delete (ADR 0001).
+# Properties: rtl/book/order_table.sv (FORMAL). The real RAM banks are in the model; for
+# induction, order_table also assumes sdp_ram's read contract (a read returns the last
+# write), which sdp_ram.sby proves. Run: make formal
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 12
+cover: mode cover
+cover: depth 48
+
+[engines]
+smtbmc bitwuzla
+
+[script]
+plugin -i slang
+read_slang -D FORMAL --top order_table_fv sdp_ram.sv order_table.sv axis_hold.sv order_table_fv.sv
+prep -top order_table_fv
+
+[files]
+../../rtl/lib/sdp_ram.sv
+../../rtl/book/order_table.sv
+axis_hold.sv
+order_table_fv.sv

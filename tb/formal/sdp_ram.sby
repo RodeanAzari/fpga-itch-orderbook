@@ -1,0 +1,24 @@
+# sdp_ram's read contract (a read returns the last write before it), which the order
+# table proof assumes for induction. Properties: rtl/lib/sdp_ram.sv (FORMAL).
+# Run: make formal
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 4
+cover: mode cover
+cover: depth 8
+
+[engines]
+smtbmc bitwuzla
+
+[script]
+plugin -i slang
+read_slang -D FORMAL --top sdp_ram_fv sdp_ram.sv sdp_ram_fv.sv
+prep -top sdp_ram_fv
+
+[files]
+../../rtl/lib/sdp_ram.sv
+sdp_ram_fv.sv

@@ -73,6 +73,8 @@ module byte_packer #(
                 assert (m_tkeep_o != '0 && (m_tkeep_o & (m_tkeep_o + 1'b1)) == '0);
                 assert (m_tlast_o || m_tkeep_o == '1);
                 assert (lane_q == '0);  // a waiting beat is complete
+            end else if (lane_q != '0) begin
+                assert (m_tkeep_o == (LANES'(1) << lane_q) - LANES'(1));  // filling
             end
             if ($past(m_tvalid_o && !m_tready_i) && !$past(rst_i))  // AXI-S: held
                 assert (m_tvalid_o && m_tdata_o == $past(m_tdata_o)

@@ -53,7 +53,11 @@ module order_table #(
     parameter int WAYS     = 16,
     parameter int SHARES_W = 20,
     parameter int WIN_BITS = 12,
-    parameter int USER_W   = 1
+    parameter int USER_W   = 1,
+    // ADR 0001 hash multipliers; any odd values keep (set, tag) a bijection of the ref
+    // (the formal harness uses small ones so the solver's multiplies stay cheap)
+    parameter logic [31:0] HASH_M0 = 32'h9E37_79B1,
+    parameter logic [31:0] HASH_M1 = 32'h85EB_CA6B
 ) (
     input  wire logic                clk_i,
     input  wire logic                rst_i,
@@ -107,8 +111,8 @@ module order_table #(
     localparam int SET_W   = WAYS * ENTRY_W;
     localparam int FILL_W  = $clog2(WAYS + 1);
     localparam int WAY_W   = (WAYS > 1) ? $clog2(WAYS) : 1;
-    localparam logic [31:0] M0 = 32'h9E37_79B1;     // ADR 0001 multipliers (odd)
-    localparam logic [31:0] M1 = 32'h85EB_CA6B;
+    localparam logic [31:0] M0 = HASH_M0;
+    localparam logic [31:0] M1 = HASH_M1;
     // Price window in ITCH price units (4 implied decimals; 1 tick = 1 cent = 100 units)
     localparam int TICK    = 100;
     localparam int WIN     = 2 ** WIN_BITS;
@@ -119,6 +123,10 @@ module order_table #(
     localparam longint RECIP = (64'd1 << RSHIFT) / 64'(TICK) + 64'd1;
     localparam int RECIP_W = RSHIFT - $clog2(TICK) + 2;
     localparam int PROD_W  = OFF_W + RECIP_W;
+
+    if (!HASH_M0[0] || !HASH_M1[0]) begin : g_bad_hash
+        $error("order_table: HASH_M0 and HASH_M1 must be odd (ADR 0001)");
+    end
 
     typedef struct packed {
         logic                valid;
@@ -452,6 +460,108 @@ module order_table #(
             // A partial reduce never touches more shares than the order has.
             if (state_q == S_ACT && !ins_q && hit_q && !removes)
                 assert (shares_q < 32'(found.shares));
+        end
+    end
+`endif
+
+`ifdef FORMAL
+    // ---------------------------------------------------------------- formal (§8.3)
+    // tb/formal/order_table.sby: "the order table never returns a stale entry after a
+    // delete". One ref R (any constant) is tracked against the spec (ADR 0001, model
+    // BoundedBook): f_live, f_shares, f_sell. The two RAM rows R hashes to are shadowed
+    // from this module's own writes (f_row0/1, f_eff* include a write in flight). The RAM
+    // contents are not visible here, so for induction the rows read are assumed to be
+    // the shadow: sdp_ram's read contract (a read returns the last write), proved on its
+    // own in tb/formal/sdp_ram.sby. The base case runs on the real RAM.
+    logic [REF_W-1:0]    f_ref;  // no initial value and held: any constant
+    always_ff @(posedge clk_i) f_ref <= f_ref;
+    logic                f_past = 1'b0;
+    logic [31:0]         f_p0, f_p1;
+    logic [SET_BITS-1:0] f_s0, f_s1;
+    logic [TAG_W-1:0]    f_t0, f_t1;
+    entry_t [WAYS-1:0]   f_row0, f_row1, f_eff0, f_eff1;
+    logic                f_live, f_sell, f_key, f_full;
+    logic [SHARES_W-1:0] f_shares;
+    logic [FILL_W-1:0]   f_n0, f_n1, f_fill0, f_fill1;
+    logic                f_was_live;
+
+    always_comb begin
+        f_p0   = f_ref * M0;
+        f_p1   = f_ref * M1;
+        f_s0   = f_p0[31 -: SET_BITS];
+        f_s1   = f_p1[31 -: SET_BITS];
+        f_t0   = f_p0[TAG_W-1:0];
+        f_t1   = f_p1[TAG_W-1:0];
+        f_eff0 = (we0 && waddr0 == f_s0) ? wdata0 : f_row0;
+        f_eff1 = (we1 && waddr1 == f_s1) ? wdata1 : f_row1;
+        f_key  = key_q == 64'(f_ref);
+        f_n0 = '0; f_n1 = '0; f_fill0 = '0; f_fill1 = '0;
+        for (int w = 0; w < WAYS; w++) begin
+            f_n0    = f_n0 + FILL_W'(f_eff0[w].valid && f_eff0[w].tag == f_t0);
+            f_n1    = f_n1 + FILL_W'(f_eff1[w].valid && f_eff1[w].tag == f_t1);
+            f_fill0 = f_fill0 + FILL_W'(f_row0[w].valid);
+            f_fill1 = f_fill1 + FILL_W'(f_row1[w].valid);
+        end
+        f_full = f_fill0 == FILL_W'(WAYS) && f_fill1 == FILL_W'(WAYS);
+    end
+
+    // The spec, decided where the RTL decides (S_ACT of a lookup of R).
+    always_ff @(posedge clk_i) begin
+        f_past <= 1'b1;
+        if (we0 && waddr0 == f_s0) f_row0 <= wdata0;
+        if (we1 && waddr1 == f_s1) f_row1 <= wdata1;
+        if (f_live) f_was_live <= 1'b1;
+        if (rst_i) begin
+            f_live     <= 1'b0;
+            f_was_live <= 1'b0;
+        end else if (state_q == S_ACT && f_key) begin
+            if (ins_q) begin
+                if (!f_live && !(|shares_q[31:SHARES_W]) && !f_full) begin
+                    f_live   <= 1'b1;
+                    f_shares <= shares_q[SHARES_W-1:0];
+                    f_sell   <= sell_q;
+                end
+            end else if (f_live) begin
+                if (op_q != OP_REDUCE || shares_q >= 32'(f_shares)) f_live <= 1'b0;
+                else f_shares <= f_shares - shares_q[SHARES_W-1:0];
+            end
+        end
+    end
+
+    // sdp_ram's contract: a lookup reads its rows in S_READ, after any earlier write.
+    always_comb if (f_past && state_q == S_EVAL) begin
+        if (set0_q == f_s0) assume (row0 == f_row0);
+        if (set1_q == f_s1) assume (row1 == f_row1);
+    end
+
+    always_comb if (f_past) begin
+        if (state_q == S_READ || state_q == S_RDREG || state_q == S_EVAL)
+            assert (!we0 && !we1);
+        if (state_q == S_ACT && f_key) begin
+            // The property: a lookup of R finds it exactly when it is live: never after
+            // its delete (or full reduce, or U), never a missed live order.
+            assert (hit_q == f_live);
+            if (!ins_q && f_live) assert (found.shares == f_shares && found.sell == f_sell);
+        end
+        // Invariant: R is stored once while live, nowhere otherwise, with its own fields.
+        if (state_q == S_CLEAR) begin
+            assert (!f_live);
+            if ({1'b0, clear_q} > {1'b0, f_s0}) assert (f_eff0 == '0);
+            if ({1'b0, clear_q} > {1'b0, f_s1}) assert (f_eff1 == '0);
+        end else begin
+            assert ({1'b0, f_n0} + {1'b0, f_n1} == (FILL_W + 1)'(f_live));
+            for (int w = 0; w < WAYS; w++) begin
+                if (f_eff0[w].valid && f_eff0[w].tag == f_t0)
+                    assert (f_eff0[w].shares == f_shares && f_eff0[w].sell == f_sell);
+                if (f_eff1[w].valid && f_eff1[w].tag == f_t1)
+                    assert (f_eff1[w].shares == f_shares && f_eff1[w].sell == f_sell);
+            end
+        end
+        // Not vacuous: R looked up after it went, a U of R, and R refused on a full table.
+        if (!rst_i && state_q == S_ACT && f_key) begin
+            cover (!ins_q && f_was_live && !f_live && op_q == OP_DELETE);
+            cover (!ins_q && f_live && op_q == OP_REPLACE);
+            cover (ins_q && !f_live && f_full);
         end
     end
 `endif
