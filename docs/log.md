@@ -1080,3 +1080,21 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
 - Bug (proof, mine): a 2-bit sum in the order-table invariant wrapped (2 + 2 = 0) and
   gave a false induction counterexample → widened.
 - Not proved: the `DATA_W` 64 deframer (simulation only).
+
+## 2026-11-19 — Whole-file replay prepared (Phase F, buildplan §8.4)
+
+- The board and adapter are not attached, so the hardware run waits. Prepared offline:
+  `host/replay` already reads gzip; the whole 2019-10-18 file packetizes to 302,347,067
+  messages in 6,456,828 packets (9.41 GB payload, 60 s to write), about 13 minutes of
+  wire at 100 Mbps.
+- The golden model over the whole file (223 s): 831,842 BBOs, the same count as the AAPL
+  extract; other_locate 295,290,395, unknown types 5,388,821, one directory match, no
+  locate change.
+- `compare.py` now also checks the board's last stats snapshot against the model's feed
+  counters (`feed_counters_match`): a whole day is mostly other symbols, which make no
+  record, so the record comparison alone could not show the filter worked. Mapping in
+  `model.protocol.feed_stats`, shared with test_core. Past board logs (e5_w64, m2_p4000)
+  give 1. 4 injected bugs each caught by `test_feed_counters`.
+- Bug (mine, test only): my hand count expected an end-of-session packet and no unknown
+  types → `packetize` adds no end-of-session, and the generator's noise messages are
+  outside the ITCH subset → the test counts them from the feed.
