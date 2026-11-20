@@ -56,6 +56,8 @@ place_design
 phys_opt_design
 route_design
 phys_opt_design
+# Routed design for the GUI (device view, schematic, worst path): open_checkpoint routed.dcp
+write_checkpoint -force [file join $rundir routed.dcp]
 
 report_timing_summary -max_paths 20 -report_unconstrained -file [file join $reports timing_summary.rpt]
 report_utilization                    -file [file join $reports utilization.rpt]
