@@ -1098,3 +1098,17 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
 - Bug (mine, test only): my hand count expected an end-of-session packet and no unknown
   types → `packetize` adds no end-of-session, and the generator's noise messages are
   outside the ITCH subset → the test counts them from the feed.
+
+## 2026-11-19 (evening) — Whole-file replay on the board: zero mismatches (§8.4)
+
+- Board `build/arty_top` (`f81a9f6`, DATA_W 8 sf), openFPGALoader. Sanity run `f0_sanity`
+  (first 200,000 messages, 4,000 pps): 0 BBOs expected and received, feed counters = model.
+  It ran to capture's 600 s limit: `--idle` only counts once a BBO has arrived, and that
+  slice holds none. The whole run used `--idle 120 --duration 0`.
+- `f1_whole`: the entire file, unpaced, 835.5 s, 7,728 pps, 361,876 msg/s, 94.1 Mb/s wire.
+  831,842 / 831,842 BBOs = model (`match=1`), `feed_counters_match=1` (other_locate
+  295,290,395, unknown 5,388,821, directory match 1, locate 14), 6,456,828 / 6,456,828 frames,
+  no gap, no stall, never stale. The host reordered 3 output datagrams; none lost.
+  `data/results/2026-11-19_whole_file_board.md`.
+- Host setup: sudo needs a terminal, so the `!` prefix cannot run it; the user ran a
+  script in their own terminal.
