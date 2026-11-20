@@ -5,13 +5,16 @@ NASDAQ ITCH 5.0 order book is rebuilt in block RAM, and best bid/offer (BBO) upd
 back to the host with hardware timestamps. The book is scored message by message against
 a Python golden model over a full trading day.
 
-**Status: the full pipeline runs on the board.** A whole NASDAQ trading day of AAPL
-(2019-10-18, 1,669,592 messages) replayed into the Arty produced **831,842 BBO updates,
-all byte-identical to the golden model**, with no frame lost, in four runs
-([CSV](data/results/2026-11-09_full_day_board.csv)). Phase A is tagged (`v0.1-model`);
-Phases B–D are working on hardware and finishing their checklists. Phase E (latency) is
-under way: on the same day, every BBO left the book **17 to 29 cycles (136–232 ns) after
-its cause message's last byte** ([sidecar](data/results/2026-11-11_record_fifo_board.md)).
+**Status: the full pipeline runs on the board.** The whole NASDAQ ITCH file for
+2019-10-18, **302,347,067 messages for every listed symbol**, replayed into the Arty at
+the 100 Mbps line rate, produced **831,842 AAPL BBO updates, all byte-identical to the
+golden model**, and the board's filter counters (295 M other-symbol messages skipped) equal
+the model's too ([sidecar](data/results/2026-11-19_whole_file_board.md)). A second, busier
+day (2025-12-12) matches as well, 916,429 / 916,429. Every BBO leaves the book **17 to 29
+cycles (136–232 ns) after its cause message's last byte**
+([sidecar](data/results/2026-11-11_record_fifo_board.md)). Phases A and D are tagged
+(`v0.1-model`, `v0.4-book`); B, C and E wait only on photos and a scope capture; F
+(coverage, formal, portfolio) is under way.
 
 Every number here comes from a CSV in [`data/results/`](data/results/), produced by a `make`
 target or a command in its sidecar `.md`, with its measurement conditions stated.
@@ -62,7 +65,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | **Functional coverage** | **178 / 178 bins (100 %), 0 exclusions**, merged over 28 regression parameter sets: ITCH type × side, MoldUDP64 paths, d-left bucket fill 0-15 and full, bitmap search by L2 group, both FCS modes, every message lane at `DATA_W` 64, MII and record FIFO occupancy (MII overflow included), backpressure on every `ob_core` interface (buildplan §8.2; `make cov`, [report](docs/reports/coverage/index.html)) |
 | **Formal proofs** | Every buildplan §8.3 target, unbounded (k-induction), SymbiYosys: async FIFO (in fpga-eth-core); bitmap search returns the best level; MoldUDP64 sequence and gap logic matches the model's tracker for any byte stream; the order table never returns an order after its delete (any ref, any record sequence); AXI-Stream handshake at the deframer, order table, packet gate and 64-bit byte packer. 19 injected bugs, all caught (`make formal`, [`tb/formal/`](tb/formal/)) |
 | **Bugs caught** | Listed [below](#bugs-found) and, with symptom → cause → fix, in the [lab notebook](docs/log.md) |
-| **Timing** | Full chip (with the injector) meets 125 MHz in every build: WNS +0.012 ns store-and-forward, +0.172 ns cut-through, +0.004 ns store-and-forward at `DATA_W` 64, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt), [sf 64](docs/reports/arty_top_w64/summary.txt)) |
+| **Fmax / timing** | **125.2 MHz** (1 / (8 ns − WNS), the release build: store-and-forward, `DATA_W` 8, rebuilt with `make impl` on 2026-11-20, 0 critical warnings). Full chip (with the injector) meets 125 MHz in every build: WNS +0.012 ns store-and-forward, +0.172 ns cut-through, +0.004 ns store-and-forward at `DATA_W` 64, Vivado 2025.2 ([sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt), [sf 64](docs/reports/arty_top_w64/summary.txt)) |
 | **Utilization** | 12,818 LUT (20 %), 20,451 FF (16 %), 128 / 135 BRAM36 (95 %), 10 DSP ([report](docs/reports/arty_top/utilization.rpt)) |
 | **CI** | `make ci` locally: Verilator lint, cocotb regression, formal, model tests, host build + tests (ASan/UBSan), clang-tidy, ruff; the same `make ci` runs on GitHub Actions on every push ([workflow](.github/workflows/ci.yml)) |
 
@@ -75,7 +78,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode: 198,084 / 198,084 decoded records match the model ([CSV](data/results/2026-11-09_first_board_run.csv)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
 | E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)). Left: scope cross-check |
-| F — Stress, coverage closure, portfolio | Not started | |
+| F — Stress, coverage closure, portfolio | In progress | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)). Left: README media, demo video |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
 
@@ -101,19 +104,18 @@ flowchart LR
 - **Interfaces:** AXI4-Stream between blocks, with backpressure everywhere except the MII
   input, which has an overflow counter.
 - **Reuse:** the MAC and IPv4/UDP layer lives in its own payload-agnostic repo,
-  [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core), and will be consumed
-  here as a git submodule (`rtl/eth/`) at a release tag. Two other FPGA projects use it
-  too, so it knows nothing about ITCH. Its RX and TX paths are verified in simulation and
-  meet timing at 125 MHz; its first release waits on the hardware gate test.
+  [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core), consumed here as a git
+  submodule (`rtl/eth/`) at tag `eth-core-v0.4`. Two other FPGA projects use it too, so it
+  knows nothing about ITCH.
 
 ## Verification, by layer
 
 | Layer | State |
 |---|---|
-| Golden model | 24 pytest tests; full-day self-consistency on real data; per-message flag contract checked on 1,669,591 messages |
-| cocotb vs. golden model | Every block and the whole chip (`ob_core`, frames in → datagrams out) scored against the model; injected bugs caught in each test (counts in the [lab notebook](docs/log.md)) |
+| Golden model | 215 pytest tests (model, analysis and host-tool checks, `make model-test`); full-day self-consistency on real data; per-message flag contract checked on 1,669,591 messages |
+| cocotb vs. golden model | Every block and the whole chip (`ob_core`, frames in → datagrams out) scored against the model, 28 parameter sets (`DATA_W` 8/64, both FCS modes, small FIFOs) in `make sim`; injected bugs caught in each test (counts in the [lab notebook](docs/log.md)); functional coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)) |
 | Formal (SymbiYosys) | Async FIFO; bitmap search; MoldUDP64 sequence/gap logic (a shadow of the model's `SeqTracker` inside `mold_deframer_w8`); order table (one tracked ref against the spec, RAM by its proved read contract); AXI-Stream handshake at four block boundaries. Proofs that need internal state keep it in an `ifdef FORMAL` block next to the RTL. Not proved: the `DATA_W` 64 deframer (simulation only) |
-| Hardware scoreboard | `analysis/compare.py` over a captured day: record by record, plus `unflagged_wrong` (a BBO wrong without its stale flag): 0 on every run, including 4 runs that lost input ([CSV](data/results/2026-11-09_board_loss_diagnosis.csv)) |
+| Hardware scoreboard | `analysis/compare.py` over a captured day: record by record, plus `unflagged_wrong` (a BBO wrong without its stale flag): 0 on every run, including 4 runs that lost input ([CSV](data/results/2026-11-09_board_loss_diagnosis.csv)); and the board's feed counters (MoldUDP64, ITCH filter, learned locate) against the model's, which shows the filter on messages that make no output ([whole file](data/results/2026-11-19_whole_file_board.md)) |
 
 RTL testbenches use [tb-common](https://github.com/RodeanAzari/tb-common), a shared
 cocotb library (AXI-Stream driver and monitor, an in-order scoreboard that dumps context
@@ -150,6 +152,45 @@ stops reaching any of them.
    the book stayed permanently crossed. Caught by the generator's coverage test.
 3. **The generator never triggered the out-of-window flag.** Far prices always sat on the
    harmless side of the window. Caught by the same test.
+4. **The 4-way table overflowed on a busier day.** AAPL 2025-12-12 peaks at 54,981 live
+   orders; the bounded model overflowed the 4-way table 14,717 times and went stale from
+   pre-market. Caught by the golden model on the second day; fixed by 16 ways in the same
+   BRAM ([ADR 0010](docs/decisions/0010-order-table-16-way.md)).
+5. **A formally proven async FIFO still had unsafe crossings.** Vivado's clock-interaction
+   report flagged them: the TX FIFO had mapped to distributed RAM, whose asynchronous read
+   is itself a crossing, and synthesis merged a Gray pointer bit into the binary one, so
+   the max-delay constraint missed it. Caught by the Vivado CDC report; fixed by forcing
+   block RAM and `DONT_TOUCH` on the Gray registers (fpga-eth-core).
+6. **A good cut-through frame came out marked bad.** The oversize-hold flag was set on the
+   cycle its last beat left and leaked into the next frame. Caught by cocotb (`eth_rx`
+   cut-through test, fpga-eth-core).
+7. **In cut-through, the stale flag landed on the wrong BBO.** `ob_core` sampled the live
+   feed-stale signal when a record entered the book, but a frame's FCS verdict arrives one
+   cycle after the frame, so a bad packet's own last BBO disagreed with the model. Caught
+   by cocotb (`test_core ct_bad_frames`, one seed); fixed by carrying stale in-band with
+   each message ([ADR 0016](docs/decisions/0016-in-band-stale.md)).
+8. **A 13,348-cycle latency tail on the board.** The first board latency run showed T2−T1
+   peaks to 13,348 cycles: the output packet writer back-pressured the book. Caught by the
+   hardware latency analysis (`analysis/latency_causes.py`); a 545-record FIFO removed it,
+   and now every BBO takes exactly its no-wait cycle count
+   ([ADR 0012](docs/decisions/0012-record-fifo.md)).
+9. **Cut-through failed timing by −0.567 ns.** A 23-level path ran from the record FIFO's
+   full flag through backpressure into the deframer's sequence adder. Caught by Vivado;
+   fixed in three steps: `seq + count` registered a cycle early, the FIFO's `full` from a
+   register, and `t0_track` keeping its pending occupancy in registers (WNS +0.172 ns).
+10. **A test passed with the stale flag removed.** In the first MII-overflow test every
+    Add set a new best price, so a lost Add changed nothing visible. Caught by bug
+    injection (removing the stale flag did not fail it); the stimulus now makes losses
+    visible and asserts that some BBOs differ.
+11. **Host-side loss looked like FPGA loss.** Board runs lost output datagrams that the
+    board never counted. The host's USB adapter (`cdc_ncm` over usbip) dropped them, with
+    `ip -s link` TX drops equal to the missing count; an earlier NIC reordered ~0.05 % of
+    datagrams. Caught by `compare.py`'s sequence check and the board's own counters;
+    accounted in each sidecar rather than fixed (host path).
+
+Bugs planted to prove the checks work: each cocotb test was run against injected RTL bugs
+(which ones, and the count per test, are in the [lab notebook](docs/log.md)), and 19
+against the formal proofs, all caught.
 
 ## The order table
 
@@ -333,8 +374,17 @@ pacing) and configures the board and logs its output with `host/capture`;
 - **One symbol; sizing from two days.** The order table is sized from AAPL on 2019-10-18
   and 2025-12-12; the busier day fills it to 84 % at its peak. Overflow is counted, not
   silent, if a busier day outgrows it.
-- **Fixed-rate replay, not real-time.** The hardware days were sent at a fixed 500 or 200
-  packets/s; real-time pacing (with the market's own bursts) is not claimed.
+- **Fixed-rate or line-rate replay, not real-time.** The AAPL days were sent at a fixed
+  500 or 200 packets/s and the whole file unpaced at line rate; real-time pacing (with the
+  market's own bursts) is not claimed.
+- **Host output loss is not explained.** In the line-rate AAPL runs the host lost output
+  datagrams outside every Linux counter; those runs show only that each received BBO is
+  right. The whole-file run (about 1,000 BBOs/s out) lost none.
+- **Not everything is formally proven.** The `DATA_W` 64 deframer is verified in
+  simulation only; the order-table proof uses a 4 × 2 table with small hash multipliers
+  (the logic needs only a bijective hash, which any odd multiplier gives).
+- **One board day per configuration.** Cut-through and `DATA_W` 64 each have one full-day
+  board run; the whole-file replay is one run of store-and-forward `DATA_W` 8.
 - **The host must be quiet.** A loaded WSL2 host stalls the replayer for up to 100+ ms,
   which overflows the board's 2 KB input FIFO (counted and flagged, see above).
 - **No retransmission.** A MoldUDP64 gap marks the book stale; it is never repaired.
@@ -344,8 +394,10 @@ pacing) and configures the board and logs its output with `host/capture`;
 
 ## Build and reproduce
 
-Linux or WSL2 with Python ≥ 3.11 and GNU make. The day file (3.95 GB, not committed) goes in
-`/mnt/d/itch/` or `ITCH_DAY=...`; see [data/MANIFEST.md](data/MANIFEST.md).
+Linux or WSL2 with Python ≥ 3.11 and GNU make; Verilator, cocotb, SymbiYosys (oss-cad-suite)
+and Vivado 2025.2, with every version pinned in [docs/toolchain.md](docs/toolchain.md). The
+day file (3.95 GB, not committed) goes in `/mnt/d/itch/` or `ITCH_DAY=...`; see
+[data/MANIFEST.md](data/MANIFEST.md).
 
 | Target | Does |
 |---|---|
@@ -354,9 +406,12 @@ Linux or WSL2 with Python ≥ 3.11 and GNU make. The day file (3.95 GB, not comm
 | `make day-stats` | Full-day replay of AAPL through the golden model (about 4 minutes) |
 | `make plots` | Regenerate every plot in `docs/media/` from `data/results/` |
 | `make lint sim formal` | Verilator lint, cocotb regression, SymbiYosys proofs |
+| `make cov` | Regression with functional coverage; merged report in `docs/reports/coverage/` |
+| `make sim-full` | The RTL book on 1M+ random records and the whole AAPL day (minutes) |
+| `make impl` (= `synth`, `reports`) | Full chip in Vivado batch: bitstream in `build/`, timing/utilization/CDC reports in `docs/reports/<build>/`; `TOP_ARGS="8 ct 8"` etc. picks the build |
 | `make host host-test` | C++ host tools (Release + Debug/ASan/UBSan) and their tests |
 | `make ci` | Everything CI runs, locally |
-| `make prog` | Program the Arty over JTAG (bitstream from `syn/build_top.tcl`) |
+| `make prog` | Program the Arty over JTAG (bitstream from `make impl`) |
 | `scripts/board_run.sh` | One hardware run: configure, replay, capture, compare |
 | `make demo-gif` | Render the demo GIF from a recorded run |
 | `make demo-gif-day2` | Render the day-2 GIF and `compare` image from run `d2_shoot` |
@@ -364,7 +419,9 @@ Linux or WSL2 with Python ≥ 3.11 and GNU make. The day file (3.95 GB, not comm
 
 The sizing and bounded-model runs are listed with their exact commands in
 [the results sidecar](data/results/2019-10-18_AAPL.md). Board runs need the host set up as in
-[docs/log.md](docs/log.md) (2026-11-09). `make ci` also runs on GitHub Actions on every push.
+[docs/log.md](docs/log.md) (2026-11-09). `make ci` (lint, sim, formal, model-test, host,
+host-test, clang-tidy, ruff) also runs on GitHub Actions on every push; Vivado, `make cov`,
+`make sim-full` and the board runs are local only.
 
 ## Repository layout
 
@@ -390,14 +447,11 @@ This project owns two shared repos, built here and consumed only at release tags
 
 ## Roadmap
 
-- **Phase B:** MII MAC, CRC-32, async FIFO (formally proven) and IPv4/UDP on the board, with
-  10 million packets counted against the host.
-- **Phase C:** MoldUDP64 deframer, gap detection, ITCH decoder.
-- **Phase D:** the order book in RTL, ending with a full-day hardware replay at zero
-  mismatches.
-- **Phase E:** latency distributions, a scope cross-check, and cut-through vs.
-  store-and-forward.
-- **Phase F:** coverage closure, timing closure, and a demo video.
+- **Captures:** board photo, ILA screenshot, Vivado screenshots, and a demo video.
+- **Phase E:** an oscilloscope cross-check of T2−T1 from the Pmod pulses (JA1/JA2).
+- **Open questions:** the host output loss at line rate; a sustained (not burst) capacity
+  figure at `DATA_W` 64 and which stage then limits it.
+- **Release:** `v0.5-latency` after the scope capture, then `v1.0`.
 
 ## License
 

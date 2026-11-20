@@ -1112,3 +1112,21 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   `data/results/2026-11-19_whole_file_board.md`.
 - Host setup: sudo needs a terminal, so the `!` prefix cannot run it; the user ran a
   script in their own terminal.
+
+## 2026-11-20 — Release timing reports and the README to §11.4 (Phase F)
+
+- Release build chosen: store-and-forward, DATA_W 8 (the one on the board). The RTL had
+  changed since its `f81a9f6` bitstream (formal-only `ifdef FORMAL` blocks, order-table
+  `HASH_M0/1` parameters defaulting to the old constants), so it was rebuilt at HEAD:
+  WNS +0.012 ns, WHS +0.016 ns at 8.000 ns (Fmax 125.2 MHz), 12,818 LUT, 20,451 FF,
+  128 BRAM tiles, 0 critical warnings. Every report in `docs/reports/arty_top/` is
+  identical to the `f81a9f6` one except its date line.
+- New `make impl` (aliases `synth`, `reports`; `TOP_ARGS` picks the build) wraps
+  `syn/build_top.tcl`, which now also writes `build/<build>/routed.dcp` for the GUI
+  screenshots (after the post-route `phys_opt_design`; the first attempt put it before,
+  caught on reading the script and rebuilt).
+- README audited against §11.4: intro and Status table brought up to date (whole-file
+  result, Phase F), Fmax in "At a glance", numbered bug list 1-11 with the layer that
+  caught each, limitations (host output loss, formal scope, single-run configurations),
+  build table (`cov`, `sim-full`, `impl`), CI vs local, roadmap. Still missing, all user
+  captures: board photos/ILA, Vivado screenshot grid, demo video (`docs/portfolio-todo.md`).

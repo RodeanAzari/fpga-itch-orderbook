@@ -76,3 +76,16 @@ Claude: `docs/media/2026-11-15_phase-e_board-capacity-w8-vs-w64.png` (`make plot
 100 Mb/s line on it is computed from the same packets, not measured.
 - No physical capture needed. Still open for the §9 list: "messages/s at line rate"
   measured on the board (README `[TBD]`).
+
+## Phase F: whole-file replay and the README's "In Vivado" grid (2026-11-20)
+
+Result: `data/results/2026-11-19_whole_file_board.md` (302,347,067 messages, every symbol,
+831,842 / 831,842 BBOs and the filter counters = model). README updated to §11.4 except
+the media below.
+- Vivado screenshots for buildplan §11.4 item 9 (GUI only; Claude cannot take them):
+  in the Vivado GUI, `open_checkpoint build/arty_top/routed.dcp` (written by `make impl`,
+  the release build: store-and-forward, DATA_W 8) and capture: device view, worst setup path (timing report), timing
+  summary, utilization, a schematic of the order table, and the power report. Save as
+  `docs/media/2026-11-20_phase-f_vivado-<view>.png`.
+- Demo video (not committed; link it from the README): board + live `analysis/bbo_view.py`
+  during a full-day replay, with the final `compare` output.
