@@ -11,7 +11,7 @@ ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, 
 # Vendor wrappers, with eth-core's simulation models of the primitives they use
 XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
-.PHONY: demo-gif demo-gif-day2 synth impl reports prog gui-views setup lint sim cov sim-full formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: demo-gif demo-gif-day2 synth impl reports prog gui-views setup lint sim cov sim-full wave-feed formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -56,6 +56,12 @@ ITCH_EXTRACT ?= /mnt/d/itch/derived/2019-10-18_AAPL.itch
 sim-full:
 	SEED=$(SEED) SIM_FULL_CSV=$(abspath $(SIM_FULL_CSV)) ITCH_EXTRACT=$(ITCH_EXTRACT) \
 	  $(PY) tb/run.py test_book_full
+
+# Phase C media: one real packet through feed_frontend at DATA_W 64, cycle by cycle,
+# checked against the model (tb/cocotb/test_feed_wave.py); make plots draws it.
+FEED_WAVE_CSV ?= data/results/2026-11-22_feed_wave_w64.csv
+wave-feed:
+	FEED_WAVE_CSV=$(abspath $(FEED_WAVE_CSV)) $(PY) tb/run.py test_feed_wave
 
 model-test:
 	$(PY) -m ruff check model analysis tb host

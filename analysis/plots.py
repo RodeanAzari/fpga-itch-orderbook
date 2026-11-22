@@ -408,6 +408,140 @@ def ila_frame(mii_csv: Path, core_csv: Path, out: Path) -> None:
     print(f"wrote {out}")
 
 
+def feed_wave(path: Path, out: Path, n_cycles: int = 30) -> None:
+    """One real MoldUDP64 packet through feed_frontend at DATA_W 64 (simulation, checked
+    against the model by tb/cocotb/test_feed_wave.py): its 64-bit words, the deframer's
+    messages in the lanes they arrived in, the aligner's with every message in lane 0, and
+    the decoder's records. Each byte is a cell: lane down, cycle across."""
+    rows = list(csv.DictReader(path.open()))[:n_cycles]
+    c0 = int(rows[0]["cycle"])
+    pkt = b""  # the whole packet: accepted input beats up to its tlast
+    with path.open() as f:
+        for r in csv.DictReader(f):
+            if r["s_tvalid"] == r["s_tready"] == "1":
+                keep = bin(int(r["s_tkeep"], 16)).count("1")
+                pkt += int(r["s_tdata"], 16).to_bytes(8, "little")[:keep]
+                if r["s_tlast"] == "1":
+                    break
+    seq0 = int.from_bytes(pkt[10:18])
+    owner: list[tuple[str, int]] = [("hdr", 0)] * 20  # packet byte -> (role, message seq)
+    k, s = 20, seq0
+    while k + 2 <= len(pkt) and len(owner) < len(pkt):
+        n = int.from_bytes(pkt[k : k + 2])
+        owner += [("len", s)] * 2 + [("msg", s)] * n
+        k, s = k + 2 + n, s + 1
+
+    def hue(seq: int) -> str:
+        return BID if seq % 2 else ASK
+
+    fig, axes = plt.subplots(
+        4, 1, figsize=(11, 9.4), sharex=True, gridspec_kw={"height_ratios": [3, 3, 3, 1]}
+    )
+    fig.patch.set_facecolor(SURFACE)
+
+    def cell(ax: plt.Axes, x: int, lane: int, byte: int, color: str | None, seq: int = -1) -> None:
+        """seq >= 0: the message's first byte (its ITCH type), labelled with its sequence."""
+        face, alpha = (color, 0.22) if color else (GRID, 0.9)
+        ax.add_patch(plt.Rectangle((x - 0.48, lane - 0.45), 0.96, 0.9, facecolor=face,
+                                   alpha=alpha if seq < 0 else 0.5, edgecolor="none"))  # fmt: skip
+        if seq < 0:
+            ax.text(x, lane, f"{byte:02x}", ha="center", va="center", fontsize=6, color=INK,
+                    family="monospace")  # fmt: skip
+            return
+        ax.text(x - 0.22, lane, chr(byte), ha="center", va="center", fontsize=8, color=INK,
+                fontweight="bold")  # fmt: skip
+        ax.text(x + 0.2, lane + 0.05, str(seq), ha="center", va="center", fontsize=5, color=INK)
+
+    def lanes_axis(ax: plt.Axes, title: str) -> None:
+        _style(ax)
+        ax.grid(False)
+        ax.set_ylim(7.6, -0.6)
+        ax.set_yticks(range(8))
+        ax.set_yticklabels([f"lane {i}" for i in range(8)], fontsize=7)
+        ax.tick_params(axis="y", length=0)
+        ax.spines["left"].set_visible(False)
+        ax.set_title(title, color=INK, loc="left", fontsize=10)
+
+    def wait(ax: plt.Axes, x: int) -> None:
+        dash = (0, (2, 2))
+        ax.add_patch(plt.Rectangle((x - 0.48, -0.45), 0.96, 7.9, facecolor="none",
+                                   edgecolor=MUTED, linestyle=dash, linewidth=0.8))  # fmt: skip
+        ax.text(x, 3.5, "tready low: wait", ha="center", va="center", rotation=90, fontsize=6,
+                color=MUTED)  # fmt: skip
+
+    # (a) the packet's words; every byte attributed from the packet's own length prefixes
+    ax = axes[0]
+    lanes_axis(ax, "(a) feed_frontend input: the MoldUDP64 packet, 8 bytes per cycle "
+               "(grey: header and length prefixes)")  # fmt: skip
+    beat = 0
+    for r in rows:
+        x = int(r["cycle"]) - c0
+        if r["s_tvalid"] == "1" and r["s_tready"] == "0":
+            wait(ax, x)
+            continue
+        if r["s_tvalid"] != "1":
+            continue
+        for lane, byte in enumerate(int(r["s_tdata"], 16).to_bytes(8, "little")):
+            i = 8 * beat + lane
+            if i >= len(owner):
+                break
+            role, sq = owner[i]
+            first = role == "msg" and owner[i - 1][0] == "len"
+            cell(ax, x, lane, byte, hue(sq) if role == "msg" else None, sq if first else -1)
+        beat += 1
+
+    def stream(ax: plt.Axes, p: str) -> None:
+        prev = seq0 - 1  # the window opens inside the previous packet's last message
+        for r in rows:
+            x = int(r["cycle"]) - c0
+            if r[f"{p}_tvalid"] == "1" and r[f"{p}_tready"] == "0":
+                wait(ax, x)
+            if not (r[f"{p}_tvalid"] == r[f"{p}_tready"] == "1"):
+                continue
+            keep = int(r[f"{p}_tkeep"], 16)
+            data = int(r[f"{p}_tdata"], 16).to_bytes(8, "little")
+            sq = int(r[f"{p}_seq"])
+            start, prev = sq != prev, sq
+            lo = (keep & -keep).bit_length() - 1
+            for lane in range(8):
+                if keep >> lane & 1:
+                    cell(ax, x, lane, data[lane], hue(sq), sq if start and lane == lo else -1)
+
+    lanes_axis(axes[1], "(b) Deframer output: length prefixes gone, each message still in "
+               "the lanes it arrived in")  # fmt: skip
+    stream(axes[1], "g")
+    lanes_axis(axes[2], "(c) Aligner output: every message starts in lane 0, so the decoder "
+               "reads each field at a fixed offset")  # fmt: skip
+    stream(axes[2], "a")
+
+    ax = axes[3]
+    _style(ax)
+    ax.grid(False)
+    ax.set_yticks([])
+    ax.spines["left"].set_visible(False)
+    ax.set_ylim(-0.6, 1)
+    ax.set_title("(d) Decoder records (one per cycle at most; type and MoldUDP64 sequence)",
+                 color=INK, loc="left", fontsize=10)  # fmt: skip
+    for r in rows:
+        if r["m_valid"] == r["m_ready"] == "1":
+            x = int(r["cycle"]) - c0
+            ax.vlines(x, 0, 0.6, color=hue(int(r["m_seq"])), linewidth=2.5)
+            ax.text(x, -0.15, f"{r['m_type']} {r['m_seq']}", ha="center", va="top", fontsize=7,
+                    color=INK)  # fmt: skip
+    ax.set_xlim(-0.7, len(rows) - 0.3)
+    ax.set_xlabel(f"cycle (8 ns, 125 MHz) from the packet's first word; the first {len(rows)} "
+                  "cycles. Bold: a message's type byte, with its MoldUDP64 sequence",
+                  color=INK, fontsize=9)  # fmt: skip
+    n = int.from_bytes(pkt[18:20])
+    fig.suptitle(f"One AAPL MoldUDP64 packet (sequence {seq0}, {n} messages) splitting into "
+                 "messages across 64-bit words (simulation; every record = model)", color=INK,
+                 x=0.01, ha="left", fontsize=11)  # fmt: skip
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main() -> None:
     bbo_day(
         str(RESULTS / "2019-10-18_AAPL"),
@@ -445,6 +579,10 @@ def main() -> None:
         RESULTS / "2026-11-21_ila_frame_board_mii.csv",
         RESULTS / "2026-11-21_ila_frame_board_core.csv",
         MEDIA / "2026-11-21_phase-b_ila-frame-mii-to-decoder.png",
+    )
+    feed_wave(
+        RESULTS / "2026-11-22_feed_wave_w64.csv",
+        MEDIA / "2026-11-22_phase-c_packet-to-messages-w64.png",
     )
 
 

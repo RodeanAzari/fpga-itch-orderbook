@@ -75,7 +75,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 |---|---|---|
 | A — Python golden model + data | **Complete** (`v0.1-model`) | Full-day replay; table and window sized from data |
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; ILA capture checked on the board ([result](data/results/2026-11-21_ila_frame_board.md)) |
-| C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode, full AAPL day: **1,658,958 / 1,658,958** decoded messages = the golden parser, byte for byte ([sidecar](data/results/2026-11-22_trace_full_day_board.md)) |
+| C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode, full AAPL day: **1,658,958 / 1,658,958** decoded messages = the golden parser, byte for byte ([sidecar](data/results/2026-11-22_trace_full_day_board.md)); waveform of one packet across 64-bit words ([sim](data/results/2026-11-22_feed_wave_w64.md)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
 | E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)). Left: scope cross-check |
 | F — Stress, coverage closure, portfolio | In progress | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)). Left: the Phase E scope capture |
@@ -358,6 +358,16 @@ model's ([result](data/results/2026-11-21_ila_frame_board.md)).
 
 The two cores have separate clocks and triggers, so sample numbers compare only within
 one core. The full table is printed by `analysis.ila_frame --table`.
+
+### The same packet across 64-bit words (simulation)
+
+At `DATA_W` 64 a message can start in any of the 8 byte lanes. The deframer drops the
+length prefixes, and the aligner moves each message to lane 0 so the decoder reads every
+field at a fixed offset. `make wave-feed` runs this packet through `feed_frontend` at
+`DATA_W` 64 and checks every record against the golden model. Its 47 record types are the
+ones the ILA saw on the board ([sidecar](data/results/2026-11-22_feed_wave_w64.md)).
+
+![One MoldUDP64 packet splitting into messages across 64-bit words](docs/media/2026-11-22_phase-c_packet-to-messages-w64.png)
 
 ### In Vivado
 

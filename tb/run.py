@@ -122,8 +122,10 @@ TESTS = {
     ),
     # make sim-full only: minutes per run, real geometry.
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 11}]),
+    # make wave-feed only: writes the Phase C waveform CSV.
+    "test_feed_wave": ("feed_frontend", FEED, [{"DATA_W": 64}]),
 }
-FULL_ONLY = {"test_book_full"}
+FULL_ONLY = {"test_book_full", "test_feed_wave"}  # not in make sim
 
 
 def run_set(name: str, idx: int) -> int:

@@ -1188,3 +1188,9 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
      positions because one loss shifts everything after it → compare's `received_wrong` /
      `missing_records` place each record by mold_seq (8 planted bugs, each caught; two only
      after tightening the test). `c2`: received_wrong 0, every missing record in a lost datagram.
+- Phase C waveform (`data/results/2026-11-22_feed_wave_w64.md`): `make wave-feed` runs the
+  board's ILA packet (seq 143, 47 messages, from the committed 50k fixture, byte-identical
+  to replay's) through `feed_frontend` at DATA_W 64; 133 records = model over four packets;
+  `make plots` draws its first 30 cycles lane by lane. Same 47 record types as the ILA.
+  Bug (mine, test): window asserted 47 records, got 48 → back to back, the previous packet's
+  last record leaves after this packet's first word → count only this packet's sequences.

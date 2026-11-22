@@ -15,6 +15,13 @@ None. The only media is a generated plot: `docs/media/2026-11-02_phase-a_aapl-bb
   same capture (`read_hw_ila_data data/results/2026-11-21_ila_frame_board_core.ila`,
   then `display_hw_ila_data`).
 
+## Phase C
+
+- **Done 2026-11-22 (Claude):** the full day decoded on the board in trace mode
+  (`data/results/2026-11-22_trace_full_day_board.md`) and the waveform of one packet across
+  64-bit words (`make wave-feed`, `make plots`;
+  `docs/media/2026-11-22_phase-c_packet-to-messages-w64.png`), in the README.
+
 ## Phase D: first correct BBO on hardware (2026-11-09) — deferred by the user to a later, more visual checkpoint
 
 Result: `data/results/2026-11-09_first_board_run.md` (91,021/91,021 BBO updates match).
