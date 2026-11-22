@@ -1,0 +1,4 @@
+run,target_pps,messages,packets_sent,elapsed_s,achieved_pps,max_lag_ms,rx_frames_ok,rx_fifo_overflow,mold_gaps,itch_unknown_types,book_records,out_records,out_datagrams,rx_stall_cycles,expected_records,fpga_records,lost_datagrams,received_wrong,missing_records,feed_counters_match,match
+c1_trace_day,500.0,1669592,35313,70.787,498.9,607.144,35289,24,11,10633,1657302,1657302,201951,2069967,1658958,1636065,1658,11,22904,0,0
+c2_trace_day,500.0,1669592,35313,70.622,500.0,2185.689,35313,0,0,10633,1658958,1658958,221448,449620,1658958,1636408,1086,0,22550,1,0
+c3_trace_day,200.0,1669592,35313,176.555,200.0,22.229,35313,0,0,10633,1658958,1658958,246123,0,1658958,1658958,0,0,0,1,1

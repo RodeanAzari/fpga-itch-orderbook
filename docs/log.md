@@ -1176,3 +1176,15 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   cross-check of T2−T1 on the Pmod pins (user, at uni, 2026-11-23), with a photo of that setup.
 - Release bitstream reloaded after the ILA work; smoke run (2,000 messages, 500 pps):
   `match=1 unflagged_wrong=0 feed_counters_match=1` (check only, not a result).
+- Phase C on hardware, full day (`data/results/2026-11-22_trace_full_day_board.md`): trace
+  mode, 1,658,958 / 1,658,958 decoded messages = model at 200 pps (`c3_trace_day`).
+  Bugs and symptoms, each symptom → root cause → fix:
+  1. First run: "no ack after 10 config sends" → P3 had loaded its own design while the
+     board was free → reprogram before every session's first run.
+  2. `c1` at 500 pps: 24 MII FIFO overflows → replayer 607 ms late at load 17, then a
+     line-rate catch-up burst; trace records (40 B) outweigh the input (30.8 B/message),
+     so the FIFO can't drain during a burst → 200 pps. Counted by the board, not a design bug.
+  3. `c2`: 1,086 output datagrams lost by the host, and compare reported 1.56 M mismatched
+     positions because one loss shifts everything after it → compare's `received_wrong` /
+     `missing_records` place each record by mold_seq (8 planted bugs, each caught; two only
+     after tightening the test). `c2`: received_wrong 0, every missing record in a lost datagram.
