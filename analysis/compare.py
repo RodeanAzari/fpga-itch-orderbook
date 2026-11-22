@@ -18,6 +18,14 @@ feed_stats): `feed_counters_match` is 1 or 0, or -1 when the log has no stats. I
 reported beside `match`, not folded into it: it shows the filter on messages that make
 no record (a whole-day replay's other symbols, buildplan §8.4).
 
+After an output loss, `received_wrong` and `missing_records` still check every record that
+arrived: each is placed by its cause message's mold_seq (at most one record per message in
+either mode) and must equal the model's record there. A record is also wrong if it is not
+the model's next record although no datagram was lost before it (skipped, repeated or
+reordered by the board). `missing_records` counts the model's records not received intact;
+with received_wrong 0 they lie in the lost datagrams. A lost stats datagram also excuses a
+skip there, as a lost datagram's kind is unknown.
+
 Output: a key=value summary on stdout for the results sidecar; the first mismatch with the
 N records before it, decoded, on stderr. Exit 0 on a full match, 1 otherwise. A run with
 lost output datagrams (pkt_seq gaps) cannot match and says so; datagrams the host reordered
@@ -77,6 +85,36 @@ def _mold_seq(bbo: bytes) -> int:
     return int.from_bytes(bbo[32:40])  # docs/protocol.md BBO record, offset 32
 
 
+def _cause_seq(kind: int, rec: bytes) -> int:
+    """docs/protocol.md: mold_seq at offset 32 (BBO record) or 8 (trace record)."""
+    return _mold_seq(rec) if kind == P.BBO else int.from_bytes(rec[8:16])
+
+
+def received_vs_model(kind: int, dgs: list[P.Datagram], want: list[bytes]) -> tuple[int, int]:
+    """(received_wrong, missing_records), see the module docstring. `dgs` in pkt_seq order
+    after the ack (pkt_seq 0), BBO times already zeroed."""
+    at = {_cause_seq(kind, w): i for i, w in enumerate(want)}
+    nxt = prev = wrong = 0
+    gap = False
+    intact: set[int] = set()
+    for d in dgs:
+        gap = gap or d.pkt_seq != prev + 1  # pending until a record is placed after it
+        prev = d.pkt_seq
+        if d.kind != kind:
+            continue
+        for r in d.records:
+            i = at.get(_cause_seq(kind, r))
+            if i is None or i < nxt:  # no such message, or one already passed: the
+                wrong += 1  # position and a pending gap stay for the records after it
+                continue
+            if want[i] == r and (i == nxt or gap):
+                intact.add(i)
+            else:
+                wrong += 1
+            nxt, gap = i + 1, False
+    return wrong, len(want) - len(intact)
+
+
 def unflagged_wrong(got: list[bytes], want: list[bytes]) -> int:
     """FPGA BBOs that differ from the model's BBO for the same cause message (or that the
     model did not produce at all) and do not carry the stale flag: a silently wrong book.
@@ -107,9 +145,14 @@ def compare(
     dups = len(dgs) - len(by_seq)
     dgs = sorted(by_seq.values(), key=lambda d: d.pkt_seq)
     lost = dgs[-1].pkt_seq - len(dgs) if dgs else 0
-    got = [r for d in dgs if d.kind == kind for r in d.records]
     if kind == P.BBO:  # t0/t1/t2 are measured (ADR 0011); every other byte must match
-        got = [P.without_times(r) for r in got]
+        dgs = [
+            P.Datagram(d.kind, d.pkt_seq, tuple(P.without_times(r) for r in d.records))
+            if d.kind == kind
+            else d
+            for d in dgs
+        ]
+    got = [r for d in dgs if d.kind == kind for r in d.records]
     want, dec = P.expected(
         iter_raw(packets.open("rb")), cfg, BoundedBook(base_ticks=base_ticks(cfg)), cut_through
     )
@@ -128,6 +171,7 @@ def compare(
         "first_mismatch": -1 if first is None else first,
         "match": int(first is None and lost == 0),
     }
+    summary["received_wrong"], summary["missing_records"] = received_vs_model(kind, dgs, want)
     if kind == P.BBO:
         summary["unflagged_wrong"] = unflagged_wrong(got, want)
     report: list[str] = []

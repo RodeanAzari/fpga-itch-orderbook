@@ -80,6 +80,7 @@ def test_match(tmp_path: Path, mode: int) -> None:
     s = run(tmp_path, pkts, datagrams(cfg, recs))
     assert s["match"] == 1 and s["fpga_records"] == s["expected_records"] == len(recs)
     assert s["lost_datagrams"] == 0 and s["first_mismatch"] == -1
+    assert (s["received_wrong"], s["missing_records"]) == (0, 0)
 
 
 @pytest.mark.parametrize("mode", [0, 1])
@@ -100,7 +101,7 @@ def test_times_are_not_compared(tmp_path: Path) -> None:
     rng = random.Random(3)
     timed = [r[:40] + rng.randbytes(24) for r in recs]
     s = run(tmp_path, pkts, datagrams(cfg, timed))
-    assert s["match"] == 1 and s["unflagged_wrong"] == 0
+    assert s["match"] == 1 and s["unflagged_wrong"] == s["received_wrong"] == 0
     k = len(recs) // 2
     timed[k] = timed[k][:39] + bytes([timed[k][39] ^ 1]) + timed[k][40:]
     s = run(tmp_path, pkts, datagrams(cfg, timed))
@@ -128,6 +129,62 @@ def test_lost_datagram(tmp_path: Path) -> None:
     del dgs[stats_i]  # even a lost stats datagram fails the run: records may hide in a loss
     s = run(tmp_path, pkts, dgs)
     assert (s["lost_datagrams"], s["first_mismatch"], s["match"]) == (1, -1, 0)
+
+
+def _record_dgs(cfg: P.Config, dgs: list[bytes]) -> list[int]:
+    kind = P.TRACE if cfg.mode == 1 else P.BBO
+    return [i for i, d in enumerate(dgs) if P.parse(d).kind == kind]
+
+
+@pytest.mark.parametrize("mode", [0, 1])
+def test_received_records_after_output_loss(tmp_path: Path, mode: int) -> None:
+    """A run that lost output datagrams cannot match, but every record that did arrive is
+    still checkable by its cause message's mold_seq. The loss must be explained exactly by
+    the lost datagrams: a record skipped, repeated or reordered with no datagram lost before
+    it is the board's fault, not the host's, and counts as wrong."""
+    pkts, cfg, recs = setup(tmp_path, mode)
+    dgs = datagrams(cfg, recs)
+    rd = _record_dgs(cfg, dgs)
+    lost = [rd[len(rd) // 3], rd[len(rd) // 3 + 1], rd[2 * len(rd) // 3]]  # two adjacent
+    n_lost = sum(len(P.parse(dgs[i]).records) for i in lost)
+    kept = [d for i, d in enumerate(dgs) if i not in lost]
+    s = run(tmp_path, pkts, kept)
+    assert (s["match"], s["lost_datagrams"]) == (0, 3)
+    assert (s["received_wrong"], s["missing_records"]) == (0, n_lost)
+    # The last record datagram lost: nothing after it to place, still only missing.
+    s = run(tmp_path, pkts, [d for i, d in enumerate(dgs) if i != rd[-1]])
+    assert (s["received_wrong"], s["missing_records"]) == (0, len(P.parse(dgs[rd[-1]]).records))
+
+    def bad_log(rs: list[bytes]) -> dict[str, int]:
+        """recs changed as given, the same datagrams lost."""
+        d2 = datagrams(cfg, rs)
+        return run(tmp_path, pkts, [d for i, d in enumerate(d2) if i not in lost])
+
+    k = len(recs) // 2  # a record well inside a datagram run that lost nothing
+    flipped = [*recs[:k], recs[k][:20] + bytes([recs[k][20] ^ 1]) + recs[k][21:], *recs[k + 1 :]]
+    assert bad_log(flipped)["received_wrong"] == 1
+    assert bad_log([*recs[:k], *recs[k + 1 :]])["received_wrong"] == 1  # skipped, no gap
+    assert bad_log([*recs[: k + 1], *recs[k:]])["received_wrong"] == 1  # repeated
+    swapped = [*recs[:k], recs[k + 1], recs[k], *recs[k + 2 :]]
+    assert bad_log(swapped)["received_wrong"] >= 1
+    foreign = recs[k][:8] + (10**12).to_bytes(8) + recs[k][16:]  # no such message
+    if mode == 0:
+        foreign = recs[k][:32] + (10**12).to_bytes(8) + recs[k][40:]
+    # Unplaceable, so the next record also looks skipped: replacement or insertion is ambiguous.
+    assert bad_log([*recs[:k], foreign, *recs[k + 1 :]])["received_wrong"] >= 1
+    # After a lost datagram, the next record going back to an earlier message is wrong too.
+    j = lost[2] + 1
+    while P.parse(dgs[j]).kind != P.parse(dgs[lost[2]]).kind:
+        j += 1
+    first = P.parse(dgs[j])
+    back = P.packet(first.kind, first.pkt_seq, [recs[0], *first.records[1:]])
+    s = run(tmp_path, pkts, [back if i == j else d for i, d in enumerate(dgs) if i not in lost])
+    assert (s["received_wrong"], s["missing_records"]) == (1, n_lost + 1)  # + the replaced one
+    # ... or repeating the last record received before the loss.
+    before = next(P.parse(dgs[i]) for i in range(lost[2] - 1, 0, -1) if i in rd)
+    rep = P.packet(first.kind, first.pkt_seq, [before.records[-1], *first.records])
+    s = run(tmp_path, pkts, [rep if i == j else d for i, d in enumerate(dgs) if i not in lost])
+    assert (s["received_wrong"], s["missing_records"]) == (1, n_lost)
 
 
 def test_host_reordering_is_undone(tmp_path: Path) -> None:
