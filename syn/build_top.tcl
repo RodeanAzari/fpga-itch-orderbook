@@ -4,6 +4,8 @@
 # ct: eth_rx in cut-through (CUT_THROUGH=1, ADR 0013); writes build/arty_top_ct/ and
 # docs/reports/arty_top_ct/ instead; sf (or empty) is store-and-forward.
 # 8|64: feed path DATA_W (ADR 0015, default 8); 64 adds a _w64 suffix to both directories.
+# ila: adds two ILA cores after synthesis (buildplan 6.8; syn/ila_probes.tcl), suffix _ila;
+# its reports stay in build/<build>/reports/ (debug builds are never release evidence).
 # Non-project flow; writes build/arty_top/ and the reports in docs/reports/arty_top/.
 # The bitstream is written only if every timing path meets and no clock-domain crossing
 # is unconstrained or unsafe. Flow and gates follow fpga-eth-core's syn/build_example.tcl.
@@ -25,8 +27,10 @@ if {$data_w eq ""} { set data_w 8 }
 if {$data_w ni {8 64}} { error "DATA_W must be 8 or 64, got $data_w" }
 set tag     [expr {$ct ? "${top}_ct" : $top}]
 if {$data_w == 64} { append tag _w64 }
+set ila     [expr {[lindex $argv 3] eq "ila"}]
+if {$ila} { append tag _ila }
 set rundir  [file join $repo build $tag]
-set reports [file join $repo docs reports $tag]
+set reports [expr {$ila ? [file join $rundir reports] : [file join $repo docs reports $tag]}]
 file mkdir $rundir $reports
 cd $rundir
 
@@ -50,6 +54,10 @@ synth_design -top $top -part $part -generic CORE_DIV=$core_div -generic CLK_HZ=$
     -generic CUT_THROUGH=$ct -generic DATA_W=$data_w
 set bb [get_cells -hier -quiet -filter {IS_BLACKBOX == 1}]
 if {[llength $bb] > 0} { error "black boxes in the netlist: $bb" }
+if {$ila} {
+    write_checkpoint -force [file join $rundir synth.dcp]  ;# for iterating on the probes
+    source [file join $repo syn ila_probes.tcl]
+}
 
 opt_design
 place_design
@@ -83,4 +91,5 @@ if {$wns < 0 || $whs < 0} { error "timing not met (WNS $wns, WHS $whs): no bitst
 if {$cdc_bad > 0} { error "$cdc_bad critical CDC violation(s), see cdc.rpt: no bitstream" }
 
 write_bitstream -force [file join $rundir $top.bit]
+if {$ila} { write_debug_probes -force [file join $rundir $top.ltx] }
 puts "BITSTREAM: [file join $rundir $top.bit]"

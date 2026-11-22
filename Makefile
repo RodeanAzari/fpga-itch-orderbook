@@ -97,10 +97,12 @@ day-stats:
 # met. TOP_ARGS = MMCM divider (8 = 125 MHz), sf|ct, DATA_W 8|64. synth and reports are
 # the same run.
 TOP_ARGS ?= 8 sf 8
+# ILA=1: the same build plus two ILA cores (syn/ila_probes.tcl) into build/<build>_ila/.
+ILA_ARG := $(if $(filter 1,$(ILA)),ila,)
 synth reports: impl
 impl:
 	bash -c 'eval "$$(sed -n "/^vivado-env()/,/^}/p" ~/.bashrc)" && vivado-env && \
-	  vivado -mode batch -nojournal -nolog -source syn/build_top.tcl -tclargs $(TOP_ARGS)'
+	  vivado -mode batch -nojournal -nolog -source syn/build_top.tcl -tclargs $(TOP_ARGS) $(ILA_ARG)'
 
 # Vivado GUI on the routed release checkpoint with the screenshot views open (syn/gui_views.tcl).
 gui-views:
