@@ -1194,3 +1194,8 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   `make plots` draws its first 30 cycles lane by lane. Same 47 record types as the ILA.
   Bug (mine, test): window asserted 47 records, got 48 → back to back, the previous packet's
   last record leaves after this packet's first word → count only this packet's sequences.
+- Phase B hardware item (`data/results/2026-11-22_10m_packets_board.md`): 11,250,632
+  packets from `replay` (first 40 M messages of the whole file, `MAX_PAYLOAD=150`, new
+  `board_run.sh` option), all counted by the board (`rx_frames_ok` = `mold_packets` =
+  sent), 0 errors or gaps; BBOs and feed counters = model. Host-bound at 13.4 k packets/s
+  (21 Mb/s), so it is a count-integrity result, not line rate.

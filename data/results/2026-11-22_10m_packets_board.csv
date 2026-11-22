@@ -1,0 +1,2 @@
+run,max_payload,messages,packets_sent,elapsed_s,achieved_pps,wire_mbps,rx_frames_ok,rx_crc_err,rx_err,rx_runt,rx_oversize,rx_fifo_overflow,feed_datagrams,ip_csum_err,udp_malformed,mold_packets,mold_gaps,itch_other_locate,stale,rx_stall_cycles,expected_records,fpga_records,lost_datagrams,received_wrong,unflagged_wrong,feed_counters_match,match
+b1_10m,150,40000000,11250632,837.675,13430.8,21.218,11250632,0,0,0,0,0,11250632,0,0,11250632,0,38294904,0,0,99018,99018,0,0,0,1,1
