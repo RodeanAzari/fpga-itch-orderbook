@@ -9,7 +9,11 @@ None. The only media is a generated plot: `docs/media/2026-11-02_phase-a_aapl-bb
 ## Phase B (when reached)
 
 - Board photo cabled to the host, link LEDs visible.
-- ILA screenshot: one frame through MII → FIFO → parser.
+- **Done 2026-11-21 (Claude):** ILA capture of one frame MII → FIFO → udp_rx → decoder,
+  checked by `analysis/ila_frame.py`; plot via `make plots`, table in the README
+  (`data/results/2026-11-21_ila_frame_board.md`). Optional, user: a GUI screenshot of the
+  same capture (`read_hw_ila_data data/results/2026-11-21_ila_frame_board_core.ila`,
+  then `display_hw_ila_data`).
 
 ## Phase D: first correct BBO on hardware (2026-11-09) — deferred by the user to a later, more visual checkpoint
 

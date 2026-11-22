@@ -74,7 +74,7 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | Phase | State | Key result |
 |---|---|---|
 | A — Python golden model + data | **Complete** (`v0.1-model`) | Full-day replay; table and window sized from data |
-| B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; photo/ILA captures outstanding |
+| B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; ILA capture checked on the board ([result](data/results/2026-11-21_ila_frame_board.md)); board photo outstanding |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode: 198,084 / 198,084 decoded records match the model ([CSV](data/results/2026-11-09_first_board_run.csv)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
 | E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)). Left: scope cross-check |
@@ -112,10 +112,10 @@ flowchart LR
 
 | Layer | State |
 |---|---|
-| Golden model | 215 pytest tests (model, analysis and host-tool checks, `make model-test`); full-day self-consistency on real data; per-message flag contract checked on 1,669,591 messages |
+| Golden model | 225 pytest tests (model, analysis and host-tool checks, `make model-test`); full-day self-consistency on real data; per-message flag contract checked on 1,669,591 messages |
 | cocotb vs. golden model | Every block and the whole chip (`ob_core`, frames in → datagrams out) scored against the model, 28 parameter sets (`DATA_W` 8/64, both FCS modes, small FIFOs) in `make sim`; injected bugs caught in each test (counts in the [lab notebook](docs/log.md)); functional coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)) |
 | Formal (SymbiYosys) | Async FIFO; bitmap search; MoldUDP64 sequence/gap logic (a shadow of the model's `SeqTracker` inside `mold_deframer_w8`); order table (one tracked ref against the spec, RAM by its proved read contract); AXI-Stream handshake at four block boundaries. Proofs that need internal state keep it in an `ifdef FORMAL` block next to the RTL. Not proved: the `DATA_W` 64 deframer (simulation only) |
-| Hardware scoreboard | `analysis/compare.py` over a captured day: record by record, plus `unflagged_wrong` (a BBO wrong without its stale flag): 0 on every run, including 4 runs that lost input ([CSV](data/results/2026-11-09_board_loss_diagnosis.csv)); and the board's feed counters (MoldUDP64, ITCH filter, learned locate) against the model's, which shows the filter on messages that make no output ([whole file](data/results/2026-11-19_whole_file_board.md)) |
+| Hardware scoreboard | `analysis/compare.py` over a captured day: record by record, plus `unflagged_wrong` (a BBO wrong without its stale flag): 0 on every run, including 4 runs that lost input ([CSV](data/results/2026-11-09_board_loss_diagnosis.csv)); and the board's feed counters (MoldUDP64, ITCH filter, learned locate) against the model's, which shows the filter on messages that make no output ([whole file](data/results/2026-11-19_whole_file_board.md)); an ILA capture of one frame checked byte for byte against the sent packet and the model's records ([ILA](data/results/2026-11-21_ila_frame_board.md)) |
 
 RTL testbenches use [tb-common](https://github.com/RodeanAzari/tb-common), a shared
 cocotb library (AXI-Stream driver and monitor, an in-order scoreboard that dumps context
@@ -332,6 +332,33 @@ pacing) and configures the board and logs its output with `host/capture`;
 - **Live demo:** `analysis/bbo_view.py` (the GIF above).
 - **Vivado:** batch Tcl only (`syn/`), reports per build in [`docs/reports/`](docs/reports/).
 
+### ILA: one frame from the MII pins to the decoder
+
+`make impl ILA=1` adds two ILA cores to the release build (WNS +0.032 ns), one per
+clock domain. `scripts/ila_run.sh` programs it, replays the feed at 2 packets/s and
+captures one frame. `analysis/ila_frame.py` then checks the capture against the bytes
+the host sent: the MII frame's FCS is good, eth_rx's output is that frame byte for byte,
+udp_rx's payload is the sent packet, and the decoder's 47 record types are the golden
+model's ([result](data/results/2026-11-21_ila_frame_board.md)).
+
+![ILA capture of one feed frame](docs/media/2026-11-21_phase-b_ila-frame-mii-to-decoder.png)
+
+| Clock | Sample | Signal | Value | What it is |
+|---|---|---|---|---|
+| rx_clk 25 MHz | 32-45 | rxd | 5 5 … 5 (14 nibbles) | preamble, one nibble per 40 ns |
+| | 46-47 | rxd | 5, D | SFD 0xD5, low nibble first |
+| | 48-59 | rxd | 1 0, 0 0, E 5, 1 0, 1 0, 1 0 | destination MAC 01:00:5e:01:01:01 (IPv4 multicast) |
+| core 125 MHz | 213-218 | eth_rx out | 01 00 5E 01 01 01 | the same MAC, one byte per 8 ns, after the whole frame's FCS was checked |
+| | 225-226 | eth_rx out | 08 00 | EtherType IPv4 |
+| | 243-246, 249-250 | eth_rx out | EF 01 01 01, 67 20 | feed group 239.1.1.1, UDP port 26400 |
+| | 256-265 | udp_rx payload | 32 30 31 39 31 30 31 38 41 41 | MoldUDP64 session `20191018AA`, one cycle behind eth_rx |
+| | 266-273, 274-275 | udp_rx payload | … 8F, 00 2F | sequence 143, 47 messages |
+| | 276-278 | udp_rx payload | 00 24, 41 | first message: 36 bytes, type `A` (Add Order) |
+| | 316 | decoder record | `A` | its record, 3 cycles after its last byte (sample 313) |
+
+The two cores have separate clocks and triggers, so sample numbers compare only within
+one core. The full table is printed by `analysis.ila_frame --table`.
+
 ### In Vivado
 
 The release build (store-and-forward, `DATA_W` 8, `make impl` on 2026-11-20), routed
@@ -423,7 +450,7 @@ day file (3.95 GB, not committed) goes in `/mnt/d/itch/` or `ITCH_DAY=...`; see
 | `make lint sim formal` | Verilator lint, cocotb regression, SymbiYosys proofs |
 | `make cov` | Regression with functional coverage; merged report in `docs/reports/coverage/` |
 | `make sim-full` | The RTL book on 1M+ random records and the whole AAPL day (minutes) |
-| `make impl` (= `synth`, `reports`) | Full chip in Vivado batch: bitstream in `build/`, timing/utilization/CDC reports in `docs/reports/<build>/`; `TOP_ARGS="8 ct 8"` etc. picks the build |
+| `make impl` (= `synth`, `reports`) | Full chip in Vivado batch: bitstream in `build/`, timing/utilization/CDC reports in `docs/reports/<build>/`; `TOP_ARGS="8 ct 8"` etc. picks the build; `ILA=1` adds two ILA cores (`build/<build>_ila/`, reports kept out of `docs/`) |
 | `make host host-test` | C++ host tools (Release + Debug/ASan/UBSan) and their tests |
 | `make ci` | Everything CI runs, locally |
 | `make prog` | Program the Arty over JTAG (bitstream from `make impl`) |
@@ -462,7 +489,7 @@ This project owns two shared repos, built here and consumed only at release tags
 
 ## Roadmap
 
-- **Captures:** board photo, ILA screenshot, and a demo video.
+- **Captures:** board photo and a demo video.
 - **Phase E:** an oscilloscope cross-check of T2−T1 from the Pmod pulses (JA1/JA2).
 - **Open questions:** the host output loss at line rate; a sustained (not burst) capacity
   figure at `DATA_W` 64 and which stage then limits it.

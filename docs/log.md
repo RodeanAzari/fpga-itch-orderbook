@@ -1142,3 +1142,28 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   chip (0.490 dynamic, BRAM 0.229), vectorless, confidence Medium. Not measured.
 - Worst setup path: `u_builder/u_fifo` wr_vis -> full, +0.012 ns, 12 levels.
 - README "In Vivado" grid added; screenshots `docs/media/2026-11-21_phase-f_vivado-*.png`.
+
+## 2026-11-21 (later) — ILA capture of one frame, MII to decoder (Phase B media)
+
+- `make impl ILA=1` (buildplan 6.8): `syn/ila_probes.tcl` adds two ILA cores after synthesis
+  (rx_clk: MII nibbles; core: eth_rx out, feed udp_rx payload, decoder records), output in
+  `build/arty_top_ila/`. WNS +0.032 ns, 133 / 135 BRAM tiles. `scripts/ila_run.sh` programs
+  it, replays at 2 pps and arms both cores after the config ack; `analysis/ila_frame.py`
+  checks the capture against the bytes sent and the model (10 tests; 7 planted bugs, each
+  caught, one only after adding the mid-frame-window test).
+- Board run `ila1`: every check 1 (FCS good, eth_rx out = wire frame, payload = packet 3,
+  47 record types = model). `data/results/2026-11-21_ila_frame_board.md`; plot via `make plots`.
+- Attaching the board and adapter works from WSL (`usbipd.exe attach --wsl --busid`, both
+  already shared); the sudo part is now `scripts/host_setup.sh`.
+- Bugs (mine, build scripts), each one 25-min build under load 20:
+  1. `set_property` on a debug core by name → needs the object (`create_debug_core`'s return).
+  2. Probes by submodule pin → synthesis (flatten rebuilt) renames ports; ob_core's own
+     nets keep their names → probe those. Fix: the ILA build now writes `synth.dcp` first,
+     so probe edits are tried in a minute (`source syn/ila_probes.tcl; implement_debug_core`).
+  3. MII pins feed IOB flops, which can't be probed (Chipscope 16-3) → probe the flops'
+     outputs (`u_mii_rx/rxd_q`, `dv_q_reg_0`, `er_q`).
+  4. `lindex [get_debug_ports .../probe*] end` picks probe9 after probe10 (text sort) → by index.
+  5. `ila_run.sh`'s `set -e` + pipefail killed `vivado-env` (its `ls` of a missing glob
+     returns 2) → strict mode off around it.
+- Vivado's hw_server took 4.5 min to start at load 14-20; the 300 s timeout I put on the
+  run then cut the replay after the capture (no compare for `ila1`).

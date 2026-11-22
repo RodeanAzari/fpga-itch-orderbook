@@ -314,6 +314,100 @@ def capacity(w8: Path, w64: Path, out: Path) -> None:
     print(f"wrote {out}")
 
 
+def ila_frame(mii_csv: Path, core_csv: Path, out: Path) -> None:
+    """One feed frame on the board through MII -> eth_rx -> udp_rx -> decoder (two ILA
+    cores, separate clocks, so separate time axes): the SFD on the MII nibbles, the whole
+    frame through the core, and the header-to-payload boundary byte by byte."""
+    from analysis import ila_frame as F
+
+    mii, core = F.load(mii_csv, F.MII_ROLES), F.load(core_csv, F.CORE_ROLES)
+    _, sfd, _ = F.mii_frame(mii)
+    _, f0, f1 = F.stream(core, "f", 0)
+    _, u0, u1 = F.stream(core, "u", f0)
+    c = core.cols
+    rec = [j for j in range(u0, len(c["r_valid"])) if c["r_valid"][j] and c["r_ready"][j]]
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 7.6), gridspec_kw={"height_ratios": [1, 1, 1.2]})
+    fig.patch.set_facecolor(SURFACE)
+
+    def lanes(ax: plt.Axes, names: list[str]) -> None:
+        _style(ax)
+        ax.grid(False)
+        ax.set_yticks(range(len(names)))
+        ax.set_yticklabels(names, color=INK, fontsize=8)
+        ax.set_ylim(len(names) - 0.4, -0.6)
+        ax.spines["left"].set_visible(False)
+        ax.tick_params(axis="y", length=0)
+
+    def bus(ax: plt.Axes, y: int, xs: list[float], vals: list[str], w: float, color: str) -> None:
+        for x, v in zip(xs, vals, strict=True):
+            ax.add_patch(plt.Rectangle((x, y - 0.3), w, 0.6, facecolor=color, alpha=0.18,
+                                       edgecolor=color, linewidth=1))  # fmt: skip
+            ax.text(x + w / 2, y, v, ha="center", va="center", fontsize=7, color=INK)
+
+    def bit(ax: plt.Axes, y: int, xs: list[float], vals: list[int], color: str) -> None:
+        ax.step(xs, [y + 0.3 - 0.6 * v for v in vals], where="post", color=color, linewidth=2)
+
+    # (a) MII: preamble -> SFD -> first destination-MAC nibbles, 40 ns per sample
+    ax = axes[0]
+    lanes(ax, ["rx_dv", "rxd (nibble)"])
+    js = list(range(sfd - 10, sfd + 14))
+    t = [(j - sfd) * 40 for j in js]
+    bit(ax, 0, t + [t[-1] + 40], [mii.cols["dv"][j] for j in js] + [mii.cols["dv"][js[-1]]], BID)
+    bus(ax, 1, t, [f"{mii.cols['rxd'][j]:X}" for j in js], 40, BID)
+    ax.axvspan(0, 80, color=ASK, alpha=0.12, linewidth=0)
+    ax.set_ylim(1.5, -1.0)
+    ax.text(40, -0.6, "SFD 0xD5 (5, D: low nibble first)", ha="center", fontsize=8, color=INK)
+    ax.set_xlim(t[0], t[-1] + 40)
+    ax.set_xlabel("ns from the SFD's first nibble (MII rx_clk, 25 MHz)", color=INK, fontsize=9)
+    ax.set_title("(a) MII receive: preamble, SFD, then the destination MAC 01:00:5e:01:01:01",
+                 color=INK, loc="left", fontsize=10)  # fmt: skip
+
+    # (b) the whole frame through the core, 8 ns per sample
+    ax = axes[1]
+    lanes(ax, ["eth_rx out (FIFO)", "udp_rx payload", "decoder records"])
+    us = 8 / 1000
+    ax.broken_barh([((f0 - f0) * us, (f1 - f0 + 1) * us)], (-0.3, 0.6), color=BID, alpha=0.8)
+    ax.broken_barh([((u0 - f0) * us, (u1 - u0 + 1) * us)], (0.7, 0.6), color=ASK, alpha=0.8)
+    ax.vlines([(j - f0) * us for j in rec], 1.7, 2.3, color=INK, linewidth=1)
+    ax.text((f1 - f0) * us, -0.45, f"{f1 - f0 + 1:,} bytes, one per cycle", ha="right",
+            fontsize=8, color=INK)  # fmt: skip
+    ax.text((u1 - f0) * us, 0.55, f"{u1 - u0 + 1:,} bytes (MoldUDP64 packet)", ha="right",
+            fontsize=8, color=INK)  # fmt: skip
+    ax.text((rec[-1] - f0) * us, 1.55, f"{len(rec)} records", ha="right", fontsize=8,
+            color=INK)  # fmt: skip
+    ax.set_xlim(-0.3, (max(f1, u1, rec[-1]) - f0) * us + 0.5)
+    ax.set_xlabel("µs from eth_rx's first byte (core clock, 125 MHz)", color=INK, fontsize=9)
+    ax.set_title("(b) The frame through the core, released by eth_rx after its FCS checked",
+                 color=INK, loc="left", fontsize=10)  # fmt: skip
+
+    # (c) headers -> payload, byte by byte: udp_rx passes the payload one cycle behind
+    ax = axes[2]
+    lanes(ax, ["eth_rx out", "udp_rx payload"])
+    ax.set_ylim(1.5, -1.0)
+    js = list(range(f0 + 36, f0 + 68))
+    x = [(j - f0) * 8 for j in js]
+    fv = [j for j in js if c["f_valid"][j] and c["f_ready"][j]]
+    bus(ax, 0, [(j - f0) * 8 for j in fv], [f"{c['f_data'][j]:02X}" for j in fv], 8, BID)
+    uv = [j for j in js if c["u_valid"][j] and c["u_ready"][j]]
+    bus(ax, 1, [(j - f0) * 8 for j in uv], [f"{c['u_data'][j]:02X}" for j in uv], 8, ASK)
+    ax.axvspan((f0 + 42 - f0) * 8, (f0 + 52 - f0) * 8, color=GRID, alpha=0.6, linewidth=0)
+    ax.text(47 * 8, -0.6, 'MoldUDP64 session "20191018AA"', ha="center", fontsize=8, color=INK)
+    ax.text(39 * 8, -0.6, "UDP header: not passed on", ha="center", fontsize=8, color=MUTED)
+    ax.set_xlim(x[0], x[-1] + 8)
+    ax.set_xlabel("ns from eth_rx's first byte (8 ns per byte)", color=INK, fontsize=9)
+    ax.set_title("(c) Headers to payload: the MoldUDP64 header leaves udp_rx one cycle later",
+                 color=INK, loc="left", fontsize=10)  # fmt: skip
+
+    fig.suptitle("One AAPL feed frame on the Arty A7, captured by two ILA cores "
+                 "(checked byte for byte: analysis/ila_frame.py)", color=INK, x=0.01,
+                 ha="left", fontsize=11)  # fmt: skip
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main() -> None:
     bbo_day(
         str(RESULTS / "2019-10-18_AAPL"),
@@ -346,6 +440,11 @@ def main() -> None:
         RESULTS / "2026-11-13_injector_board.csv",
         RESULTS / "2026-11-15_injector_board_w64.csv",
         MEDIA / "2026-11-15_phase-e_board-capacity-w8-vs-w64.png",
+    )
+    ila_frame(
+        RESULTS / "2026-11-21_ila_frame_board_mii.csv",
+        RESULTS / "2026-11-21_ila_frame_board_core.csv",
+        MEDIA / "2026-11-21_phase-b_ila-frame-mii-to-decoder.png",
     )
 
 
