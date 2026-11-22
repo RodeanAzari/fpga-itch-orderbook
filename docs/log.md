@@ -1130,3 +1130,15 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   caught each, limitations (host output loss, formal scope, single-run configurations),
   build table (`cov`, `sim-full`, `impl`), CI vs local, roadmap. Still missing, all user
   captures: board photos/ILA, Vivado screenshot grid, demo video (`docs/portfolio-todo.md`).
+
+## 2026-11-21 — Vivado screenshots (Phase F, §11.4 item 9)
+
+- New `make gui-views` (`syn/gui_views.tcl`): opens `build/arty_top/routed.dcp` in the GUI
+  with timing summary, utilization, power, worst setup path, the order table highlighted
+  and its schematic. Under WSLg Claude cannot grab the screen (XWayland refuses root
+  `get_image`), so the user took the screenshots.
+- Power was not among the committed reports: `report_power` now runs in `build_top.tcl`,
+  and `docs/reports/arty_top/power.rpt` was written from the same checkpoint: 0.595 W on
+  chip (0.490 dynamic, BRAM 0.229), vectorless, confidence Medium. Not measured.
+- Worst setup path: `u_builder/u_fifo` wr_vis -> full, +0.012 ns, 12 levels.
+- README "In Vivado" grid added; screenshots `docs/media/2026-11-21_phase-f_vivado-*.png`.

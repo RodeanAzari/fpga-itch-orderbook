@@ -66,6 +66,7 @@ report_clock_interaction -delay_type min_max -file [file join $reports clock_int
 report_cdc -details                   -file [file join $reports cdc.rpt]
 report_methodology                    -file [file join $reports methodology.rpt]
 report_drc                            -file [file join $reports drc.rpt]
+report_power                          -file [file join $reports power.rpt]
 
 set wns [get_property SLACK [get_timing_paths -delay_type max -max_paths 1 -nworst 1]]
 set whs [get_property SLACK [get_timing_paths -delay_type min -max_paths 1 -nworst 1]]

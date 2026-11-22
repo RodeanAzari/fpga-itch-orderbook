@@ -332,6 +332,21 @@ pacing) and configures the board and logs its output with `host/capture`;
 - **Live demo:** `analysis/bbo_view.py` (the GIF above).
 - **Vivado:** batch Tcl only (`syn/`), reports per build in [`docs/reports/`](docs/reports/).
 
+### In Vivado
+
+The release build (store-and-forward, `DATA_W` 8, `make impl` on 2026-11-20), routed
+checkpoint opened with `make gui-views`. Numbers in
+[`docs/reports/arty_top/`](docs/reports/arty_top/).
+
+| | |
+|---|---|
+| ![Device view](docs/media/2026-11-21_phase-f_vivado-device.png) | ![Order table schematic](docs/media/2026-11-21_phase-f_vivado-order-table.png) |
+| **Device view.** The order table's cells in yellow: 100 of the 128 BRAM tiles used (2 banks × 50). | **Order table** (`u_core/u_book/u_table`, ADR 0001/0010) in its place in the hierarchy. |
+| ![Utilization by hierarchy](docs/media/2026-11-21_phase-f_vivado-utilization.png) | ![Power summary](docs/media/2026-11-21_phase-f_vivado-power.png) |
+| **Utilization by hierarchy:** 12,818 LUT, 20,451 FF, 128 / 135 BRAM tiles, 10 DSP ([report](docs/reports/arty_top/utilization_hier.rpt)). | **Power:** 0.595 W on chip, 0.490 W dynamic, BRAM the largest share. Vectorless estimate, confidence "Medium", not measured on the board ([report](docs/reports/arty_top/power.rpt)). |
+| ![Worst setup path](docs/media/2026-11-21_phase-f_vivado-worst-path.png) | ![Worst path routed](docs/media/2026-11-21_phase-f_vivado-worst-path-route.png) |
+| **Worst setup path:** slack +0.012 ns at 8 ns, 12 logic levels, in the output builder's FIFO full flag (`u_builder/u_fifo`): 47 % logic, 53 % route ([timing](docs/reports/arty_top/timing_summary.rpt)). | **The same path routed** on the die. |
+
 ## Results
 
 | Result | Value | Conditions | Source |
@@ -447,7 +462,7 @@ This project owns two shared repos, built here and consumed only at release tags
 
 ## Roadmap
 
-- **Captures:** board photo, ILA screenshot, Vivado screenshots, and a demo video.
+- **Captures:** board photo, ILA screenshot, and a demo video.
 - **Phase E:** an oscilloscope cross-check of T2−T1 from the Pmod pulses (JA1/JA2).
 - **Open questions:** the host output loss at line rate; a sustained (not burst) capacity
   figure at `DATA_W` 64 and which stage then limits it.

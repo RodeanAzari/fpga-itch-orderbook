@@ -82,10 +82,8 @@ Claude: `docs/media/2026-11-15_phase-e_board-capacity-w8-vs-w64.png` (`make plot
 Result: `data/results/2026-11-19_whole_file_board.md` (302,347,067 messages, every symbol,
 831,842 / 831,842 BBOs and the filter counters = model). README updated to §11.4 except
 the media below.
-- Vivado screenshots for buildplan §11.4 item 9 (GUI only; Claude cannot take them):
-  in the Vivado GUI, `open_checkpoint build/arty_top/routed.dcp` (written by `make impl`,
-  the release build: store-and-forward, DATA_W 8) and capture: device view, worst setup path (timing report), timing
-  summary, utilization, a schematic of the order table, and the power report. Save as
-  `docs/media/2026-11-20_phase-f_vivado-<view>.png`.
+- **Done 2026-11-21:** Vivado screenshots (user, via `make gui-views`) in the README's
+  "In Vivado" grid, `docs/media/2026-11-21_phase-f_vivado-*.png`; power from
+  `docs/reports/arty_top/power.rpt`.
 - Demo video (not committed; link it from the README): board + live `analysis/bbo_view.py`
   during a full-day replay, with the final `compare` output.

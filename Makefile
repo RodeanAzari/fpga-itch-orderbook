@@ -11,7 +11,7 @@ ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, 
 # Vendor wrappers, with eth-core's simulation models of the primitives they use
 XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
-.PHONY: demo-gif demo-gif-day2 synth impl reports prog setup lint sim cov sim-full formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: demo-gif demo-gif-day2 synth impl reports prog gui-views setup lint sim cov sim-full formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -101,6 +101,11 @@ synth reports: impl
 impl:
 	bash -c 'eval "$$(sed -n "/^vivado-env()/,/^}/p" ~/.bashrc)" && vivado-env && \
 	  vivado -mode batch -nojournal -nolog -source syn/build_top.tcl -tclargs $(TOP_ARGS)'
+
+# Vivado GUI on the routed release checkpoint with the screenshot views open (syn/gui_views.tcl).
+gui-views:
+	bash -c 'eval "$$(sed -n "/^vivado-env()/,/^}/p" ~/.bashrc)" && vivado-env && \
+	  vivado -mode gui -nojournal -nolog -source syn/gui_views.tcl'
 
 # Program the board over JTAG (claim it first: coord.py board claim P2). BIT= overrides.
 prog:
