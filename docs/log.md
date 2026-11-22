@@ -1167,3 +1167,12 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
      returns 2) → strict mode off around it.
 - Vivado's hw_server took 4.5 min to start at load 14-20; the 300 s timeout I put on the
   run then cut the replay after the capture (no compare for `ila1`).
+
+## 2026-11-22 — captures narrowed to the scope cross-check
+
+- The user dropped the board photo and the demo video: the README's two full-day GIFs
+  (rendered from board logs by `bbo_view --gif`) already show the live view, and a photo
+  of the board adds little. The only physical capture left is the Phase E oscilloscope
+  cross-check of T2−T1 on the Pmod pins (user, at uni, 2026-11-23), with a photo of that setup.
+- Release bitstream reloaded after the ILA work; smoke run (2,000 messages, 500 pps):
+  `match=1 unflagged_wrong=0 feed_counters_match=1` (check only, not a result).

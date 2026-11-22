@@ -8,7 +8,7 @@ None. The only media is a generated plot: `docs/media/2026-11-02_phase-a_aapl-bb
 
 ## Phase B (when reached)
 
-- Board photo cabled to the host, link LEDs visible.
+- **Dropped by the user 2026-11-22** (the README's board GIFs cover the live view; a photo of the board adds little): board photo cabled to the host.
 - **Done 2026-11-21 (Claude):** ILA capture of one frame MII → FIFO → udp_rx → decoder,
   checked by `analysis/ila_frame.py`; plot via `make plots`, table in the README
   (`data/results/2026-11-21_ila_frame_board.md`). Optional, user: a GUI screenshot of the
@@ -18,10 +18,10 @@ None. The only media is a generated plot: `docs/media/2026-11-02_phase-a_aapl-bb
 ## Phase D: first correct BBO on hardware (2026-11-09) — deferred by the user to a later, more visual checkpoint
 
 Result: `data/results/2026-11-09_first_board_run.md` (91,021/91,021 BBO updates match).
-- Photo: the Arty cabled to the USB Ethernet adapter, during a replay
+- **Dropped by the user 2026-11-22** (the README's board GIFs cover the live view; a photo of the board adds little): photo: the Arty cabled to the USB Ethernet adapter, during a replay
   (`scripts/board_run.sh demo bbo 500 200000`): LD4 heartbeat, LD5 "running" (config acked)
   and LD7 activity lit, PHY link/activity LEDs on the RJ45 visible. LD6 (stale/error) off in a clean 500 pps run.
-- Phone video, 10–15 s, same shot during a replay (GIF ≤ 8 MB for the README; the video
+- **Dropped by the user 2026-11-22** (the README's board GIFs cover the live view; a photo of the board adds little): phone video, 10–15 s, same shot during a replay (GIF ≤ 8 MB for the README; the video
   itself is not committed).
 - Screenshot of the terminal showing `match=1` with `expected_records=fpga_records=91021`.
 
@@ -29,9 +29,9 @@ Result: `data/results/2026-11-09_first_board_run.md` (91,021/91,021 BBO updates 
 
 Result: `data/results/2026-11-09_full_day_board.md` (831,842/831,842 BBOs). Better shot
 than the 200k-message one above, which this replaces when taken.
-- Photo of the board during a full-day replay (LD4, LD5, LD7 lit, LD6 off, RJ45 link LEDs),
+- **Dropped by the user 2026-11-22** (the README's board GIFs cover the live view; a photo of the board adds little): photo of the board during a full-day replay (LD4, LD5, LD7 lit, LD6 off, RJ45 link LEDs),
   with the USB Ethernet adapter in frame.
-- Phone video 10-15 s of the same, or a screen + board shot with `capture`'s per-second
+- **Dropped by the user 2026-11-22** (the README's board GIFs cover the live view; a photo of the board adds little): phone video 10-15 s of the same, or a screen + board shot with `capture`'s per-second
   progress line scrolling (GIF ≤ 8 MB).
 - Terminal screenshot of `compare`: `expected_records=831842 fpga_records=831842 match=1`.
 Before the shoot: pause other sessions' heavy jobs; `scripts/board_run.sh` with
@@ -42,7 +42,7 @@ Before the shoot: pause other sessions' heavy jobs; `scripts/board_run.sh` with
 Result: `data/results/2026-11-10_full_day_board_16way.md` (916,429/916,429 BBOs).
 Done by Claude from run `d2_shoot` (`make demo-gif-day2`, `make plots`): the day-2 GIF, the
 `compare` image (saved output, rendered) and the board-vs-model plot, all in the README.
-- Still optional, physical only: the board photo/video from the section above, during any
+- **Dropped by the user 2026-11-22** (the README's board GIFs cover the live view; a photo of the board adds little): the board photo/video from the section above, during any
   full-day run.
 
 ## Phase E: first latency histogram, and every BBO on its budget (2026-11-11)
@@ -89,5 +89,5 @@ the media below.
 - **Done 2026-11-21:** Vivado screenshots (user, via `make gui-views`) in the README's
   "In Vivado" grid, `docs/media/2026-11-21_phase-f_vivado-*.png`; power from
   `docs/reports/arty_top/power.rpt`.
-- Demo video (not committed; link it from the README): board + live `analysis/bbo_view.py`
+- **Dropped by the user 2026-11-22** (the README's board GIFs cover the live view; a photo of the board adds little): demo video (not committed; link it from the README): board + live `analysis/bbo_view.py`
   during a full-day replay, with the final `compare` output.
