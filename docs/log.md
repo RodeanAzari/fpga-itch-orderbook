@@ -1199,3 +1199,15 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   `board_run.sh` option), all counted by the board (`rx_frames_ok` = `mold_packets` =
   sent), 0 errors or gaps; BBOs and feed counters = model. Host-bound at 13.4 k packets/s
   (21 Mb/s), so it is a count-integrity result, not line rate.
+
+## 2026-11-22 (later): tags v0.2/v0.3, input reordering on the adapter answered
+
+- Tagged `v0.2-packets-on-hw` and `v0.3-itch-decode` on `0e16813` (user approved): Phase B
+  and C met their §9 items only today, so both sit after `v0.4-book` in history.
+- The owed 10-min reorder sweep on the ASIX adapter is answered by existing runs, no new
+  measurement: the deframer counts any packet ahead of the expected sequence as a gap, so a
+  reorder cannot pass without `mold_gaps` > 0. `mold_gaps` is 0 in
+  `2026-11-22_10m_packets_board.csv` (11,250,632 packets, 837.7 s, 13.4 k pps) and
+  `2026-11-19_whole_file_board.csv` (6,456,828 frames, 835.5 s, 94.1 Mb/s). Not redone with
+  eth-core's `rx_stats` bitstream: the one in `~/fpga-eth-core/build` has no recorded commit.
+- Output-side datagram loss on the host stays open.

@@ -186,7 +186,10 @@ stops reaching any of them.
     board never counted. The host's USB adapter (`cdc_ncm` over usbip) dropped them, with
     `ip -s link` TX drops equal to the missing count; an earlier NIC reordered ~0.05 % of
     datagrams. Caught by `compare.py`'s sequence check and the board's own counters;
-    accounted in each sidecar rather than fixed (host path).
+    accounted in each sidecar rather than fixed (host path). In the other direction, into
+    the board, the USB adapter reordered nothing: `mold_gaps` 0 over 17.7 M packets
+    ([10 M packets](data/results/2026-11-22_10m_packets_board.md),
+    [whole file](data/results/2026-11-19_whole_file_board.md)).
 
 Bugs planted to prove the checks work: each cocotb test was run against injected RTL bugs
 (which ones, and the count per test, are in the [lab notebook](docs/log.md)), and 19
