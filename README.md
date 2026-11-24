@@ -22,13 +22,11 @@ day (2025-12-12) matches as well, 916,429 / 916,429. Every BBO leaves the book *
 cycles (136–232 ns) after its cause message's last byte**
 ([sidecar](data/results/2026-11-11_record_fifo_board.md)), and an oscilloscope on the
 board's pins agrees: 137.0 ns against the timestamps' 136 ns
-([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)). Every phase is tagged (`v0.1-model`,
-`v0.2-packets-on-hw`, `v0.3-itch-decode`, `v0.4-book`, `v0.5-latency`), and the release is
-`v1.0` (F with the board GIFs in place of a demo video).
+([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)). Every phase is done and tagged
+(`v0.1-model` through `v0.5-latency`); the release is `v1.0`.
 
 Every number here comes from a CSV in [`data/results/`](data/results/), produced by a `make`
 target or a command in its sidecar `.md`, with its measurement conditions stated.
-`[TBD]` means not measured yet.
 
 [![The order book running on the FPGA: AAPL's whole trading day, every BBO checked against the golden model](docs/media/2026-11-09_phase-d_board-full-day-bbo.gif)](docs/media/2026-11-09_phase-d_board-full-day-bbo.gif)
 
@@ -83,12 +81,12 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 
 | Phase | State | Key result |
 |---|---|---|
-| A — Python golden model + data | **Complete** (`v0.1-model`) | Full-day replay; table and window sized from data |
-| B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; 11,250,632 packets from `replay`, every one counted by the board ([sidecar](data/results/2026-11-22_10m_packets_board.md)); ILA capture checked on the board ([result](data/results/2026-11-21_ila_frame_board.md)) |
-| C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode, full AAPL day: **1,658,958 / 1,658,958** decoded messages = the golden parser, byte for byte ([sidecar](data/results/2026-11-22_trace_full_day_board.md)); waveform of one packet across 64-bit words ([sim](data/results/2026-11-22_feed_wave_w64.md)) |
-| D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
-| E — Timestamping + latency measurement | Working on the board (`v0.5-latency`) | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)); oscilloscope on the Pmod pins: T2−T1 137.0 ns vs 136 ns from the timestamps ([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)) |
-| F — Stress, coverage closure, portfolio | Checklist met (`v1.0`; the GIFs stand in for a demo video) | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)); board, scope and Vivado media in this README |
+| A — Python golden model + data | Done (`v0.1-model`) | Full-day replay; table and window sized from data |
+| B — MAC + IPv4/UDP on hardware | Done (`v0.2-packets-on-hw`) | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) released (`eth-core-v0.1` to `v0.4`), `v0.4` in use here; 11,250,632 packets from `replay`, every one counted by the board ([sidecar](data/results/2026-11-22_10m_packets_board.md)); ILA capture checked on the board ([result](data/results/2026-11-21_ila_frame_board.md)) |
+| C — MoldUDP64 + ITCH decoder | Done (`v0.3-itch-decode`) | Trace mode, full AAPL day: **1,658,958 / 1,658,958** decoded messages = the golden parser, byte for byte ([sidecar](data/results/2026-11-22_trace_full_day_board.md)); waveform of one packet across 64-bit words ([sim](data/results/2026-11-22_feed_wave_w64.md)) |
+| D — Order book engine | Done (`v0.4-book`) | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
+| E — Timestamping + latency measurement | Done (`v0.5-latency`) | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)); oscilloscope on the Pmod pins: T2−T1 137.0 ns vs 136 ns from the timestamps ([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)) |
+| F — Stress, coverage closure, portfolio | Done (`v1.0`) | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)); board, scope and Vivado media in this README |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
 
@@ -100,17 +98,19 @@ flowchart LR
     mac --> cdc[Async FIFO<br/>25 MHz to core]
     cdc --> udp[IPv4/UDP filter]
     udp --> mold[MoldUDP64<br/>gap detector]
-    inj[BRAM injector] -.-> itch
+    inj[BRAM injector] -.-> mold
     mold --> itch[ITCH decoder<br/>locate filter]
     itch --> table[Order table<br/>d-left, 64K entries]
     table --> levels[Price levels<br/>+ occupancy bitmaps]
     levels --> bbo[BBO tracker]
-    bbo --> tx[UDP TX] -->|BBO + T0/T1/T2| host
+    bbo --> tx[UDP TX<br/>async FIFO, MII MAC] -->|BBO + T0/T1/T2| host
 ```
 
-- **Clocking:** an MMCM makes the core clock (start 125 MHz) and the PHY's 25 MHz reference.
-  The PHY's receive clock is the only other domain.
-- **CDC:** one async FIFO (Gray pointers) and one toggle synchronizer for the T0 timestamp.
+- **Clocking:** an MMCM makes the 125 MHz core clock and the PHY's 25 MHz reference. The
+  PHY's receive and transmit clocks are the only other domains.
+- **CDC:** two async FIFOs (Gray pointers), one each way, and toggle synchronizers for the
+  T0 timestamp and the TX underrun flag; every crossing is listed in
+  [docs/design.md](docs/design.md#cdc-crossings).
 - **Interfaces:** AXI4-Stream between blocks, with backpressure everywhere except the MII
   input, which has an overflow counter.
 - **Reuse:** the MAC and IPv4/UDP layer lives in its own payload-agnostic repo,
@@ -122,7 +122,7 @@ flowchart LR
 
 | Layer | State |
 |---|---|
-| Golden model | 225 pytest tests (model, analysis and host-tool checks, `make model-test`); full-day self-consistency on real data; per-message flag contract checked on 1,669,591 messages |
+| Golden model | 227 pytest tests (model, analysis and host-tool checks, `make model-test`); full-day self-consistency on real data; per-message flag contract checked on 1,669,591 messages |
 | cocotb vs. golden model | Every block and the whole chip (`ob_core`, frames in → datagrams out) scored against the model, 28 parameter sets (`DATA_W` 8/64, both FCS modes, small FIFOs) in `make sim`; injected bugs caught in each test (counts in the [lab notebook](docs/log.md)); functional coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)) |
 | Formal (SymbiYosys) | Async FIFO; bitmap search; MoldUDP64 sequence/gap logic (a shadow of the model's `SeqTracker` inside `mold_deframer_w8`); order table (one tracked ref against the spec, RAM by its proved read contract); AXI-Stream handshake at four block boundaries. Proofs that need internal state keep it in an `ifdef FORMAL` block next to the RTL. Not proved: the `DATA_W` 64 deframer (simulation only) |
 | Hardware scoreboard | `analysis/compare.py` over a captured day: record by record, plus `unflagged_wrong` (a BBO wrong without its stale flag): 0 on every run, including 4 runs that lost input ([CSV](data/results/2026-11-09_board_loss_diagnosis.csv)); after an output loss, every received record still checked in place by its MoldUDP64 sequence number (`received_wrong`, [trace](data/results/2026-11-22_trace_full_day_board.md)); and the board's feed counters (MoldUDP64, ITCH filter, learned locate) against the model's, which shows the filter on messages that make no output ([whole file](data/results/2026-11-19_whole_file_board.md)); an ILA capture of one frame checked byte for byte against the sent packet and the model's records ([ILA](data/results/2026-11-21_ila_frame_board.md)) |
@@ -138,7 +138,7 @@ The golden model comes in two forms:
 
 - **Unbounded book:** defines the correct BBO.
 - **Bounded book:** applies the RTL's exact limits (table geometry, price window and entry
-  widths). It is what the hardware will be scored against.
+  widths). It is what the hardware is scored against.
 
 The model tests each pin a failure mode that would silently corrupt the book, for example:
 
@@ -248,8 +248,8 @@ simulation ([`sim_full`](data/results/2026-11-10_sim_full_book.csv)) and on the 
 
 Per side, a BRAM array of aggregate shares covers 4,096 one-cent ticks around a base fixed
 for the day, with a two-level occupancy bitmap to find the next best level when the top
-empties. Both options are documented in §6.4 of the spec: a sorted top-K register array was
-rejected because it loses depth.
+empties. The alternative, a sorted top-K register array, was rejected because it loses
+depth ([build spec](docs/buildplan.md) §6.4).
 
 - **Base:** the golden model's opening mid, $234.55 ([ADR 0002](docs/decisions/0002-price-window-base.md)).
 - **Coverage:** the window held 831,837 of 831,839 two-sided BBOs.
@@ -340,7 +340,7 @@ fill. Sustained, that is 13.6 M ITCH messages/s, about 36× what the 100 Mb/s li
 delivers; a faster input would next need a pipelined table (several messages in flight),
 which is not built.
 
-## On the board, demos, in Vivado
+## On the board
 
 The host (WSL2) sends the day as MoldUDP64 multicast with `host/replay` (C++, busy-wait
 pacing) and configures the board and logs its output with `host/capture`;
@@ -446,8 +446,8 @@ requirement (3.755 ns logic, 4.195 ns route), clock skew −0.042 ns
 | **Hardware, whole file (all symbols): BBO updates and filter counters = model** | **831,842 / 831,842**; other-locate 295,290,395, unknown type 5,388,821, directory match 1 | 2019-10-18, 302,347,067 messages unpaced, 361,876 msg/s | [whole file](data/results/2026-11-19_whole_file_board.md) |
 | **Hardware full day, trace mode: decoded messages identical to the model** | **1,658,958 / 1,658,958** | AAPL 2019-10-18, 200 pps; two earlier runs at 500 pps lost data, all counted | [trace](data/results/2026-11-22_trace_full_day_board.md) |
 | **Hardware: packets from `replay`, all counted by the board** | **11,250,632 / 11,250,632** frames, 0 CRC errors, 0 overflows, 0 gaps | first 40 M messages of the whole file, ≤ 150-byte payloads, unpaced (13.4 k packets/s, host-bound) | [10 M packets](data/results/2026-11-22_10m_packets_board.md) |
-| RTL sim, random records vs model | 1,009,900, 0 mismatches | seeded generator | [sim](data/results/2026-11-07_sim_random_1m.csv) |
 | **Hardware day 2: BBO updates identical to the model** | **916,429 / 916,429** | AAPL 2025-12-12 (3.5 M AAPL messages), 500 pps, 2 runs | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
+| RTL sim, random records vs model | 1,009,900, 0 mismatches | seeded generator | [sim](data/results/2026-11-07_sim_random_1m.csv) |
 | Hardware runs at host load 15 to 22 | 2 of 4 clean; failures were host receive loss and an MII FIFO overflow, both detected (0 unflagged wrong BBOs) | 16-way bitstream | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
 | Full-chip timing (with the injector) | 125 MHz met, WNS +0.012 ns store-and-forward, +0.172 ns cut-through | Vivado 2025.2 | [sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt) |
 | **Pipeline latency T2−T1 (board)** | **p50 136 ns, p99 192 ns, max 232 ns** | AAPL 2019-10-18, 831,842 BBOs, 500 pps | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
@@ -502,7 +502,7 @@ day file (3.95 GB, not committed) goes in `/mnt/d/itch/` or `ITCH_DAY=...`; see
 
 | Target | Does |
 |---|---|
-| `make setup` | Create `.venv` from pinned `requirements.txt` |
+| `make setup` | Fetch the `rtl/eth/` submodule; create `.venv` from pinned `requirements.txt` |
 | `make model-test` | ruff, `mypy --strict` and pytest on the golden model |
 | `make day-stats` | Full-day replay of AAPL through the golden model (about 4 minutes) |
 | `make plots` | Regenerate every plot in `docs/media/` from `data/results/` |
@@ -519,8 +519,9 @@ day file (3.95 GB, not committed) goes in `/mnt/d/itch/` or `ITCH_DAY=...`; see
 | `make clean` | Remove caches and build output |
 
 The sizing and bounded-model runs are listed with their exact commands in
-[the results sidecar](data/results/2019-10-18_AAPL.md). Board runs need the host set up as in
-[docs/log.md](docs/log.md) (2026-11-09). `make ci` (lint, sim, formal, model-test, host,
+[the results sidecar](data/results/2019-10-18_AAPL.md). Board runs need the host's
+Ethernet interface set up once with `sudo scripts/host_setup.sh` (address, static
+neighbour for the board, deep transmit queue). `make ci` (lint, sim, formal, model-test, host,
 host-test, clang-tidy, ruff) also runs on GitHub Actions on every push; Vivado, `make cov`,
 `make sim-full` and the board runs are local only.
 
@@ -532,7 +533,7 @@ host-test, clang-tidy, ruff) also runs on GitHub Actions on every push; Vivado, 
 | `analysis/` | Day stats, symbol extract, table sizing, bounded-model check, plots |
 | `data/results/` | The CSVs behind every number, each with a sidecar `.md` |
 | `docs/` | Design, ADRs, lab notebook, media |
-| `rtl/` | SystemVerilog: `eth/` (fpga-eth-core submodule), `feed/`, `book/`, `out/`, `top/`, `lib/` |
+| `rtl/` | SystemVerilog: `eth/` (fpga-eth-core submodule), `feed/`, `book/`, `meas/`, `out/`, `top/`, `lib/` |
 | `tb/` | cocotb tests and SymbiYosys proofs |
 | `host/` | C++ replayer and capture tool |
 | `syn/`, `constr/`, `scripts/` | Vivado Tcl, XDC, board-run scripts |
