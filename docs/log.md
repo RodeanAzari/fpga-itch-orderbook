@@ -1229,3 +1229,19 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   ~25 min unnoticed → the restarted loop stopped on a missing ack and was watched.
 - Scope setup traps: probes on ×1 with the channel menu at 10X showed 26.8 V and slow
   edges; trigger was on CH1 at 12.8 V. ×10 probes, 1 V/div, trigger CH2 1.5 V Normal.
+
+## 2026-11-23 (later): what limits capacity at DATA_W 64 (simulation)
+
+- `make capacity-sim` (new; `tb/cocotb/test_rate_book.py`, `test_rate_feed.py`): each stage
+  alone at full rate, scoreboarded. Whole AAPL day: book 9.27 cycles/record = 13.5 M
+  records/s; feed front end at 64 5.09 = 24.6 M. The book is the limit (one message at a
+  time; Replace 16.2 cycles). `data/results/2026-11-23_capacity_sim.md`.
+- Why not the injector: its ROM header holds a 16-bit word count, so an image tops out near
+  17 k pre-market messages; a whole day needs the stages measured alone.
+- Bug (bench): book alone took 10,798 cycles for the injector's 987 records, more than the
+  whole chain's 9,059 → per-record accept cycles from the chain sim (`test_core`, patched
+  for the diagnosis, reverted) matched the bench on all gaps but the first, 2,049 →
+  order_table finished its 2,048-set clear and took record 0, which then waited for
+  book_levels' 4,096-index clear; on the board out_ctrl waits for busy_o → `run(...,
+  wait_idle=True)`. Book alone then = 8,757 cycles = the chain's book span, record for
+  record. Not an RTL bug.

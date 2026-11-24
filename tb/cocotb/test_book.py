@@ -92,9 +92,14 @@ async def check_clear_busy(dut) -> None:
 
 
 async def run(dut, name: str, recs: list[tuple[int, Message]], base: int, p_valid: float,
-              p_ready: float, stats: dict[str, int] | None = None) -> BoundedBook:  # fmt: skip
+              p_ready: float, stats: dict[str, int] | None = None,
+              wait_idle: bool = False) -> BoundedBook:  # fmt: skip
+    """wait_idle: send nothing until busy_o falls (both RAM clears done), as out_ctrl
+    does on the board; otherwise records are offered at once and wait in the table."""
     rng = get_rng(name)
     await reset(dut, base)
+    while wait_idle and int(dut.busy_o.value):
+        await RisingEdge(dut.clk_i)
     book = BoundedBook(base_ticks=base, half_window=HALF, sets_per_bank=1 << SET_BITS, ways=WAYS)
     sb = InOrderScoreboard(
         name,

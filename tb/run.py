@@ -124,8 +124,11 @@ TESTS = {
     "test_book_full": ("book_engine", ENGINE, [{"SET_BITS": 11}]),
     # make wave-feed only: writes the Phase C waveform CSV.
     "test_feed_wave": ("feed_frontend", FEED, [{"DATA_W": 64}]),
+    # make capacity-sim only: each stage alone at full rate (RATE_CSV).
+    "test_rate_book": ("book_engine", ENGINE, [{"SET_BITS": 11}]),
+    "test_rate_feed": ("feed_frontend", FEED, [{"DATA_W": 64}]),
 }
-FULL_ONLY = {"test_book_full", "test_feed_wave"}  # not in make sim
+FULL_ONLY = {"test_book_full", "test_feed_wave", "test_rate_book", "test_rate_feed"}
 
 
 def run_set(name: str, idx: int) -> int:

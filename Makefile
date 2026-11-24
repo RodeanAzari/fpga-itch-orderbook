@@ -11,7 +11,7 @@ ETH_RTL := $(wildcard rtl/eth/rtl/*.sv)  # fpga-eth-core: sources for our tops, 
 # Vendor wrappers, with eth-core's simulation models of the primitives they use
 XIL_RTL := $(wildcard rtl/lib/xilinx/*.sv) $(wildcard rtl/eth/tb/models/*.sv)
 
-.PHONY: demo-gif demo-gif-day2 synth impl reports prog gui-views setup lint sim cov sim-full wave-feed formal model-test host host-test host-lint ci day-stats plots clean
+.PHONY: demo-gif demo-gif-day2 synth impl reports prog gui-views setup lint sim cov sim-full wave-feed capacity-sim formal model-test host host-test host-lint ci day-stats plots clean
 
 setup:
 	git submodule update --init
@@ -62,6 +62,15 @@ sim-full:
 FEED_WAVE_CSV ?= data/results/2026-11-22_feed_wave_w64.csv
 wave-feed:
 	FEED_WAVE_CSV=$(abspath $(FEED_WAVE_CSV)) $(PY) tb/run.py test_feed_wave
+
+# Phase E capacity: book_engine and feed_frontend (DATA_W 64) each alone at full rate, on
+# the injector image and the whole AAPL day (ITCH_EXTRACT), every output checked against
+# the model (tb/cocotb/test_rate_*.py). Appends rows to RATE_CSV; minutes.
+RATE_CSV ?= data/results/2026-11-23_capacity_sim.csv
+capacity-sim:
+	rm -f $(abspath $(RATE_CSV))
+	RATE_CSV=$(abspath $(RATE_CSV)) ITCH_EXTRACT=$(ITCH_EXTRACT) JOBS=1 \
+	  $(PY) tb/run.py test_rate_book test_rate_feed
 
 model-test:
 	$(PY) -m ruff check model analysis tb host

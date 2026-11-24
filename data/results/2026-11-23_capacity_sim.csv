@@ -1,0 +1,15 @@
+stage,input,type,records,cycles
+book,injector_image,A,518,4819
+book,injector_image,D,458,3842
+book,injector_image,E,10,96
+book,injector_image,all,987,8757
+book,full_day 2019-10-18_AAPL,A,769396,6926699
+book,full_day 2019-10-18_AAPL,C,717,6496
+book,full_day 2019-10-18_AAPL,D,731240,6319759
+book,full_day 2019-10-18_AAPL,E,54748,483126
+book,full_day 2019-10-18_AAPL,F,2670,21490
+book,full_day 2019-10-18_AAPL,U,98898,1606246
+book,full_day 2019-10-18_AAPL,X,1288,10872
+book,full_day 2019-10-18_AAPL,all,1658958,15374688
+feed,injector_image,all,987,5213
+feed,full_day 2019-10-18_AAPL,all,1658958,8440624

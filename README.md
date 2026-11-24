@@ -320,11 +320,25 @@ at `DATA_W` 8 it takes one byte per cycle; at 64, eight.
 
 Each figure is the same on every board run and equal to simulation to the cycle
 ([8](data/results/2026-11-13_injector_board.md), [64](data/results/2026-11-15_injector_board_w64.md)).
-At 8 the input sets the rate. At 64 it no longer does (3.5 of 8 bytes per cycle used); which
-later stage does is not measured yet. The full AAPL day also matches the model at 64
-(831,842 / 831,842), with T2−T1 unchanged: the wider path sits before T1
-([sidecar](data/results/2026-11-15_w64_full_day_board.md)). These are short bursts of
-one pre-market mix (mostly Add and Delete), not a sustained rate over a whole day.
+At 8 the input sets the rate. At 64 it no longer does (3.5 of 8 bytes per cycle used). The full
+AAPL day also matches the model at 64 (831,842 / 831,842), with T2−T1 unchanged: the wider
+path sits before T1 ([sidecar](data/results/2026-11-15_w64_full_day_board.md)).
+
+**What limits it, sustained over a whole day (simulation).** `make capacity-sim` runs each
+stage alone at full rate over every message of the AAPL day, with every output checked
+against the model ([sidecar](data/results/2026-11-23_capacity_sim.md)):
+
+| Stage alone, 125 MHz (simulation) | Cycles per book record | Book records/s |
+|---|---|---|
+| Order book (`book_engine`) | **9.27** (Replace 16.2, the rest 8.0–9.1) | **13.5 M** |
+| Feed front end at `DATA_W` 64 | 5.09 (6.1 payload bytes per cycle) | 24.6 M |
+
+The order book is the limit: its table takes one message at a time, about 9 cycles each,
+and a Replace takes two passes. Inside the chain the book accepts the injector's records
+on exactly the cycles it does alone, so the board's 9,059 is the book's 8,757 plus pipeline
+fill. Sustained, that is 13.6 M ITCH messages/s, about 36× what the 100 Mb/s link
+delivers; a faster input would next need a pipelined table (several messages in flight),
+which is not built.
 
 ## On the board, demos, in Vivado
 
@@ -436,6 +450,7 @@ checkpoint opened with `make gui-views`. Numbers in
 | T2−T0, line-rate bound (board), cut-through | p50 64.2 µs, max 121.7 µs; 831,842 / 831,842 BBOs = model | same day; `CUT_THROUGH=1` | [sidecar](data/results/2026-11-13_ct_vs_sf_board.md) |
 | Pipeline capacity (on-chip injector, board) | 4.11 M msg/s: 1,043 msgs in 31,703 cycles, 248 BBOs, digest = model, = simulation | `DATA_W` 8 (input-bound), both builds | [sidecar](data/results/2026-11-13_injector_board.md) |
 | **Pipeline capacity (on-chip injector, board)** | **14.4 M msg/s**: same 1,043 msgs in 9,059 cycles (3.50× `DATA_W` 8), 248 BBOs, digest = model, = simulation | `DATA_W` 64, store-and-forward, 3 runs | [sidecar](data/results/2026-11-15_injector_board_w64.md) |
+| Sustained capacity, whole AAPL day (simulation) | Order book alone 9.27 cycles/record = **13.5 M records/s** (the limit); feed front end at `DATA_W` 64 alone 5.09 = 24.6 M | each stage at full rate, every output = model, 125 MHz | [sidecar](data/results/2026-11-23_capacity_sim.md) |
 | Hardware full day at `DATA_W` 64 | 831,842 / 831,842 BBOs = model; T2−T1 p50 / max 136 / 232 ns (unchanged); T2−T0 +16 to +96 ns vs `DATA_W` 8 | AAPL 2019-10-18, 500 pps, 1 run | [sidecar](data/results/2026-11-15_w64_full_day_board.md) |
 | Full-chip timing at `DATA_W` 64 | 125 MHz met, WNS +0.004 ns, 127 / 135 BRAM tiles | Vivado 2025.2, store-and-forward | [summary](docs/reports/arty_top_w64/summary.txt) |
 | Line rate, input (board) | 35,310 / 35,313 frames, 374 k msg/s offered; 3 MII FIFO overflows, counted, book flagged stale, 0 unflagged wrong BBOs | unpaced full day, `DATA_W` 64 | [sidecar](data/results/2026-11-15_line_rate_board.md) |
@@ -527,8 +542,8 @@ This project owns two shared repos, built here and consumed only at release tags
 
 ## Roadmap
 
-- **Open questions:** the host output loss at line rate; a sustained (not burst) capacity
-  figure at `DATA_W` 64 and which stage then limits it.
+- **Open question:** the host output loss at line rate.
+- **Next for capacity:** a pipelined order table, the measured limit at `DATA_W` 64.
 
 ## License
 
