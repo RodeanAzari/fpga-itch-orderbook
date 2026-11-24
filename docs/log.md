@@ -1245,3 +1245,12 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   book_levels' 4,096-index clear; on the board out_ctrl waits for busy_o → `run(...,
   wait_idle=True)`. Book alone then = 8,757 cycles = the chain's book span, record for
   record. Not an RTL bug.
+
+## 2026-11-24: cleanup after v1.0
+
+- README "In Vivado" grid gains the timing-checks screenshot
+  (`docs/media/2026-11-21_phase-f_vivado-timing.png`, taken 2026-11-21, left untracked
+  until now): the worst setup path, 7.950 of 8.000 ns (3.755 logic, 4.195 route), the
+  same numbers as `docs/reports/arty_top/timing_summary.rpt`.
+- Local state files brought up to date: every phase done; open items are the host
+  output-datagram loss and P3's confirmation of fpga-coord 0005. No numbers measured.

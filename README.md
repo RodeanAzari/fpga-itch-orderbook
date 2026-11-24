@@ -423,6 +423,12 @@ checkpoint opened with `make gui-views`. Numbers in
 | ![Worst setup path](docs/media/2026-11-21_phase-f_vivado-worst-path.png) | ![Worst path routed](docs/media/2026-11-21_phase-f_vivado-worst-path-route.png) |
 | **Worst setup path:** slack +0.012 ns at 8 ns, 12 logic levels, in the output builder's FIFO full flag (`u_builder/u_fifo`): 47 % logic, 53 % route ([timing](docs/reports/arty_top/timing_summary.rpt)). | **The same path routed** on the die. |
 
+![Timing checks, setup](docs/media/2026-11-21_phase-f_vivado-timing.png)
+
+**Timing checks, setup:** the same path in Vivado's timing table: 7.950 ns of the 8.000 ns
+requirement (3.755 ns logic, 4.195 ns route), clock skew −0.042 ns
+([timing](docs/reports/arty_top/timing_summary.rpt), line 5161).
+
 ## Results
 
 | Result | Value | Conditions | Source |
