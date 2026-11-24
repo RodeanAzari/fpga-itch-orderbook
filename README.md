@@ -22,9 +22,9 @@ day (2025-12-12) matches as well, 916,429 / 916,429. Every BBO leaves the book *
 cycles (136–232 ns) after its cause message's last byte**
 ([sidecar](data/results/2026-11-11_record_fifo_board.md)), and an oscilloscope on the
 board's pins agrees: 137.0 ns against the timestamps' 136 ns
-([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)). Phases A to D are tagged (`v0.1-model`,
-`v0.2-packets-on-hw`, `v0.3-itch-decode`, `v0.4-book`); E and F have met their checklists
-(F with the board GIFs in place of a demo video).
+([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)). Every phase is tagged (`v0.1-model`,
+`v0.2-packets-on-hw`, `v0.3-itch-decode`, `v0.4-book`, `v0.5-latency`), and the release is
+`v1.0` (F with the board GIFs in place of a demo video).
 
 Every number here comes from a CSV in [`data/results/`](data/results/), produced by a `make`
 target or a command in its sidecar `.md`, with its measurement conditions stated.
@@ -87,8 +87,8 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; 11,250,632 packets from `replay`, every one counted by the board ([sidecar](data/results/2026-11-22_10m_packets_board.md)); ILA capture checked on the board ([result](data/results/2026-11-21_ila_frame_board.md)) |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode, full AAPL day: **1,658,958 / 1,658,958** decoded messages = the golden parser, byte for byte ([sidecar](data/results/2026-11-22_trace_full_day_board.md)); waveform of one packet across 64-bit words ([sim](data/results/2026-11-22_feed_wave_w64.md)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
-| E — Timestamping + latency measurement | Working on the board | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)); oscilloscope on the Pmod pins: T2−T1 137.0 ns vs 136 ns from the timestamps ([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)) |
-| F — Stress, coverage closure, portfolio | Checklist met (the GIFs stand in for a demo video) | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)); board, scope and Vivado media in this README |
+| E — Timestamping + latency measurement | Working on the board (`v0.5-latency`) | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)); oscilloscope on the Pmod pins: T2−T1 137.0 ns vs 136 ns from the timestamps ([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)) |
+| F — Stress, coverage closure, portfolio | Checklist met (`v1.0`; the GIFs stand in for a demo video) | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)); board, scope and Vivado media in this README |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
 
@@ -529,7 +529,6 @@ This project owns two shared repos, built here and consumed only at release tags
 
 - **Open questions:** the host output loss at line rate; a sustained (not burst) capacity
   figure at `DATA_W` 64 and which stage then limits it.
-- **Release:** `v0.5-latency`, then `v1.0`.
 
 ## License
 
