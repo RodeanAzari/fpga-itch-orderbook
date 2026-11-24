@@ -67,5 +67,11 @@ data FIFO would need the ILA; it bounds T2 − T0's error at one cycle.
 `arty_top` drives Pmod JA1 one cycle after each T1 (every decoded message) and JA2 one
 cycle after each T2, through IOB registers (`constr/arty_pmod.xdc`), so a scope's rising-
 edge delay JA1 → JA2 is T2 − T1 plus pin-to-pin skew. `test_core` checks that every BBO's
-T1 and T2 have their pulse exactly one cycle later. Scope result: [TBD] (capture listed
-in `docs/portfolio-todo.md`).
+T1 and T2 have their pulse exactly one cycle later.
+
+Scope result (2026-11-23, Rigol DS1102Z-E, 500 MSa/s): on an isolated pair the cursors read
+**T2 − T1 = 137.0 ns**; the board's timestamps give 136 ns (17 cycles) for 86.3 % of the
+same feed's 831,842 BBOs. 1 ns apart, inside the 2 ns sample spacing plus pin skew
+([sidecar](../data/results/2026-11-23_scope_t2_t1_board.md)). A scope distribution is not
+possible here: T1 pulses come tens of ns apart inside a packet, so only an isolated pair
+shows which T1 caused a T2.

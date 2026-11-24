@@ -1,0 +1,3 @@
+source,t2_minus_t1_ns,cursor_a_ns,cursor_b_ns,n,note
+scope_cursor,137.0,-139.0,-2.0,1,"Rigol DS1102Z-E, x10 probes, 500 MSa/s, 50 ns/div, trigger CH2 rising 1.54-1.58 V; isolated T1->T2 pair, cursors on the rising edges at mid-height"
+board_timestamp_p50,136,,,831842,"T2-T1 of every BBO in run e3_scope (17 cycles at 125 MHz); histogram in _hist.csv"

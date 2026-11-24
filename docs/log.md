@@ -1211,3 +1211,21 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   `2026-11-19_whole_file_board.csv` (6,456,828 frames, 835.5 s, 94.1 Mb/s). Not redone with
   eth-core's `rx_stats` bitstream: the one in `~/fpga-eth-core/build` has no recorded commit.
 - Output-side datagram loss on the host stays open.
+
+## 2026-11-23: the oscilloscope cross-check (Phase E)
+
+- In the lab with a Rigol DS1102Z-E on Pmod JA1/JA2 (T1/T2), release bitstream, 500 pps
+  full-day replays in a loop. On an isolated pair the cursors read **T2 − T1 = 137.0 ns**;
+  the board's timestamps give 136 ns (17 cycles) for 717,549 of 831,842 BBOs, the same
+  histogram in every pass (`data/results/2026-11-23_scope_t2_t1_board.md`). 17 of 18 passes
+  = model; one lost 229 output datagrams on the host (every received record right).
+- Persistence could not show the distribution: T1 pulses inside a packet are tens of ns
+  apart, so they fill every position before the T2 trigger. Prediction wrong (I expected
+  clusters at 112/136/184/192/232 ns); only isolated pairs pair T1 with its T2.
+- Host: no ack from the board → a stale copy of the ASIX adapter from the last session
+  still held the interface name and 192.168.10.1, and its TX queue was dead (TX count +0,
+  NETDEV WATCHDOG) → user detached vhci port 8 and re-ran `host_setup.sh`. Mid-session the
+  adapter dropped out of WSL as the laptop's network changed: the loop kept failing for
+  ~25 min unnoticed → the restarted loop stopped on a missing ack and was watched.
+- Scope setup traps: probes on ×1 with the channel menu at 10X showed 26.8 V and slow
+  edges; trigger was on CH1 at 12.8 V. ×10 probes, 1 V/div, trigger CH2 1.5 V Normal.

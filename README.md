@@ -5,6 +5,14 @@ NASDAQ ITCH 5.0 order book is rebuilt in block RAM, and best bid/offer (BBO) upd
 back to the host with hardware timestamps. The book is scored message by message against
 a Python golden model over a full trading day.
 
+[![The bench: oscilloscope on the Arty's Pmod pins, the Arty A7-100T, and the laptop showing the live order book](docs/media/2026-11-23_phase-e_scope-setup.webp)](docs/media/2026-11-23_phase-e_scope-setup.webp)
+
+*The bench: the Arty A7-100T (centre) receives the replayed NASDAQ day over Ethernet from the
+laptop, which shows the board's BBO updates live (`analysis/bbo_view.py`) while each is checked
+against the golden model. The oscilloscope (left) probes two Pmod pins that pulse when a
+message enters the pipeline (T1) and when its BBO leaves (T2): it reads 137.0 ns, the
+board's own timestamps say 136 ns ([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)).*
+
 **Status: the full pipeline runs on the board.** The whole NASDAQ ITCH file for
 2019-10-18, **302,347,067 messages for every listed symbol**, replayed into the Arty at
 the 100 Mbps line rate, produced **831,842 AAPL BBO updates, all byte-identical to the
@@ -12,9 +20,11 @@ golden model**, and the board's filter counters (295 M other-symbol messages ski
 the model's too ([sidecar](data/results/2026-11-19_whole_file_board.md)). A second, busier
 day (2025-12-12) matches as well, 916,429 / 916,429. Every BBO leaves the book **17 to 29
 cycles (136–232 ns) after its cause message's last byte**
-([sidecar](data/results/2026-11-11_record_fifo_board.md)). Phases A and D are tagged
-(`v0.1-model`, `v0.4-book`); E waits only on a scope capture; F
-(coverage, formal, portfolio) is under way.
+([sidecar](data/results/2026-11-11_record_fifo_board.md)), and an oscilloscope on the
+board's pins agrees: 137.0 ns against the timestamps' 136 ns
+([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)). Phases A to D are tagged (`v0.1-model`,
+`v0.2-packets-on-hw`, `v0.3-itch-decode`, `v0.4-book`); E and F have met their checklists
+(F with the board GIFs in place of a demo video).
 
 Every number here comes from a CSV in [`data/results/`](data/results/), produced by a `make`
 target or a command in its sidecar `.md`, with its measurement conditions stated.
@@ -77,8 +87,8 @@ per minute from run `d2_16way`: 850 minutes, 0¢ difference in every one
 | B — MAC + IPv4/UDP on hardware | Working on the board | [fpga-eth-core](https://github.com/RodeanAzari/fpga-eth-core) `eth-core-v0.1`/`v0.2` released and in use here; 11,250,632 packets from `replay`, every one counted by the board ([sidecar](data/results/2026-11-22_10m_packets_board.md)); ILA capture checked on the board ([result](data/results/2026-11-21_ila_frame_board.md)) |
 | C — MoldUDP64 + ITCH decoder | Working on the board | Trace mode, full AAPL day: **1,658,958 / 1,658,958** decoded messages = the golden parser, byte for byte ([sidecar](data/results/2026-11-22_trace_full_day_board.md)); waveform of one packet across 64-bit words ([sim](data/results/2026-11-22_feed_wave_w64.md)) |
 | D — Order book engine | Working on the board | Two full days, 0 mismatches; table reshaped to 16 ways for the busier day ([ADR 0010](docs/decisions/0010-order-table-16-way.md)) |
-| E — Timestamping + latency measurement | In progress | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)). Left: scope cross-check |
-| F — Stress, coverage closure, portfolio | In progress | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)). Left: the Phase E scope capture |
+| E — Timestamping + latency measurement | Working on the board | T0/T1/T2 in every BBO; T2−T1 on the board fully determined by message type ([sidecar](data/results/2026-11-11_record_fifo_board.md)); cut-through on the board: T2−T0 p50 126.7 → 64.2 µs ([sidecar](data/results/2026-11-13_ct_vs_sf_board.md)); injector 4.11 M msg/s at `DATA_W` 8, 14.4 M at 64 ([sidecar](data/results/2026-11-15_injector_board_w64.md)); T0 on hardware = simulation within 1 cycle ([sidecar](data/results/2026-11-15_t0_wire_board.md)); line rate 189 k msg/s with every BBO sent, output-bound ([sidecar](data/results/2026-11-16_stall_counters_board.md)); oscilloscope on the Pmod pins: T2−T1 137.0 ns vs 136 ns from the timestamps ([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)) |
+| F — Stress, coverage closure, portfolio | Checklist met (the GIFs stand in for a demo video) | Coverage 178 / 178 bins ([report](docs/reports/coverage/index.html)); every §8.3 formal target proved (`make formal`); whole 2019-10-18 file, every symbol, 0 mismatches on the board ([sidecar](data/results/2026-11-19_whole_file_board.md)); board, scope and Vivado media in this README |
 
 Design and decisions: [docs/design.md](docs/design.md). Lab notebook: [docs/log.md](docs/log.md).
 
@@ -335,6 +345,18 @@ pacing) and configures the board and logs its output with `host/capture`;
 - **Live demo:** `analysis/bbo_view.py` (the GIF above).
 - **Vivado:** batch Tcl only (`syn/`), reports per build in [`docs/reports/`](docs/reports/).
 
+### Oscilloscope: T2−T1 off the board's pins
+
+[![Rigol scope, cursors on a T1 (yellow) and T2 (blue) rising edge: BX−AX = 137.0 ns](docs/media/2026-11-23_phase-e_scope-t2-t1-cursors.webp)](docs/media/2026-11-23_phase-e_scope-t2-t1-cursors.webp)
+
+Pmod JA1 (yellow) pulses one cycle after a message's T1, JA2 (blue) one cycle after its
+BBO's T2, both from IOB flip-flops. During a 500 pps full-day replay, an isolated pair
+reads **137.0 ns** between the rising edges. The board's timestamps put 717,549 of the
+day's 831,842 BBOs at 17 cycles = 136 ns; the 1 ns is within the 2 ns sample spacing and
+the pin-to-pin skew ([sidecar](data/results/2026-11-23_scope_t2_t1_board.md)). Only isolated pairs can be
+read: inside a packet T1 pulses come tens of ns apart, so the distribution comes from the
+timestamps, which this checks.
+
 ### ILA: one frame from the MII pins to the decoder
 
 `make impl ILA=1` adds two ILA cores to the release build (WNS +0.032 ns), one per
@@ -409,6 +431,7 @@ checkpoint opened with `make gui-views`. Numbers in
 | Hardware runs at host load 15 to 22 | 2 of 4 clean; failures were host receive loss and an MII FIFO overflow, both detected (0 unflagged wrong BBOs) | 16-way bitstream | [16-way runs](data/results/2026-11-10_full_day_board_16way.md) |
 | Full-chip timing (with the injector) | 125 MHz met, WNS +0.012 ns store-and-forward, +0.172 ns cut-through | Vivado 2025.2 | [sf](docs/reports/arty_top/summary.txt), [ct](docs/reports/arty_top_ct/summary.txt) |
 | **Pipeline latency T2−T1 (board)** | **p50 136 ns, p99 192 ns, max 232 ns** | AAPL 2019-10-18, 831,842 BBOs, 500 pps | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
+| T2−T1 on an oscilloscope (Pmod pins) | 137.0 ns on an isolated pair; the timestamps give 136 ns for 86.3 % of BBOs | Rigol DS1102Z-E, 500 MSa/s; same feed, 500 pps | [sidecar](data/results/2026-11-23_scope_t2_t1_board.md) |
 | T2−T0, line-rate bound (board) | p50 126.7 µs, max 133.8 µs | same; store-and-forward | [sidecar](data/results/2026-11-11_record_fifo_board.md) |
 | T2−T0, line-rate bound (board), cut-through | p50 64.2 µs, max 121.7 µs; 831,842 / 831,842 BBOs = model | same day; `CUT_THROUGH=1` | [sidecar](data/results/2026-11-13_ct_vs_sf_board.md) |
 | Pipeline capacity (on-chip injector, board) | 4.11 M msg/s: 1,043 msgs in 31,703 cycles, 248 BBOs, digest = model, = simulation | `DATA_W` 8 (input-bound), both builds | [sidecar](data/results/2026-11-13_injector_board.md) |
@@ -504,10 +527,9 @@ This project owns two shared repos, built here and consumed only at release tags
 
 ## Roadmap
 
-- **Phase E:** an oscilloscope cross-check of T2−T1 from the Pmod pulses (JA1/JA2).
 - **Open questions:** the host output loss at line rate; a sustained (not burst) capacity
   figure at `DATA_W` 64 and which stage then limits it.
-- **Release:** `v0.5-latency` after the scope capture, then `v1.0`.
+- **Release:** `v0.5-latency`, then `v1.0`.
 
 ## License
 

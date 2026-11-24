@@ -57,6 +57,9 @@ Done by Claude from run `d2_shoot` (`make demo-gif-day2`, `make plots`): the day
 Result: `data/results/2026-11-11_record_fifo_board.md` (T2−T1 p50 136 ns, max 232 ns).
 Done by Claude: `docs/media/2026-11-11_phase-e_board-latency-t2-t1.png` (`make plots`):
 before/after tail and the per-cause histogram.
+- **Done 2026-11-23:** scope cross-check, T2−T1 = 137.0 ns on an isolated pair vs 136 ns from
+  the timestamps (`data/results/2026-11-23_scope_t2_t1_board.md`); bench photo at the top of
+  the README, cursor photo in its board section. The plan below is kept for reference.
 - **Physical, user: scope cross-check (buildplan §6.5).** Pmod JA, top row: pin 1 = T1
   (`ja[0]`), pin 2 = T2 (`ja[1]`), pin 5 = GND (3.3 V LVCMOS, 32 ns pulses). Each pin rises
   1 cycle after its event, so rising edge to rising edge = T2 − T1.
