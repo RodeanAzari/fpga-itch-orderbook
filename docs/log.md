@@ -1254,3 +1254,10 @@ Data: `data/results/2026-11-09_board_loss_diagnosis.md`.
   same numbers as `docs/reports/arty_top/timing_summary.rpt`.
 - Local state files brought up to date: every phase done; open items are the host
   output-datagram loss and P3's confirmation of fpga-coord 0005. No numbers measured.
+- README pass (`fc8f7da`): phases B–D said "working" though tagged; eth-core version
+  (v0.4, not v0.1/v0.2); architecture was missing the TX clock domain and second async
+  FIFO, and drew the injector into the decoder instead of the deframer; 227 pytest tests.
+  Checked by rendering through GitHub's markdown API (14 tables, mermaid) and a link check.
+- Shared repos' "Used by" tables: fpga-eth-core `24cc65b`, tb-common `4cf3774` (stale
+  "(private)" markers; OrderBook on eth-core-v0.4). Every consumer's tag checked against its
+  pushed submodule pointer or requirements pin.
